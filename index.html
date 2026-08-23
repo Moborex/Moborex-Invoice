@@ -647,6 +647,10 @@ window.addEventListener('DOMContentLoaded', ()=>{
 });
 
 if('serviceWorker' in navigator){
+  let swRefreshed=false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(swRefreshed) return; swRefreshed=true; window.location.reload();
+  });
   window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
 }
 </script>
