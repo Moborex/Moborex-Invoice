@@ -119,23 +119,32 @@ button{font-family:var(--font-body);cursor:pointer}
 .notice{padding:12px 13px;background:var(--brassSoft);border:1px solid #e6cf9f;border-radius:var(--r-sm);font-size:12px;color:#7a5a1f;line-height:1.5}
 .logoPreview{width:76px;height:76px;object-fit:contain;border-radius:12px;border:1.4px dashed var(--line);margin-top:7px}
 
-.invoicePreview{background:#fff;border:1px solid #ddd;padding:26px;border-radius:12px;font-family:Georgia,serif;color:#1a1a1a}
-.invoicePreview .sampleTop{display:flex;justify-content:space-between;gap:16px;border-bottom:2.4px solid var(--ink);padding-bottom:14px}
+.invoicePreview{background:#fff;border:1px solid #ddd;padding:26px;border-radius:12px;font-family:Georgia,'Times New Roman',serif;color:#111;font-weight:500}
+.invoicePreview .sampleTop{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2.6px solid var(--ink);padding-bottom:14px}
 .invoicePreview .sampleLogo img{max-width:80px;max-height:70px}
-.invoicePreview .sampleBusiness{text-align:right;font-size:12px;line-height:1.5}
-.invoicePreview .sampleBusiness h1{font-size:19px;margin:0 0 4px}
-.invoicePreview .sampleMeta{display:flex;justify-content:space-between;gap:16px;margin-top:16px;font-size:12.5px}
-.invoicePreview .metaRight{text-align:right}
-.invoicePreview b{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#777;font-weight:700;margin-top:8px}
-.invoicePreview .vehicleBand{margin-top:14px;padding:10px 12px;background:#f4f4f2;border-radius:8px;font-size:12.5px}
+.invoicePreview .sampleCompany{display:flex;gap:12px;align-items:flex-start;text-align:left;font-size:12.5px;line-height:1.55;font-weight:600}
+.invoicePreview .sampleCompany h1{font-size:20px;margin:0 0 4px;font-weight:700}
+.invoicePreview .metaRight{text-align:right;font-size:12.5px;font-weight:600;white-space:nowrap}
+.invoicePreview .sampleMeta{display:flex;justify-content:space-between;gap:16px;margin-top:16px;font-size:12.5px;font-weight:600}
+.invoicePreview b{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#555;font-weight:800;margin-top:8px}
+.invoicePreview .vehicleBand{margin-top:14px;padding:10px 12px;background:#f4f4f2;border-radius:8px;font-size:12.5px;font-weight:600}
 .invoicePreview table{width:100%;border-collapse:collapse;margin-top:16px}
-.invoicePreview th,.invoicePreview td{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12px}
-.invoicePreview .r{text-align:right;font-family:var(--font-mono)}
-.invoicePreview .comment{font-size:11px;white-space:pre-wrap;margin-top:5px;color:#555}
+.invoicePreview th{padding:8px;border-bottom:2px solid #333;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:800}
+.invoicePreview td{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12.5px;font-weight:600}
+.invoicePreview .r{text-align:right;font-family:var(--font-mono);font-weight:700}
+.invoicePreview .comment{font-size:11px;white-space:pre-wrap;margin-top:5px;color:#555;font-weight:500}
 .invoicePreview .paymentTotal{display:flex;justify-content:space-between;align-items:flex-end;margin-top:18px;gap:14px}
 .invoicePreview .totalPill{background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;text-align:right}
-.invoicePreview .totalPill span{display:block;font-size:10px;letter-spacing:.08em;opacity:.7}
-.invoicePreview .totalPill b{color:#fff;font-family:var(--font-mono);font-size:18px;margin-top:2px}
+.invoicePreview .totalPill span{display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700}
+.invoicePreview .totalPill b{color:#fff;font-family:var(--font-mono);font-size:19px;margin-top:2px;font-weight:700}
+
+@media print{
+  .shell, #installBar, #backupBar, #drawerOverlay { display:none !important; }
+  #modal{ position:static !important; background:none !important; display:block !important; inset:auto !important; }
+  #sheet{ box-shadow:none !important; padding:0 !important; max-height:none !important; overflow:visible !important; border-radius:0 !important; width:auto !important; }
+  #sheet > *:not(#pdfTarget){ display:none !important; }
+  #pdfTarget{ border:0 !important; box-shadow:none !important; padding:0 !important; }
+}
 .pdfActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
 
 .cloudBox{padding:13px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--paper);margin:12px 0}
@@ -168,6 +177,8 @@ button{font-family:var(--font-body);cursor:pointer}
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 /* =====================================================================
    Moborex Invoice App — single-file PWA.
@@ -584,8 +595,35 @@ async function calculateReport(){
 }
 
 /* ---------------- Preview / PDF ---------------- */
-async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleLogo">${b.logo?`<img class="logo" src="${b.logo}">`:'LOGO'}</div><div class="sampleBusiness"><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div></div><div class="pdfActions"><button class="btn secondary" onclick="window.print()">Print / Save as PDF</button><button class="btn accent" onclick="generatePDF('${id}')">Generate PDF</button></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);}
-function generatePDF(id){window.print()}
+async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div></div><div class="pdfActions"><button class="btn secondary" onclick="printInvoice('${esc(i.number)}')">Print Only</button><button class="btn accent" onclick="downloadInvoicePDF('${esc(i.number)}')">Save PDF</button></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);}
+function printInvoice(number){
+  const prevTitle=document.title;
+  const safeName=(number||'Invoice').toString().trim().replace(/[\\/:*?"<>|]+/g,'-')||'Invoice';
+  document.title=safeName;
+  const restore=()=>{document.title=prevTitle;window.removeEventListener('afterprint',restore)};
+  window.addEventListener('afterprint',restore);
+  window.print();
+  setTimeout(restore,4000); // fallback in case afterprint doesn't fire (some mobile browsers)
+}
+async function downloadInvoicePDF(number){
+  const safeName=(number||'Invoice').toString().trim().replace(/[\\/:*?"<>|]+/g,'-')||'Invoice';
+  if(!window.jspdf || !window.html2canvas){
+    alert('The PDF file writer needs to load from the internet the first time — no connection right now, so this will fall back to the Print dialog. Choose "Save as PDF" there instead.');
+    return printInvoice(number);
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const target = document.getElementById('pdfTarget');
+  try{
+    await doc.html(target, { x:24, y:24, width:547, windowWidth:800 });
+    doc.save(safeName+'.pdf');
+    setTimeout(()=>{ if(confirm('Invoice saved. Print it now on your POS printer?')) printInvoice(number); }, 300);
+  }catch(e){
+    console.error(e);
+    alert('Could not build the PDF file directly — opening the Print dialog instead. Choose "Save as PDF" there.');
+    printInvoice(number);
+  }
+}
 
 /* ---------------- Backup / Sync UI ---------------- */
 function showCloudSync(){
