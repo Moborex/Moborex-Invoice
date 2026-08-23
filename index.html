@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#16233D">
+<title>Moborex Invoice App</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Moborex">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16233D; --ink2:#223258; --paper:#F1F3EF; --card:#FFFFFF;
+  --line:#E1E6E0; --line2:#EDEFEA; --muted:#6B7280; --muted2:#8A9088;
+  --brass:#B8863B; --brass2:#D4A24C; --brassSoft:#F3E7D2;
+  --good:#2F7A5D; --goodSoft:#E4F1EB; --danger:#B23A3A; --dangerSoft:#F7E7E7;
+  --r-lg:20px; --r-md:14px; --r-sm:10px;
+  --shadow:0 4px 18px rgba(22,35,61,.08); --shadow-lg:0 10px 34px rgba(22,35,61,.14);
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--font-display);letter-spacing:-.01em;margin:0}
+.num,.money{font-family:var(--font-mono)}
+button{font-family:var(--font-body);cursor:pointer}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+
+/* ---------- shell ---------- */
+.shell{min-height:100vh;display:grid;grid-template-columns:1fr;grid-template-areas:"topbar" "main"}
+.topbar{grid-area:topbar;background:linear-gradient(135deg,var(--ink),var(--ink2));color:#fff;padding:18px 18px 26px;border-radius:0 0 24px 24px;box-shadow:var(--shadow-lg)}
+.topbar-row{display:flex;justify-content:space-between;align-items:center}
+.brandmark{display:flex;align-items:center;gap:11px}
+.brandmark .seal{width:42px;height:42px;border-radius:12px;background:#ffffff1a;border:1px solid #ffffff33;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:17px;overflow:hidden}
+.brandmark .seal img{width:100%;height:100%;object-fit:contain}
+.appname{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;opacity:.68;font-weight:600}
+.bizname{font-family:var(--font-display);font-weight:600;font-size:19px;line-height:1.15}
+.iconbtn{border:1px solid #ffffff3a;background:#ffffff14;color:#fff;width:42px;height:42px;border-radius:12px;font-size:18px;display:flex;align-items:center;justify-content:center}
+.hello{margin-top:18px;font-size:12.5px;opacity:.72}
+.pagehead{font-family:var(--font-display);font-size:25px;font-weight:600;margin-top:2px}
+
+.main{grid-area:main;padding:16px 16px 90px;max-width:1180px;margin:0 auto;width:100%}
+.heroBalance{background:linear-gradient(135deg,var(--ink),var(--ink2));color:#fff;border-radius:var(--r-lg);padding:20px 22px;margin-top:-6px;margin-bottom:14px;box-shadow:var(--shadow-lg)}
+.heroBalance .lbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;opacity:.72;font-weight:600}
+.heroBalance .val{font-family:var(--font-mono);font-size:32px;font-weight:600;margin-top:6px;color:var(--brass2)}
+.heroBalance .sub{font-size:11px;opacity:.62;margin-top:6px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:var(--card);border-radius:var(--r-md);padding:14px 15px;box-shadow:var(--shadow);border:1px solid var(--line2)}
+.stat .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.stat .val{font-family:var(--font-mono);font-size:18px;font-weight:600;margin-top:6px;color:var(--ink)}
+.stat.accent .val{color:var(--brass)}
+
+.sectionhead{display:flex;justify-content:space-between;align-items:baseline;margin:26px 2px 11px}
+.sectionhead h3{font-size:15px;font-weight:700;color:var(--ink)}
+.linkbtn{border:0;background:transparent;color:var(--brass);font-weight:700;font-size:13px}
+
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.action{background:var(--card);border:1px solid var(--line2);border-radius:var(--r-md);padding:15px;text-align:left;box-shadow:var(--shadow)}
+.action .ico{width:38px;height:38px;border-radius:10px;background:var(--brassSoft);color:var(--brass);display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:9px}
+.action strong{display:block;font-size:14px;color:var(--ink)}
+.action span{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.action.primary{grid-column:1/-1;background:linear-gradient(135deg,var(--ink),var(--ink2));color:#fff;border:0}
+.action.primary .ico{background:#ffffff20;color:#fff}
+.action.primary span{color:#cdd6e6}
+
+.list{background:var(--card);border-radius:var(--r-md);border:1px solid var(--line2);overflow:hidden;box-shadow:var(--shadow)}
+.row-item{padding:13px 14px;border-bottom:1px solid var(--line2);display:flex;justify-content:space-between;gap:10px;align-items:center}
+.row-item:last-child{border-bottom:0}
+.row-item b{font-size:13.5px}
+.row-item small{color:var(--muted);display:block;margin-top:2px;font-size:11.5px}
+.row-right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.stamp{font-family:var(--font-display);font-weight:700;font-size:10px;letter-spacing:.09em;text-transform:uppercase;padding:3px 9px 2px;border-radius:20px;border:1.4px solid currentColor;transform:rotate(-3deg);display:inline-block}
+.stamp.paid{color:var(--good);background:var(--goodSoft)}
+.stamp.due{color:var(--brass);background:var(--brassSoft)}
+.empty{padding:28px;text-align:center;color:var(--muted);font-size:13px}
+
+/* ---------- overlays ---------- */
+.overlay,.modal{position:fixed;inset:0;background:#0d1a2e8f;z-index:50;display:none}
+.overlay.show{display:block}
+.drawer{position:absolute;left:0;top:0;height:100%;width:min(300px,88%);background:var(--ink);color:#fff;padding:20px;overflow:auto}
+.drawer .dhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.drawer .dtitle{font-family:var(--font-display);font-size:17px;font-weight:600}
+.navbtn{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px 10px;border:0;background:transparent;color:#dfe4ee;border-radius:10px;margin:2px 0;font-size:14px}
+.navbtn:hover{background:#ffffff12}
+.navbtn .ic{width:20px;text-align:center;opacity:.85}
+.modal{align-items:flex-end;justify-content:center}
+.modal.show{display:flex}
+.sheet{width:min(720px,100%);max-height:94vh;overflow:auto;background:var(--card);border-radius:22px 22px 0 0;padding:22px}
+.sheet h2{font-size:19px;margin-bottom:14px}
+.sheetBack{background:transparent;border:0;color:var(--brass);font-weight:700;font-size:13.5px;padding:2px 0 14px;display:flex;align-items:center;gap:4px}
+.field{margin:11px 0}
+.field label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+.field input,.field textarea,.field select{width:100%;padding:11px 12px;border:1.4px solid var(--line);border-radius:var(--r-sm);background:#fff;font-family:var(--font-body);font-size:14px;color:var(--ink)}
+.field textarea{min-height:72px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{border:0;border-radius:12px;padding:12px 14px;font-weight:700;font-size:13.5px}
+.btn.primary{background:var(--ink);color:#fff}
+.btn.primary:hover{background:var(--ink2)}
+.btn.accent{background:var(--brass);color:#fff}
+.btn.secondary{background:var(--line2);color:var(--ink)}
+.btn.danger{background:var(--dangerSoft);color:var(--danger)}
+.full{width:100%;margin-top:8px}
+.toolbar{display:flex;gap:8px;margin-bottom:12px}
+.toolbar input{flex:1;padding:12px;border:1.4px solid var(--line);border-radius:var(--r-sm)}
+.line{display:grid;grid-template-columns:1.7fr .55fr .9fr 32px;gap:6px;align-items:end;margin:8px 0}
+.line input,.line select{width:100%;padding:9px;border:1.4px solid var(--line);border-radius:8px;font-size:13px}
+.line .comment{grid-column:1/4}
+.totalBox{background:var(--paper);border-radius:var(--r-md);padding:14px;margin-top:12px}
+.totalRow{display:flex;justify-content:space-between;padding:4px 0;font-size:13.5px}
+.totalRow b{font-family:var(--font-mono)}
+.grand{font-size:17px;font-weight:800;border-top:1.4px solid var(--line);margin-top:6px;padding-top:9px}
+.notice{padding:12px 13px;background:var(--brassSoft);border:1px solid #e6cf9f;border-radius:var(--r-sm);font-size:12px;color:#7a5a1f;line-height:1.5}
+.logoPreview{width:76px;height:76px;object-fit:contain;border-radius:12px;border:1.4px dashed var(--line);margin-top:7px}
+
+.invoicePreview{background:#fff;border:1px solid #ddd;padding:26px;border-radius:12px;font-family:Georgia,serif;color:#1a1a1a}
+.invoicePreview .sampleTop{display:flex;justify-content:space-between;gap:16px;border-bottom:2.4px solid var(--ink);padding-bottom:14px}
+.invoicePreview .sampleLogo img{max-width:80px;max-height:70px}
+.invoicePreview .sampleBusiness{text-align:right;font-size:12px;line-height:1.5}
+.invoicePreview .sampleBusiness h1{font-size:19px;margin:0 0 4px}
+.invoicePreview .sampleMeta{display:flex;justify-content:space-between;gap:16px;margin-top:16px;font-size:12.5px}
+.invoicePreview .metaRight{text-align:right}
+.invoicePreview b{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#777;font-weight:700;margin-top:8px}
+.invoicePreview .vehicleBand{margin-top:14px;padding:10px 12px;background:#f4f4f2;border-radius:8px;font-size:12.5px}
+.invoicePreview table{width:100%;border-collapse:collapse;margin-top:16px}
+.invoicePreview th,.invoicePreview td{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12px}
+.invoicePreview .r{text-align:right;font-family:var(--font-mono)}
+.invoicePreview .comment{font-size:11px;white-space:pre-wrap;margin-top:5px;color:#555}
+.invoicePreview .paymentTotal{display:flex;justify-content:space-between;align-items:flex-end;margin-top:18px;gap:14px}
+.invoicePreview .totalPill{background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;text-align:right}
+.invoicePreview .totalPill span{display:block;font-size:10px;letter-spacing:.08em;opacity:.7}
+.invoicePreview .totalPill b{color:#fff;font-family:var(--font-mono);font-size:18px;margin-top:2px}
+.pdfActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+
+.cloudBox{padding:13px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--paper);margin:12px 0}
+.cloudBox button{margin-top:8px}
+.cloudBox small{display:block;margin-top:10px;color:var(--muted);line-height:1.5}
+.cloudLast{font-size:12px;color:var(--muted);margin:7px 0}
+.syncDot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted2);margin-right:6px}
+.syncDot.on{background:var(--good)}
+.syncDot.busy{background:var(--brass)}
+
+/* ---------- desktop / wide layout ---------- */
+@media(min-width:900px){
+  .shell{grid-template-columns:250px 1fr;grid-template-areas:"side topbar" "side main"}
+  .topbar{grid-area:topbar;border-radius:0;padding:22px 30px}
+  .sidebar{grid-area:side;background:var(--ink);color:#fff;padding:22px 16px;display:flex;flex-direction:column}
+  .sidebar .brandmark{padding:0 6px 22px}
+  .main{padding:26px 30px 60px;max-width:1180px}
+  .stats{grid-template-columns:repeat(4,1fr)}
+  .actions{grid-template-columns:repeat(4,1fr)}
+  .action.primary{grid-column:span 1}
+  .drawerToggle{display:none}
+}
+@media(max-width:899px){.sidebar{display:none}}
+@media(max-width:480px){.row2{grid-template-columns:1fr}.pagehead{font-size:22px}}
+
+.installBar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:80;background:var(--ink);color:#fff;padding:12px 14px;align-items:center;gap:10px;box-shadow:0 -6px 20px rgba(0,0,0,.18);font-size:12.5px}
+.installBar.show{display:flex}
+.installBar span{flex:1;line-height:1.4}
+@media(min-width:900px){.installBar{left:250px}}
+</style>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+/* =====================================================================
+   Moborex Invoice App — single-file PWA.
+   Storage: IndexedDB (per device). Sync: encrypted snapshot synced to
+   the signed-in Google account's private app-data area (no server,
+   no third-party database — reuses the Google account you already have).
+   ===================================================================== */
+window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
+
+const CURRENCIES = {
+  NGN:{sym:'₦',locale:'en-NG'}, USD:{sym:'$',locale:'en-US'}, GBP:{sym:'£',locale:'en-GB'},
+  EUR:{sym:'€',locale:'en-IE'}, GHS:{sym:'GH₵',locale:'en-GH'}, KES:{sym:'KSh',locale:'en-KE'},
+  ZAR:{sym:'R',locale:'en-ZA'}, CAD:{sym:'CA$',locale:'en-CA'}, AUD:{sym:'A$',locale:'en-AU'}, INR:{sym:'₹',locale:'en-IN'}
+};
+window.CURRENT_CURRENCY = 'NGN';
+function money(n){
+  const c=window.CURRENT_CURRENCY||'NGN', meta=CURRENCIES[c]||{locale:'en-US'};
+  try{return (Number(n)||0).toLocaleString(meta.locale,{style:'currency',currency:c,maximumFractionDigits:2})}
+  catch(e){return c+' '+(Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:2})}
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+
+/* ---------------- IndexedDB core ---------------- */
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=1;
+let idb;
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0}};
+function openDB(){
+ return new Promise((resolve,reject)=>{
+  const r=indexedDB.open(DB_NAME,DB_VERSION);
+  r.onupgradeneeded=e=>{const d=e.target.result;
+   if(!d.objectStoreNames.contains('business'))d.createObjectStore('business',{keyPath:'id'});
+   if(!d.objectStoreNames.contains('invoices')){let s=d.createObjectStore('invoices',{keyPath:'id'});s.createIndex('number','number');s.createIndex('customer','customer');s.createIndex('date','date')}
+   if(!d.objectStoreNames.contains('expenses')){let s=d.createObjectStore('expenses',{keyPath:'id'});s.createIndex('date','date');s.createIndex('invoiceId','invoiceId')}
+   if(!d.objectStoreNames.contains('products')){let s=d.createObjectStore('products',{keyPath:'id'});s.createIndex('name','name')}
+   if(!d.objectStoreNames.contains('customers')){let s=d.createObjectStore('customers',{keyPath:'id'});s.createIndex('name','name')}
+   if(!d.objectStoreNames.contains('expenseTypes')){let s=d.createObjectStore('expenseTypes',{keyPath:'id'});s.createIndex('name','name')}
+  };
+  r.onsuccess=()=>{idb=r.result;resolve(idb)};r.onerror=()=>reject(r.error);
+ })
+}
+function req(store,mode,action){return new Promise((resolve,reject)=>{let t=idb.transaction(store,mode),s=t.objectStore(store),r=action(s);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+async function getBusiness(){let b=await req('business','readonly',s=>s.get('main'));if(!b){b={id:'main',...defaults.business};await req('business','readwrite',s=>s.put(b))}window.CURRENT_CURRENCY=b.currency||'NGN';return b}
+async function all(store){return req(store,'readonly',s=>s.getAll())}
+async function put(store,obj,skipDirty){obj.updatedAt=Date.now();let r=await req(store,'readwrite',s=>s.put(obj));if(!skipDirty)Sync.markDirty();return r}
+async function del(store,id){let r=await req(store,'readwrite',s=>s.delete(id));Sync.markDirty();return r}
+
+/* ---------------- Sync engine (Google Drive appDataFolder) ---------------- */
+const Sync={
+  configured:false, tokenClient:null, accessToken:null, user:null, connected:false,
+  pin:null, dirty:false, pushTimer:null, pullTimer:null, busy:false,
+  scope:'openid email profile https://www.googleapis.com/auth/drive.appdata',
+  async init(){
+    this.configured = !!(window.MOBOREX_GOOGLE_CLIENT_ID && !window.MOBOREX_GOOGLE_CLIENT_ID.includes('PASTE_'));
+    this.connected = localStorage.getItem('moborex_google_connected')==='1';
+    this.paintStatus();
+    if(!this.configured) return false;
+    const wait=()=>new Promise(resolve=>{if(window.google?.accounts?.oauth2)resolve();else setTimeout(()=>wait().then(resolve),120)});
+    await wait();
+    this.tokenClient=google.accounts.oauth2.initTokenClient({client_id:window.MOBOREX_GOOGLE_CLIENT_ID,scope:this.scope,prompt:'',callback:()=>{}});
+    return true;
+  },
+  paintStatus(){
+    const el=document.getElementById('cloudStatus'); if(!el) return;
+    let dot='<span class="syncDot"></span>', txt='Not connected';
+    if(this.busy){dot='<span class="syncDot busy"></span>';txt='Syncing…'}
+    else if(this.connected && this.accessToken){dot='<span class="syncDot on"></span>';txt='Connected'+(this.user?.email?(' — '+this.user.email):'')}
+    else if(this.connected){dot='<span class="syncDot"></span>';txt='Connected — tap Resume Sync to unlock this session'}
+    el.innerHTML=dot+txt;
+  },
+  async auth(){
+    if(!this.configured){alert('Google Drive is not configured yet. The Google OAuth Client ID needs to be added once during setup — see SETUP-GUIDE.');return false}
+    return new Promise((resolve)=>{
+      this.tokenClient.callback=async resp=>{
+        if(resp.error){alert('Google sign-in was cancelled or failed.');resolve(false);return}
+        this.accessToken=resp.access_token;
+        try{
+          const u=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+this.accessToken}}).then(r=>r.json());
+          this.user=u;this.connected=true;localStorage.setItem('moborex_google_connected','1');this.paintStatus();resolve(true)
+        }catch(e){alert('Could not read Google account info.');resolve(false)}
+      };
+      this.tokenClient.requestAccessToken({prompt:'consent'});
+    })
+  },
+  async ensurePin(forNewSetup){
+    if(this.pin) return this.pin;
+    let p=prompt(forNewSetup?'Create a Sync PIN (6+ characters). You will need this on every device you sync:':'Enter your Sync PIN:');
+    if(!p) return null;
+    if(forNewSetup){let p2=prompt('Confirm your Sync PIN:');if(p!==p2){alert('PINs do not match.');return null}}
+    if(p.length<6){alert('Use at least 6 characters.');return null}
+    this.pin=p; return p;
+  },
+  b64(a){let s='';const u=new Uint8Array(a);for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode(...u.subarray(i,i+0x8000));return btoa(s)},
+  unb64(s){const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u},
+  async derive(pin,salt){const enc=new TextEncoder();const base=await crypto.subtle.importKey('raw',enc.encode(pin),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt'])},
+  async encrypt(data,pin){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),key=await this.derive(pin,salt),plain=new TextEncoder().encode(JSON.stringify(data)),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plain);return JSON.stringify({format:'MOBOREX-ENC-1',createdAt:new Date().toISOString(),salt:this.b64(salt),iv:this.b64(iv),ciphertext:this.b64(cipher)})},
+  async decrypt(payload,pin){const p=JSON.parse(payload);if(p.format!=='MOBOREX-ENC-1')throw Error('Unsupported backup format');const key=await this.derive(pin,this.unb64(p.salt)),plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:this.unb64(p.iv)},key,this.unb64(p.ciphertext));return JSON.parse(new TextDecoder().decode(plain))},
+  async listBackup(){const q=encodeURIComponent("'appDataFolder' in parents and name='moborex_sync.enc' and trashed=false");const r=await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=appDataFolder&fields=files(id,name,modifiedTime,size)`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());const d=await r.json();return d.files?.[0]||null},
+  async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
+  async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
+
+  async exportAll(){const stores=['business','invoices','expenses','products','customers','expenseTypes'];const out={version:1,exportedAt:new Date().toISOString()};for(const s of stores){try{out[s]=await all(s)}catch(e){out[s]=[]}}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));if(d.business)await req('business','readwrite',st=>st.put(d.business))},
+
+  markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&this.pin){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),4000)}},
+
+  async connect(){
+    const ok=await this.auth(); if(!ok) return;
+    const remote=await this.listBackup().catch(()=>null);
+    const pin=await this.ensurePin(!remote); if(!pin){this.pin=null;return}
+    if(remote && confirm('A backup already exists in this Google account. Pull it now and merge into this device? (Recommended the first time you connect a new device.)')){
+      await this.pull(true);
+    } else {
+      await this.push();
+    }
+    this.startAutoPull();
+    this.paintStatus();
+  },
+  async push(){
+    if(!this.connected||!this.accessToken||!this.pin) return;
+    this.busy=true; this.paintStatus();
+    try{
+      const data=await this.exportAll(), enc=await this.encrypt(data,this.pin);
+      await this.uploadEncrypted(enc);
+      this.dirty=false; localStorage.setItem('moborex_last_backup',new Date().toISOString());
+    }catch(e){console.error(e)}
+    this.busy=false; this.paintStatus();
+  },
+  async pull(force){
+    if(!this.connected||!this.accessToken||!this.pin) return;
+    if(this.dirty && !force) return; // don't clobber unsynced local edits
+    this.busy=true; this.paintStatus();
+    try{
+      const r=await this.downloadEncrypted();
+      if(r){
+        const data=await this.decrypt(r.text,this.pin);
+        await this.importAll(data);
+        localStorage.setItem('moborex_last_pull',new Date().toISOString());
+        await refresh();
+      }
+    }catch(e){console.error(e);if(force)alert('Could not read the cloud backup. Check your Sync PIN.')}
+    this.busy=false; this.paintStatus();
+  },
+  startAutoPull(){clearInterval(this.pullTimer);this.pullTimer=setInterval(()=>this.pull(false),60000)},
+  async resumeSession(){ // re-auth silently-ish for this browser tab session (Google requires a click)
+    const ok=await this.auth(); if(!ok) return;
+    const pin=await this.ensurePin(false); if(!pin){this.pin=null;return}
+    await this.pull(true); this.startAutoPull(); this.paintStatus();
+  },
+  disconnect(){this.accessToken=null;this.user=null;this.pin=null;this.connected=false;clearInterval(this.pullTimer);localStorage.removeItem('moborex_google_connected');this.paintStatus()}
+};
+window.addEventListener('DOMContentLoaded',()=>Sync.init());
+</script>
+</head>
+<body>
+<div class="installBar" id="installBar">
+  <span id="installText">Install Moborex Invoice App on this device for one-tap access — no app store needed.</span>
+  <button class="btn accent" id="installBtn" style="padding:8px 14px;font-size:12.5px" onclick="doInstall()">Install</button>
+  <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#ffffff40" onclick="dismissInstallBar()">×</button>
+</div>
+<div class="shell">
+
+<aside class="sidebar">
+  <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Moborex Invoice</div><div class="bizname" id="bizNameWide" style="font-size:15px">Business</div></div></div>
+  <button class="navbtn" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
+  <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> Invoices</button>
+  <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> Customers</button>
+  <button class="navbtn" onclick="showProducts()"><span class="ic">▦</span> Products / Services</button>
+  <button class="navbtn" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
+  <button class="navbtn" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
+  <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
+  <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
+  <button class="navbtn" onclick="showReports()"><span class="ic">▥</span> Reports</button>
+  <div style="flex:1"></div>
+  <button class="navbtn" onclick="showCloudSync()"><span class="ic">☁</span> Sync & Backup</button>
+  <button class="navbtn" onclick="showSettings()"><span class="ic">⚙</span> Business Settings</button>
+</aside>
+
+<header class="topbar">
+<div class="topbar-row">
+<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Moborex Invoice</div><div class="bizname" id="brandName">Business</div></div></div>
+<button class="iconbtn drawerToggle" onclick="openDrawer()">☰</button>
+</div>
+<div class="hello">Business dashboard</div><div class="pagehead">Good day 👋</div>
+</header>
+
+<main class="main">
+<div class="heroBalance"><div class="lbl">Cash &amp; Bank Balance</div><div class="val" id="bankBalance">—</div><div class="sub">Opening balance + received − business &amp; personal expenses</div></div>
+<div class="stats">
+<div class="stat"><div class="lbl">Total Sales</div><div class="val" id="sales">—</div></div>
+<div class="stat"><div class="lbl">Received</div><div class="val" id="received">—</div></div>
+<div class="stat"><div class="lbl">Outstanding</div><div class="val" id="outstanding">—</div></div>
+<div class="stat accent"><div class="lbl">Profit (lifetime)</div><div class="val" id="profit">—</div></div>
+<div class="stat"><div class="lbl">Personal Spend</div><div class="val" id="personalSpend">—</div></div>
+</div>
+
+<div class="sectionhead"><h3>Quick actions</h3></div>
+<div class="actions">
+<button class="action primary" onclick="openInvoice()"><div class="ico">＋</div><strong>New Invoice</strong><span>Create a customer invoice</span></button>
+<button class="action" onclick="showInvoices()"><div class="ico">▤</div><strong>Invoices</strong><span>Find & manage</span></button>
+<button class="action" onclick="showExpenses()"><div class="ico">◈</div><strong>Expenses</strong><span>Record spending</span></button>
+<button class="action" onclick="showReports()"><div class="ico">▥</div><strong>Reports</strong><span>Sales & profit</span></button>
+</div>
+
+<div class="sectionhead"><h3>Recent invoices</h3><button class="linkbtn" onclick="showInvoices()">View all</button></div>
+<div class="list" id="recent"></div>
+</main>
+</div>
+
+<div class="overlay" id="drawerOverlay" onclick="closeDrawer(event)"><aside class="drawer" onclick="event.stopPropagation()">
+<div class="dhead"><div class="dtitle">Menu</div><button class="iconbtn" onclick="closeDrawer()">×</button></div>
+<button class="navbtn" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
+<button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> Invoices</button>
+<button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> Customers</button>
+<button class="navbtn" onclick="showProducts();closeDrawer()"><span class="ic">▦</span> Products / Services</button>
+<button class="navbtn" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
+<button class="navbtn" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
+<button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
+<button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
+<button class="navbtn" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
+<button class="navbtn" onclick="showCloudSync();closeDrawer()"><span class="ic">☁</span> Sync & Backup</button>
+<button class="navbtn" onclick="showSettings();closeDrawer()"><span class="ic">⚙</span> Business Settings</button>
+</aside></div>
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+
+<script>
+/* Screens (drawer + modal) are one browser "page" as far as the phone's
+   back button/gesture knows, unless we tell it otherwise. This pushes one
+   history entry when a screen opens and consumes it on close, so system
+   back closes the screen instead of closing the app. */
+let uiHistoryPushed=false;
+function isAnyOverlayOpen(){return modal.classList.contains('show')||drawerOverlay.classList.contains('show')}
+function pushNavIfNeeded(){if(!uiHistoryPushed){history.pushState({moborexUI:true},'');uiHistoryPushed=true}}
+function popNavIfNeeded(){if(uiHistoryPushed&&!isAnyOverlayOpen()){uiHistoryPushed=false;history.back()}}
+window.addEventListener('popstate',()=>{modal.classList.remove('show');drawerOverlay.classList.remove('show');uiHistoryPushed=false});
+
+function openDrawer(){drawerOverlay.classList.add('show');pushNavIfNeeded()}
+function closeDrawer(e){if(!e||e.target===drawerOverlay){drawerOverlay.classList.remove('show');popNavIfNeeded()}}
+function openModal(h){sheet.innerHTML='<button class="sheetBack" onclick="closeModal()">← Back</button>'+h;modal.classList.add('show');pushNavIfNeeded()}
+function closeModal(){modal.classList.remove('show');popNavIfNeeded()}
+
+async function refresh(){
+ const b=await getBusiness(), inv=await all('invoices'), ex=await all('expenses');
+ window.CURRENT_CURRENCY=b.currency||'NGN';
+ const logoHtml=b.logo?`<img src="${b.logo}">`:'▦';
+ document.getElementById('bizNameWide').textContent=b.name;
+ document.getElementById('brandLogoWide').innerHTML=logoHtml;
+ brandName.textContent=b.name; brandLogo.innerHTML=logoHtml;
+ let openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openBal=Number(b.openingBalance)||0;
+ let sales=inv.reduce((a,i)=>a+i.total,0),paid=inv.reduce((a,i)=>a+i.payments.reduce((x,p)=>x+p.amount,0),0);
+ let bizExpenses=ex.filter(e=>e.kind!=='personal').reduce((a,e)=>a+e.amount,0);
+ let personalExpenses=ex.filter(e=>e.kind==='personal').reduce((a,e)=>a+e.amount,0);
+ let lifetimeProfit=(openRev+sales)-(openExp+bizExpenses);
+ let bankBalance=openBal+paid-bizExpenses-personalExpenses;
+ document.getElementById('sales').textContent=money(openRev+sales);document.getElementById('received').textContent=money(paid);document.getElementById('outstanding').textContent=money(sales-paid);document.getElementById('profit').textContent=money(lifetimeProfit);document.getElementById('personalSpend').textContent=money(personalExpenses);
+ document.getElementById('bankBalance').textContent=money(bankBalance);
+ inv.sort((a,b)=>b.date.localeCompare(a.date));
+ recent.innerHTML=inv.slice(0,5).map(i=>{let p=i.payments.reduce((a,x)=>a+x.amount,0),isPaid=p>=i.total&&i.total>0;
+  return `<div class="row-item"><div><b>${esc(i.number)}</b><small>${esc(i.customer||'Walk-in')} · ${esc(i.date)}</small></div><div class="row-right"><strong class="money">${money(i.total)}</strong><span class="stamp ${isPaid?'paid':'due'}">${isPaid?'Paid':'Balance '+money(i.total-p)}</span></div></div>`
+ }).join('')||'<div class="empty">No invoices yet. Create your first one above.</div>';
+}
+
+/* ---------------- Business Settings ---------------- */
+async function showSettings(){
+ let b=await getBusiness();
+ let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
+ openModal(`<h2>Business Settings</h2>
+ <div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div>
+ <div class="field"><label>Address</label><input id="ba" value="${esc(b.address)}"></div>
+ <div class="row2"><div class="field"><label>Phone</label><input id="bp" value="${esc(b.phone)}"></div><div class="field"><label>Email</label><input id="be" value="${esc(b.email)}"></div></div>
+ <div class="row2"><div class="field"><label>Currency</label><select id="bcur">${curOpts}</select></div><div class="field"><label>Tax ID</label><input id="btax" value="${esc(b.taxId||'')}"></div></div>
+ <div class="row2"><div class="field"><label>Business No. (BN)</label><input id="bbn" value="${esc(b.bn||'')}"></div><div class="field"><label>Bank Name</label><input id="bbank" value="${esc(b.bankName||'')}"></div></div>
+ <div class="field"><label>Bank Account</label><input id="bacc" value="${esc(b.bankAccount||'')}"></div>
+ <div class="field"><label>Logo</label><input id="bl" type="file" accept="image/*">${b.logo?`<img class="logoPreview" src="${b.logo}">`:''}</div>
+ <div class="field"><label>Invoice header note</label><textarea id="bh">${esc(b.headerComment)}</textarea></div>
+ <div class="field"><label>Invoice footer / terms</label><textarea id="bf">${esc(b.footerComment)}</textarea></div>
+ <h3 style="font-size:14px;margin-top:16px">Invoice numbering</h3>
+ <div class="row2"><div class="field"><label>Mode</label><select id="bm"><option value="manual">Manual</option><option value="auto">Automatic</option></select></div><div class="field"><label>Next automatic number</label><input id="bnext" type="number" value="${b.nextNumber}"></div></div>
+ <button class="btn primary full" onclick="saveSettings()">Save Settings</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ bm.value=b.invoiceMode;
+}
+async function saveSettings(){
+ let b=await getBusiness();
+ let done=async logo=>{b.name=bn.value;b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;if(logo!==undefined)b.logo=logo;await put('business',b);closeModal();refresh()};
+ if(bl.files[0]){let r=new FileReader();r.onload=()=>done(r.result);r.readAsDataURL(bl.files[0])}else done();
+}
+
+/* ---------------- Products / Services ---------------- */
+async function showProducts(){let p=await all('products');openModal(`<h2>Products / Services</h2><div class="row2"><div class="field"><label>Name</label><input id="pName"></div><div class="field"><label>Price</label><input id="pPrice" type="number" min="0"></div></div><button class="btn accent full" onclick="addProduct()">＋ Add Product</button><div class="sectionhead" style="margin-top:18px"><h3>All products</h3></div><div class="list" id="pList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.pCache=p;drawProducts()}
+function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="row-item"><div><b>${esc(p.name)}</b></div><div class="row-right"><strong class="money">${money(p.price)}</strong><span><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button></span></div></div>`).join('')||'<div class="empty">No products yet.</div>'}
+async function addProduct(){if(!pName.value.trim())return alert('Enter a product name.');let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0};await put('products',p);pCache.push(p);pName.value='';pPrice.value='';drawProducts()}
+async function deleteProduct(id){if(!confirm('Delete this product?'))return;await del('products',id);pCache=pCache.filter(x=>x.id!==id);drawProducts()}
+
+/* ---------------- Customers ---------------- */
+async function showCustomers(){let c=await all('customers');openModal(`<h2>Customers</h2><div class="field"><label>Name</label><input id="cName"></div><div class="row2"><div class="field"><label>Phone</label><input id="cPhone"></div><div class="field"><label>Address</label><input id="cAddress"></div></div><button class="btn accent full" onclick="addCustomer()">＋ Add Customer</button><div class="sectionhead" style="margin-top:18px"><h3>All customers</h3></div><div class="list" id="cList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.cCache=c;drawCustomers()}
+function drawCustomers(){cList.innerHTML=cCache.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<div class="row-item"><div><b>${esc(c.name)}</b><small>${esc(c.phone||'')}</small></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteCustomer('${c.id}')">Delete</button></div>`).join('')||'<div class="empty">No customers yet.</div>'}
+async function addCustomer(){if(!cName.value.trim())return alert('Enter a customer name.');let c={id:crypto.randomUUID(),name:cName.value.trim(),phone:cPhone.value.trim(),address:cAddress.value.trim()};await put('customers',c);cCache.push(c);cName.value='';cPhone.value='';cAddress.value='';drawCustomers()}
+async function deleteCustomer(id){if(!confirm('Delete this customer?'))return;await del('customers',id);cCache=cCache.filter(x=>x.id!==id);drawCustomers()}
+
+/* ---------------- Expense Types ---------------- */
+async function showExpenseTypes(){let t=(await all('expenseTypes')).filter(x=>x.kind!=='personal');openModal(`<h2>Expense Types</h2><div class="notice">Categories for Business Expenses. For personal spending categories, use Personal Categories instead.</div><div class="field"><label>Type name</label><input id="tName" placeholder="Fuel, transport, tools..."></div><button class="btn accent full" onclick="addExpenseType()">＋ Add Type</button><div class="sectionhead" style="margin-top:18px"><h3>All types</h3></div><div class="list" id="tList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.tCache=t;drawExpenseTypes()}
+function drawExpenseTypes(){tList.innerHTML=tCache.sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<div class="row-item"><div><b>${esc(t.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteExpenseType('${t.id}')">Delete</button></div>`).join('')||'<div class="empty">No expense types yet.</div>'}
+async function addExpenseType(){if(!tName.value.trim())return alert('Enter a type name.');let t={id:crypto.randomUUID(),name:tName.value.trim(),kind:'business'};await put('expenseTypes',t);tCache.push(t);tName.value='';drawExpenseTypes()}
+async function deleteExpenseType(id){if(!confirm('Delete this expense type?'))return;await del('expenseTypes',id);tCache=tCache.filter(x=>x.id!==id);drawExpenseTypes()}
+
+/* ---------------- Personal Categories ---------------- */
+const DEFAULT_PERSONAL_CATEGORIES=['Home','Car','Feeding','Family','Health','Personal Care','Entertainment','Other'];
+async function ensurePersonalCategorySeed(){
+ let all_=await all('expenseTypes');
+ if(!all_.some(x=>x.kind==='personal')){
+  for(const name of DEFAULT_PERSONAL_CATEGORIES) await put('expenseTypes',{id:crypto.randomUUID(),name,kind:'personal'},true);
+ }
+}
+async function showPersonalCategories(){await ensurePersonalCategorySeed();let t=(await all('expenseTypes')).filter(x=>x.kind==='personal');openModal(`<h2>Personal Categories</h2><div class="notice">Categories for Personal Expenses, e.g. Home, Car, Feeding. Pre-filled with common ones — add more, or delete any you don't need.</div><div class="field"><label>Category name</label><input id="ptName" placeholder="Home, Car, School fees..."></div><button class="btn accent full" onclick="addPersonalCategory()">＋ Add Category</button><div class="sectionhead" style="margin-top:18px"><h3>All categories</h3></div><div class="list" id="ptList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.ptCache=t;drawPersonalCategories()}
+function drawPersonalCategories(){ptList.innerHTML=ptCache.sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<div class="row-item"><div><b>${esc(t.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deletePersonalCategory('${t.id}')">Delete</button></div>`).join('')||'<div class="empty">No categories yet.</div>'}
+async function addPersonalCategory(){if(!ptName.value.trim())return alert('Enter a category name.');let t={id:crypto.randomUUID(),name:ptName.value.trim(),kind:'personal'};await put('expenseTypes',t);ptCache.push(t);ptName.value='';drawPersonalCategories()}
+async function deletePersonalCategory(id){if(!confirm('Delete this category?'))return;await del('expenseTypes',id);ptCache=ptCache.filter(x=>x.id!==id);drawPersonalCategories()}
+
+/* ---------------- Invoices ---------------- */
+async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextNumber||1;b.nextNumber=n+1;await put('business',b);return String(n).padStart(4,'0')}
+async function openInvoice(id){
+ let b=await getBusiness(),allInv=await all('invoices'),inv=id?allInv.find(x=>x.id===id):null,customers=await all('customers');
+ inv=inv||{id:crypto.randomUUID(),number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
+ window.editing=inv;window.items=(inv.items||[]).map(x=>({...x}));window.invoiceExpenses=(await all('expenses')).filter(x=>x.invoiceId===inv.id);
+ const custOpts='<option value="">Select saved customer</option>'+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
+ openModal(`<h2>${id?'Edit Invoice':'New Invoice'}</h2>
+ <div class="row2"><div class="field"><label>Invoice number</label><input id="fNo" value="${esc(inv.number)}"></div><div class="field"><label>Invoice date</label><input id="fDate" type="date" value="${inv.date}"></div></div>
+ <div class="row2"><div class="field"><label>Customer</label><select id="fCustomerSelect" onchange="selectCustomer(this.value)">${custOpts}</select></div><div class="field"><label>Due date</label><input id="fDue" type="date" value="${inv.dueDate||''}"></div></div>
+ <div class="row2"><div class="field"><label>Customer phone</label><input id="fPhone" value="${esc(inv.phone)}" readonly></div><div class="field"><label>Customer address</label><input id="fAddress" value="${esc(inv.address)}" readonly></div></div>
+ <div class="field"><label>Job / vehicle details</label><input id="fVehicle" value="${esc(inv.vehicleDetails||'')}" placeholder="Optional — e.g. job reference"></div>
+ <div class="field"><label>Header note</label><textarea id="fHeader">${esc(inv.headerComment||'')}</textarea></div>
+ <div class="sectionhead"><h3>Sales lines</h3><button class="btn secondary" onclick="addLine()">＋ Add</button></div><div id="lines"></div>
+ <div class="field"><label>Note below sales lines</label><textarea id="fSales">${esc(inv.salesComment||'')}</textarea></div>
+ <div class="field"><label>Discount</label><input id="fDiscount" type="number" min="0" value="${inv.discount||0}" oninput="updateInvoiceTotal()"></div>
+ <div class="sectionhead"><h3>Job expenses</h3><button class="btn secondary" onclick="addInvoiceExpense()">＋ Add</button></div>
+ <div class="notice">Expenses here are for your profit reporting only — they never appear on the customer's invoice.</div><div id="invoiceExpenseLines"></div>
+ <div class="totalBox"><div class="totalRow"><span>Sales</span><b id="lineTotal">—</b></div><div class="totalRow"><span>Discount</span><b id="discTotal">—</b></div><div class="totalRow"><span>Job expenses</span><b id="invExpTotal">—</b></div><div class="totalRow grand"><span>Customer total</span><b id="grandTotal">—</b></div></div>
+ <button class="btn primary full" onclick="saveInvoice()">Save Invoice</button>${id?`<button class="btn secondary full" onclick="payments('${id}')">Payments</button><button class="btn secondary full" onclick="previewInvoice('${id}')">Preview & PDF</button>`:''}<button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ window.selectedCustomerId=inv.customerId||'';if(fCustomerSelect)fCustomerSelect.value=window.selectedCustomerId;if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();updateInvoiceTotal();
+}
+async function selectCustomer(id){window.selectedCustomerId=id;const cs=await all('customers'),c=cs.find(x=>x.id===id);fPhone.value=c?.phone||'';fAddress.value=c?.address||'';}
+async function drawInvoiceExpenses(){const types=await all('expenseTypes'),opts='<option value="">Select expense type</option>'+types.sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');invoiceExpenseLines.innerHTML=invoiceExpenses.map((x,n)=>`<div class="line"><select onchange="invoiceExpenses[${n}].typeId=this.value">${opts}</select><input type="number" min="0" placeholder="Amount" value="${x.amount||0}" oninput="invoiceExpenses[${n}].amount=Number(this.value);updateInvoiceTotal()"><input placeholder="Note" value="${esc(x.description||'')}" oninput="invoiceExpenses[${n}].description=this.value"><button class="btn danger" onclick="invoiceExpenses.splice(${n},1);drawInvoiceExpenses();updateInvoiceTotal()">×</button></div>`).join('');invoiceExpenses.forEach((x,n)=>{let q=invoiceExpenseLines.querySelectorAll('select')[n];if(q)q.value=x.typeId||'';});}
+async function addInvoiceExpense(){invoiceExpenses.push({id:crypto.randomUUID(),invoiceId:editing.id,typeId:'',amount:0,description:''});await drawInvoiceExpenses();updateInvoiceTotal();}
+function invoiceExpenseAmount(){return invoiceExpenses.reduce((a,x)=>a+(Number(x.amount)||0),0);}
+async function drawLines(){
+ const products=await all('products');
+ const opts='<option value="">Select product / service</option>'+products.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
+ lines.innerHTML=items.map((x,n)=>`<div class="line"><select onchange="selectProduct(${n},this.value)">${opts}</select><input type="number" min="0" value="${x.qty}" oninput="items[${n}].qty=Number(this.value);updateInvoiceTotal()"><input type="number" min="0" value="${x.price}" readonly title="Price comes from product catalogue"><button class="btn danger" onclick="items.splice(${n},1);drawLines();updateInvoiceTotal()">×</button><input class="comment" placeholder="Line comment (optional)" value="${esc(x.comment||'')}" oninput="items[${n}].comment=this.value"></div>`).join('');
+ items.forEach((x,n)=>{const sel=lines.querySelectorAll('select')[n];if(sel)sel.value=x.productId||''});
+}
+async function selectProduct(n,id){const products=await all('products'),p=products.find(x=>x.id===id);if(!p)return;items[n].productId=p.id;items[n].description=p.name;items[n].price=Number(p.price)||0;await drawLines();updateInvoiceTotal()}
+function addLine(){items.push({productId:'',description:'',qty:1,price:0,comment:''});drawLines()}
+function updateInvoiceTotal(){let s=items.reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0),d=Number(fDiscount?.value||0),e=invoiceExpenseAmount();lineTotal.textContent=money(s);discTotal.textContent=money(d);if(invExpTotal)invExpTotal.textContent=money(e);grandTotal.textContent=money(Math.max(0,s-d))}
+async function saveInvoice(){let sales=items.reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0),discount=Number(fDiscount.value||0),customers=await all('customers'),selected=customers.find(c=>c.id===window.selectedCustomerId);if(!selected)return alert('Please select a saved customer.');if(!fNo.value.trim())return alert('Enter an invoice number.');let i={...editing,number:fNo.value.trim(),date:fDate.value,dueDate:fDue.value,customerId:selected.id,customer:selected.name,phone:fPhone.value.trim(),address:fAddress.value.trim(),vehicleDetails:fVehicle.value.trim(),headerComment:fHeader.value,salesComment:fSales.value,discount,items:items.map(x=>({...x})),total:Math.max(0,sales-discount)};await put('invoices',i);for(const x of (await all('expenses')).filter(x=>x.invoiceId===i.id))await del('expenses',x.id);const types=await all('expenseTypes');for(const x of invoiceExpenses.filter(x=>(Number(x.amount)||0)>0)){const t=types.find(q=>q.id===x.typeId);await put('expenses',{id:x.id,invoiceId:i.id,date:i.date,category:t?.name||'Invoice Expense',amount:Number(x.amount)||0,description:x.description||'',typeId:x.typeId||'',kind:'business'});}closeModal();await refresh();}
+async function showInvoices(){let inv=await all('invoices');openModal(`<h2>Invoices</h2><div class="toolbar"><input id="iq" placeholder="Search invoice number or customer" oninput="drawInvoiceSearch()"></div><div id="ilist"></div>`);window.invoiceCache=inv;drawInvoiceSearch()}
+function drawInvoiceSearch(){let q=(iq.value||'').toLowerCase(),arr=invoiceCache.filter(i=>(i.number+' '+i.customer).toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date));ilist.innerHTML=arr.map(i=>`<div class="row-item"><div><b>${esc(i.number)}</b><small>${esc(i.customer||'Walk-in')} · ${esc(i.date)}</small></div><div class="row-right"><strong class="money">${money(i.total)}</strong><button class="btn secondary" style="padding:6px 10px;font-size:12px" onclick="openInvoice('${i.id}')">Open</button></div></div>`).join('')||'<div class="empty">No invoices found.</div>'}
+async function payments(id){let i=(await all('invoices')).find(x=>x.id===id),paid=i.payments.reduce((a,p)=>a+p.amount,0);openModal(`<h2>Payments · ${esc(i.number)}</h2><div class="totalBox"><div class="totalRow"><span>Invoice total</span><b>${money(i.total)}</b></div><div class="totalRow"><span>Paid</span><b>${money(paid)}</b></div><div class="totalRow grand"><span>Balance</span><b>${money(i.total-paid)}</b></div></div><div class="row2"><div class="field"><label>Amount</label><input id="pa" type="number"></div><div class="field"><label>Date</label><input id="pd" type="date" value="${new Date().toISOString().slice(0,10)}"></div></div><div class="field"><label>Method</label><select id="pm"><option>Cash</option><option>Bank Transfer</option><option>POS</option><option>Card</option><option>Other</option></select></div><button class="btn primary full" onclick="addPayment('${id}')">Save Payment</button>${i.payments.length?'<h3 style="font-size:14px;margin-top:16px">Payment history</h3>'+i.payments.map(p=>`<div class="row-item"><div><b>${esc(p.method)}</b><small>${p.date}</small></div><strong class="money">${money(p.amount)}</strong></div>`).join(''):'<div class="empty">No payments recorded.</div>'}<button class="btn secondary full" onclick="openInvoice('${id}')">Back</button>`)}
+async function addPayment(id){let a=Number(pa.value||0);if(a<=0)return alert('Enter an amount.');let i=(await all('invoices')).find(x=>x.id===id);i.payments.push({id:crypto.randomUUID(),amount:a,date:pd.value,method:pm.value});await put('invoices',i);await payments(id);refresh()}
+
+/* ---------------- Expenses ---------------- */
+async function showExpenses(){let ex=(await all('expenses')).filter(e=>e.kind!=='personal'),inv=await all('invoices');openModal(`<h2>Business Expenses</h2><div class="notice">These reduce business profit and count in Reports. For non-business spending, use Personal Expenses instead.</div><div class="field"><label>Date</label><input id="ed" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="row2"><div class="field"><label>Category</label><input id="ec" placeholder="Fuel, transport..."></div><div class="field"><label>Amount</label><input id="ea" type="number"></div></div><div class="field"><label>Description</label><input id="ex"></div><div class="field"><label>Linked invoice (optional)</label><select id="ei"><option value="">None</option>${inv.map(i=>`<option value="${i.id}">${esc(i.number)}</option>`).join('')}</select></div><button class="btn primary full" onclick="addExpense()">Save Expense</button><h3 style="font-size:14px;margin-top:16px">Recorded expenses</h3><div id="elist"></div>`);window.expCache=ex;drawExpenses()}
+function drawExpenses(){elist.innerHTML=expCache.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="row-item"><div><b>${esc(e.category||'Expense')}</b><small>${e.date} · ${esc(e.description)}</small></div><div class="row-right"><strong class="money">${money(e.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteExpense('${e.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No expenses recorded.</div>'}
+async function addExpense(){let a=Number(ea.value||0);if(a<=0)return alert('Enter an amount.');let e={id:crypto.randomUUID(),date:ed.value,category:ec.value,amount:a,description:ex.value,invoiceId:ei.value,kind:'business'};await put('expenses',e);expCache.push(e);drawExpenses();refresh()}
+async function deleteExpense(id){if(!confirm('Delete this expense?'))return;await del('expenses',id);expCache=expCache.filter(x=>x.id!==id);drawExpenses();refresh()}
+
+/* ---------------- Personal Expenses (kept separate from business books) ---------------- */
+async function showPersonalExpenses(){await ensurePersonalCategorySeed();let ex=(await all('expenses')).filter(e=>e.kind==='personal'),cats=(await all('expenseTypes')).filter(x=>x.kind==='personal').sort((a,b)=>a.name.localeCompare(b.name));const opts='<option value="">Select category</option>'+cats.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');openModal(`<h2>Personal Expenses</h2><div class="notice">Day-to-day personal spending — kept separate from business profit &amp; loss, but counted in your overall Cash &amp; Bank Balance on the dashboard.</div><div class="field"><label>Date</label><input id="ped" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="row2"><div class="field"><label>Category</label><select id="pec">${opts}</select></div><div class="field"><label>Amount</label><input id="pea" type="number"></div></div><div class="field"><label>Description</label><input id="pex"></div><button class="btn accent full" onclick="addPersonalExpense()">Save Expense</button><button class="btn secondary full" onclick="showPersonalCategories()">Manage Categories</button><h3 style="font-size:14px;margin-top:16px">Recorded personal expenses</h3><div id="pelist"></div>`);window.pexpCache=ex;drawPersonalExpenses()}
+function drawPersonalExpenses(){pelist.innerHTML=pexpCache.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="row-item"><div><b>${esc(e.category||'Expense')}</b><small>${e.date} · ${esc(e.description)}</small></div><div class="row-right"><strong class="money">${money(e.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deletePersonalExpense('${e.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No personal expenses recorded.</div>'}
+async function addPersonalExpense(){let a=Number(pea.value||0);if(a<=0)return alert('Enter an amount.');if(!pec.value)return alert('Select a category.');let e={id:crypto.randomUUID(),date:ped.value,category:pec.value,amount:a,description:pex.value,invoiceId:'',kind:'personal'};await put('expenses',e);pexpCache.push(e);drawPersonalExpenses();refresh()}
+async function deletePersonalExpense(id){if(!confirm('Delete this expense?'))return;await del('expenses',id);pexpCache=pexpCache.filter(x=>x.id!==id);drawPersonalExpenses();refresh()}
+
+/* ---------------- Opening Balances (migrating pre-app history) ---------------- */
+async function showOpeningBalances(){
+ let b=await getBusiness();
+ openModal(`<h2>Opening Balances</h2><div class="notice">One-time figures for the business you were already running before this app — so your totals and profit/loss reflect your real history, not just what's been entered here. Leave any field at 0 if you're starting completely fresh.</div>
+ <div class="field"><label>As of date</label><input id="oDate" type="date" value="${b.openingAsOfDate||new Date().toISOString().slice(0,10)}"></div>
+ <div class="field"><label>Revenue brought forward</label><input id="oRev" type="number" min="0" value="${b.openingRevenue||0}"></div>
+ <div class="field"><label>Total expenses brought forward</label><input id="oExp" type="number" min="0" value="${b.openingExpenses||0}"></div>
+ <div class="field"><label>Cash / bank balance brought forward</label><input id="oBal" type="number" value="${b.openingBalance||0}"></div>
+ <div class="notice">Revenue and expenses brought forward feed into Lifetime Profit &amp; Loss on the Reports screen. The cash/bank balance feeds directly into the Cash &amp; Bank Balance figure on your dashboard.</div>
+ <button class="btn primary full" onclick="saveOpeningBalances()">Save Opening Balances</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+}
+async function saveOpeningBalances(){let b=await getBusiness();b.openingAsOfDate=oDate.value;b.openingRevenue=Number(oRev.value)||0;b.openingExpenses=Number(oExp.value)||0;b.openingBalance=Number(oBal.value)||0;await put('business',b);closeModal();await refresh();}
+
+/* ---------------- Reports ---------------- */
+async function showReports(){
+ const today=new Date().toISOString().slice(0,10);
+ openModal(`<h2>Sales & Profit Report</h2><div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div><button class="btn primary full" onclick="calculateReport()">Calculate Report</button><div id="reportResult"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ await calculateReport();
+}
+async function calculateReport(){
+ const from=rf.value,to=rt.value,inv=await all('invoices'),ex=(await all('expenses')).filter(e=>e.kind!=='personal'),b=await getBusiness();
+ const filteredInv=inv.filter(i=>(!from||i.date>=from)&&(!to||i.date<=to));
+ const ids=new Set(filteredInv.map(i=>i.id));
+ const filteredEx=ex.filter(e=>ids.has(e.invoiceId)||(!e.invoiceId&&(!from||e.date>=from)&&(!to||e.date<=to)));
+ const sales=filteredInv.reduce((a,i)=>a+(Number(i.total)||0),0);
+ const received=filteredInv.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+(Number(p.amount)||0),0),0);
+ const linked=filteredEx.filter(e=>e.invoiceId).reduce((a,e)=>a+(Number(e.amount)||0),0);
+ const other=filteredEx.filter(e=>!e.invoiceId).reduce((a,e)=>a+(Number(e.amount)||0),0);
+ const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0;
+ const allTimeSales=inv.reduce((a,i)=>a+(Number(i.total)||0),0), allTimeExp=ex.reduce((a,e)=>a+(Number(e.amount)||0),0);
+ const lifetimeProfit=(openRev+allTimeSales)-(openExp+allTimeExp);
+ reportResult.innerHTML=`<div class="stats" style="grid-template-columns:1fr 1fr;margin-top:14px"><div class="stat"><div class="lbl">Sales</div><div class="val">${money(sales)}</div></div><div class="stat"><div class="lbl">Received</div><div class="val">${money(received)}</div></div><div class="stat"><div class="lbl">Outstanding</div><div class="val">${money(sales-received)}</div></div><div class="stat accent"><div class="lbl">Job Expenses</div><div class="val">${money(linked)}</div></div></div><div class="totalBox"><div class="totalRow"><span>Sales</span><b>${money(sales)}</b></div><div class="totalRow"><span>Invoice-linked expenses</span><b>${money(linked)}</b></div><div class="totalRow"><span>Other business expenses</span><b>${money(other)}</b></div><div class="totalRow grand"><span>Estimated Profit (this period)</span><b>${money(sales-linked-other)}</b></div></div><div class="notice">Neither type of expense is printed on the customer invoice. Personal expenses are excluded from this report.</div>
+ ${(openRev||openExp)?`<h3 style="font-size:14px;margin-top:18px">Lifetime Profit &amp; Loss</h3><div class="totalBox"><div class="totalRow"><span>Revenue brought forward (as of ${esc(b.openingAsOfDate||'—')})</span><b>${money(openRev)}</b></div><div class="totalRow"><span>Expenses brought forward</span><b>${money(openExp)}</b></div><div class="totalRow"><span>All-time sales since (this app)</span><b>${money(allTimeSales)}</b></div><div class="totalRow"><span>All-time business expenses (this app)</span><b>${money(allTimeExp)}</b></div><div class="totalRow grand"><span>Lifetime Profit</span><b>${money(lifetimeProfit)}</b></div></div>`:''}`;
+}
+
+/* ---------------- Preview / PDF ---------------- */
+async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleLogo">${b.logo?`<img class="logo" src="${b.logo}">`:'LOGO'}</div><div class="sampleBusiness"><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div></div><div class="pdfActions"><button class="btn secondary" onclick="window.print()">Print / Save as PDF</button><button class="btn accent" onclick="generatePDF('${id}')">Generate PDF</button></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);}
+function generatePDF(id){window.print()}
+
+/* ---------------- Backup / Sync UI ---------------- */
+function showCloudSync(){
+ const lastPush=localStorage.getItem('moborex_last_backup'), lastPull=localStorage.getItem('moborex_last_pull');
+ openModal(`<h2>☁ Sync & Backup</h2>
+ <div class="notice"><b>Encrypted, no server.</b> Your data is encrypted on this device with your Sync PIN before it's stored in your Google account's private app folder — Google itself can't read it. Sync happens automatically while the app is open on a connected device: changes push a few seconds after you save, and this device checks for updates from your other devices about once a minute.</div>
+ <div class="cloudBox">
+ <div id="cloudStatus">Checking…</div>
+ <div class="cloudLast">Last sent: ${lastPush?new Date(lastPush).toLocaleString():'Never'} · Last received: ${lastPull?new Date(lastPull).toLocaleString():'Never'}</div>
+ <button class="btn primary full" onclick="Sync.connected?Sync.resumeSession():Sync.connect()">${Sync.connected?'Resume Sync on This Device':'Connect Google Account'}</button>
+ <button class="btn secondary full" onclick="Sync.push()">Sync Now</button>
+ <button class="btn danger full" onclick="Sync.disconnect();closeModal();showCloudSync()">Disconnect</button>
+ <small>Use the same Google account and the same Sync PIN on every device (phone, tablet, laptop) you want kept in sync. If you edit the same invoice on two devices before they sync, the version synced last will win — so it's best to sync before switching devices.</small>
+ </div>
+ <h3 style="font-size:14px;margin-top:18px">Manual file backup</h3>
+ <div class="notice">A plain downloadable backup file, separate from cloud sync — handy before big changes or for moving data manually.</div>
+ <div class="row2"><button class="btn secondary full" onclick="downloadBackup()">Download Backup</button><label class="btn secondary full" style="display:block;text-align:center">Restore File<input type="file" accept=".json" style="display:none" onchange="restoreBackup(event)"></label></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ Sync.paintStatus();
+}
+async function downloadBackup(){let d=await Sync.exportAll();let blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='moborex-invoice-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click()}
+async function restoreBackup(ev){let f=ev.target.files[0];if(!f)return;let r=new FileReader();r.onload=async()=>{try{let d=JSON.parse(r.result);await Sync.importAll(d);closeModal();await refresh();alert('Backup restored successfully.')}catch(x){alert('Invalid backup file.')}};r.readAsText(f)}
+
+openDB().then(refresh).catch(()=>{alert('IndexedDB is unavailable in this browser. Please open the app in Chrome, Safari, or another modern browser.');});
+
+/* ---------------- Install prompt (Add to Home Screen) ---------------- */
+let deferredInstallPrompt=null;
+const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent);
+function dismissInstallBar(){installBar.classList.remove('show');sessionStorage.setItem('moborex_install_dismissed','1')}
+function doInstall(){
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.finally(()=>{deferredInstallPrompt=null;installBar.classList.remove('show')});
+  } else if(isIOS()){
+    installText.textContent='Tap the Share icon below, then "Add to Home Screen".';
+    installBtn.style.display='none';
+  }
+}
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault(); deferredInstallPrompt=e;
+  if(!isStandalone() && !sessionStorage.getItem('moborex_install_dismissed')) installBar.classList.add('show');
+});
+window.addEventListener('appinstalled', ()=>{installBar.classList.remove('show')});
+window.addEventListener('DOMContentLoaded', ()=>{
+  if(isIOS() && !isStandalone() && !sessionStorage.getItem('moborex_install_dismissed')){
+    installText.textContent='Add Moborex Invoice App to your Home Screen: tap Share, then "Add to Home Screen".';
+    installBar.classList.add('show');
+  }
+});
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
+}
+</script>
+</body></html>
