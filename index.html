@@ -649,24 +649,30 @@ async function downloadInvoicePDF(number){
 /* ---------------- Backup / Sync UI ---------------- */
 function showCloudSync(){
  const lastPush=localStorage.getItem('moborex_last_backup'), lastPull=localStorage.getItem('moborex_last_pull');
+ const autoDate=localStorage.getItem('moborex_auto_backup_date');
  const modeLine = Sync.connected
    ? (Sync.plainMode
        ? '<b>Simple mode.</b> Backed up to your Google account\'s private app folder — no PIN needed, nothing to remember.'
        : '<b>PIN-protected mode.</b> Your data is encrypted on this device with your Sync PIN before it reaches Google — Google itself can\'t read it.')
-   : '<b>No server, just your own Google account.</b> When you connect, you\'ll choose between the simplest option (no PIN, recommended for most people) or a PIN-protected option for extra privacy.';
- openModal(`<h2>☁ Sync & Backup</h2>
- <div class="notice">${modeLine} Sync happens automatically while the app is open on a connected device: changes push a few seconds after you save, and this device checks for updates from your other devices about once a minute.</div>
+   : '';
+ openModal(`<h2>☁ Backup</h2>
+ <div class="notice"><b>Automatic — nothing to set up.</b> Once a day, this app quietly saves a backup file to your phone's Downloads folder by itself. If your phone has Google's "back up Downloads to Drive" setting turned on (most newer Android phones do, or can), that file reaches your Google Drive automatically too — no sign-in inside this app needed.</div>
+ <div class="cloudLast">Last automatic save: ${autoDate?new Date(autoDate).toLocaleDateString():'Not yet — happens once data exists'}</div>
+ <button class="btn accent full" onclick="downloadBackup()">Save a Backup Now</button>
+ <button class="btn secondary full" style="margin-top:8px">
+   <a href="https://support.google.com/photos/answer/6193313" style="color:inherit;text-decoration:none;display:block" target="_blank" rel="noopener">How to turn on Google's Downloads backup →</a>
+ </button>
+ <div class="row2" style="margin-top:8px"><button class="btn secondary full" onclick="downloadBackup()">Download Backup</button><label class="btn secondary full" style="display:block;text-align:center">Restore File<input type="file" accept=".json" style="display:none" onchange="restoreBackup(event)"></label></div>
+
+ <h3 style="font-size:14px;margin-top:22px">Advanced: instant sync between devices</h3>
+ <div class="notice">${modeLine || 'This is a separate, more powerful option for anyone comfortable with a short one-time technical setup — it keeps every device updated within seconds instead of once a day. Most people don\'t need this; the automatic backup above is enough for a single device.'}</div>
  <div class="cloudBox">
  <div id="cloudStatus">Checking…</div>
  <div class="cloudLast">Last sent: ${lastPush?new Date(lastPush).toLocaleString():'Never'} · Last received: ${lastPull?new Date(lastPull).toLocaleString():'Never'}</div>
- <button class="btn primary full" onclick="Sync.connected?Sync.resumeSession():Sync.connect()">${Sync.connected?'Resume Sync on This Device':'Connect Google Account'}</button>
- <button class="btn secondary full" onclick="Sync.push()">Sync Now</button>
- <button class="btn danger full" onclick="Sync.disconnect();closeModal();showCloudSync()">Disconnect</button>
- <small>Use the same Google account on every device (phone, tablet, laptop) you want kept in sync${Sync.connected&&!Sync.plainMode?' — and the same Sync PIN':''}. If you edit the same invoice on two devices before they sync, the version synced last will win — so it's best to sync before switching devices.</small>
+ <button class="btn primary full" onclick="Sync.connected?Sync.resumeSession():Sync.connect()">${Sync.connected?'Resume Sync on This Device':'Connect Google Account (advanced)'}</button>
+ ${Sync.connected?`<button class="btn secondary full" onclick="Sync.push()">Sync Now</button><button class="btn danger full" onclick="Sync.disconnect();closeModal();showCloudSync()">Disconnect</button>`:''}
+ <small>Use the same Google account on every device (phone, tablet, laptop) you want kept in sync${Sync.connected&&!Sync.plainMode?' — and the same Sync PIN':''}.</small>
  </div>
- <h3 style="font-size:14px;margin-top:18px">Manual file backup</h3>
- <div class="notice">A plain downloadable backup file, separate from cloud sync — handy before big changes or for moving data manually.</div>
- <div class="row2"><button class="btn secondary full" onclick="downloadBackup()">Download Backup</button><label class="btn secondary full" style="display:block;text-align:center">Restore File<input type="file" accept=".json" style="display:none" onchange="restoreBackup(event)"></label></div>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
  Sync.paintStatus();
 }
@@ -691,7 +697,20 @@ async function restoreBackup(ev){
   r.readAsText(f);
 }
 
-openDB().then(refresh).catch(()=>{alert('IndexedDB is unavailable in this browser. Please open the app in Chrome, Safari, or another modern browser.');});
+openDB().then(refresh).then(autoDownloadBackupIfDue).catch(()=>{alert('IndexedDB is unavailable in this browser. Please open the app in Chrome, Safari, or another modern browser.');});
+
+/* ---------------- Automatic daily backup file (for Android's own "back up Downloads to
+   Google Drive" feature to pick up — needs no developer setup, no Google sign-in in the app) ---------------- */
+async function autoDownloadBackupIfDue(){
+  try{
+    const today = new Date().toISOString().slice(0,10);
+    if(localStorage.getItem('moborex_auto_backup_date') === today) return; // already done today
+    const inv = await all('invoices'), cust = await all('customers'), exp = await all('expenses');
+    if(inv.length===0 && cust.length===0 && exp.length===0) return; // nothing worth backing up yet
+    await downloadBackup();
+    localStorage.setItem('moborex_auto_backup_date', today);
+  }catch(e){ console.error('Auto backup failed', e); }
+}
 
 /* ---------------- Install prompt (Add to Home Screen) ---------------- */
 let deferredInstallPrompt=null;
@@ -721,10 +740,10 @@ window.addEventListener('DOMContentLoaded', ()=>{
 
 /* ---------------- Cloud backup onboarding prompt ---------------- */
 function dismissBackupBar(){backupBar.classList.remove('show');localStorage.setItem('moborex_backup_prompt_seen','1')}
-async function startOnboardingBackup(){dismissBackupBar();await Sync.connect()}
+async function startOnboardingBackup(){dismissBackupBar();await showCloudSync()}
 window.addEventListener('DOMContentLoaded', ()=>{
   setTimeout(()=>{
-    if(Sync.configured && !Sync.connected && !localStorage.getItem('moborex_backup_prompt_seen')) backupBar.classList.add('show');
+    if(!localStorage.getItem('moborex_backup_prompt_seen')) backupBar.classList.add('show');
   }, 1200);
 });
 
