@@ -327,6 +327,11 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
   <button class="btn accent" id="installBtn" style="padding:8px 14px;font-size:12.5px" onclick="doInstall()">Install</button>
   <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#ffffff40" onclick="dismissInstallBar()">×</button>
 </div>
+<div class="installBar" id="backupBar" style="background:var(--brass)">
+  <span>Keep this data safe — back it up automatically to your Google Drive?</span>
+  <button class="btn primary" style="padding:8px 14px;font-size:12.5px;background:var(--ink)" onclick="startOnboardingBackup()">Set Up Backup</button>
+  <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#00000030" onclick="dismissBackupBar()">×</button>
+</div>
 <div class="shell">
 
 <aside class="sidebar">
@@ -455,9 +460,14 @@ async function saveSettings(){
 }
 
 /* ---------------- Products / Services ---------------- */
-async function showProducts(){let p=await all('products');openModal(`<h2>Products / Services</h2><div class="row2"><div class="field"><label>Name</label><input id="pName"></div><div class="field"><label>Price</label><input id="pPrice" type="number" min="0"></div></div><button class="btn accent full" onclick="addProduct()">＋ Add Product</button><div class="sectionhead" style="margin-top:18px"><h3>All products</h3></div><div class="list" id="pList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.pCache=p;drawProducts()}
-function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="row-item"><div><b>${esc(p.name)}</b></div><div class="row-right"><strong class="money">${money(p.price)}</strong><span><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button></span></div></div>`).join('')||'<div class="empty">No products yet.</div>'}
-async function addProduct(){if(!pName.value.trim())return alert('Enter a product name.');let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0};await put('products',p);pCache.push(p);pName.value='';pPrice.value='';drawProducts()}
+async function showProducts(){let p=await all('products');window.editingProductId=null;openModal(`<h2>Products / Services</h2><div class="row2"><div class="field"><label>Name</label><input id="pName"></div><div class="field"><label>Price</label><input id="pPrice" type="number" min="0"></div></div><button class="btn accent full" id="pSaveBtn" onclick="saveProduct()">＋ Add Product</button><button class="btn secondary full" id="pCancelBtn" style="display:none" onclick="cancelEditProduct()">Cancel Edit</button><div class="sectionhead" style="margin-top:18px"><h3>All products</h3></div><div class="list" id="pList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.pCache=p;drawProducts()}
+function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="row-item"><div><b>${esc(p.name)}</b></div><div class="row-right"><strong class="money">${money(p.price)}</strong><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="editProduct('${p.id}')">Edit</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button></span></div></div>`).join('')||'<div class="empty">No products yet.</div>'}
+function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
+function cancelEditProduct(){window.editingProductId=null;pName.value='';pPrice.value='';pSaveBtn.textContent='＋ Add Product';pCancelBtn.style.display='none'}
+async function saveProduct(){if(!pName.value.trim())return alert('Enter a product name.');
+ if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;await put('products',p);}
+ else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0};await put('products',p);pCache.push(p);}
+ cancelEditProduct();drawProducts()}
 async function deleteProduct(id){if(!confirm('Delete this product?'))return;await del('products',id);pCache=pCache.filter(x=>x.id!==id);drawProducts()}
 
 /* ---------------- Customers ---------------- */
@@ -496,7 +506,7 @@ async function openInvoice(id){
  <div class="row2"><div class="field"><label>Invoice number</label><input id="fNo" value="${esc(inv.number)}"></div><div class="field"><label>Invoice date</label><input id="fDate" type="date" value="${inv.date}"></div></div>
  <div class="row2"><div class="field"><label>Customer</label><select id="fCustomerSelect" onchange="selectCustomer(this.value)">${custOpts}</select></div><div class="field"><label>Due date</label><input id="fDue" type="date" value="${inv.dueDate||''}"></div></div>
  <div class="row2"><div class="field"><label>Customer phone</label><input id="fPhone" value="${esc(inv.phone)}" readonly></div><div class="field"><label>Customer address</label><input id="fAddress" value="${esc(inv.address)}" readonly></div></div>
- <div class="field"><label>Job / vehicle details</label><input id="fVehicle" value="${esc(inv.vehicleDetails||'')}" placeholder="Optional — e.g. job reference"></div>
+ <div class="field"><label>Job details</label><input id="fVehicle" value="${esc(inv.vehicleDetails||'')}" placeholder="Optional — job reference, service description, etc."></div>
  <div class="field"><label>Header note</label><textarea id="fHeader">${esc(inv.headerComment||'')}</textarea></div>
  <div class="sectionhead"><h3>Sales lines</h3><button class="btn secondary" onclick="addLine()">＋ Add</button></div><div id="lines"></div>
  <div class="field"><label>Note below sales lines</label><textarea id="fSales">${esc(inv.salesComment||'')}</textarea></div>
@@ -514,7 +524,7 @@ function invoiceExpenseAmount(){return invoiceExpenses.reduce((a,x)=>a+(Number(x
 async function drawLines(){
  const products=await all('products');
  const opts='<option value="">Select product / service</option>'+products.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
- lines.innerHTML=items.map((x,n)=>`<div class="line"><select onchange="selectProduct(${n},this.value)">${opts}</select><input type="number" min="0" value="${x.qty}" oninput="items[${n}].qty=Number(this.value);updateInvoiceTotal()"><input type="number" min="0" value="${x.price}" readonly title="Price comes from product catalogue"><button class="btn danger" onclick="items.splice(${n},1);drawLines();updateInvoiceTotal()">×</button><input class="comment" placeholder="Line comment (optional)" value="${esc(x.comment||'')}" oninput="items[${n}].comment=this.value"></div>`).join('');
+ lines.innerHTML=items.map((x,n)=>`<div class="line"><select onchange="selectProduct(${n},this.value)">${opts}</select><input type="number" min="0" value="${x.qty}" oninput="items[${n}].qty=Number(this.value);updateInvoiceTotal()"><input type="number" min="0" value="${x.price}" title="Editable — overrides the catalogue price for this invoice only" oninput="items[${n}].price=Number(this.value);updateInvoiceTotal()"><button class="btn danger" onclick="items.splice(${n},1);drawLines();updateInvoiceTotal()">×</button><input class="comment" placeholder="Line comment (optional)" value="${esc(x.comment||'')}" oninput="items[${n}].comment=this.value"></div>`).join('');
  items.forEach((x,n)=>{const sel=lines.querySelectorAll('select')[n];if(sel)sel.value=x.productId||''});
 }
 async function selectProduct(n,id){const products=await all('products'),p=products.find(x=>x.id===id);if(!p)return;items[n].productId=p.id;items[n].description=p.name;items[n].price=Number(p.price)||0;await drawLines();updateInvoiceTotal()}
@@ -626,6 +636,16 @@ window.addEventListener('DOMContentLoaded', ()=>{
     installBar.classList.add('show');
   }
 });
+
+/* ---------------- Cloud backup onboarding prompt ---------------- */
+function dismissBackupBar(){backupBar.classList.remove('show');localStorage.setItem('moborex_backup_prompt_seen','1')}
+async function startOnboardingBackup(){dismissBackupBar();await Sync.connect()}
+window.addEventListener('DOMContentLoaded', ()=>{
+  setTimeout(()=>{
+    if(Sync.configured && !Sync.connected && !localStorage.getItem('moborex_backup_prompt_seen')) backupBar.classList.add('show');
+  }, 1200);
+});
+
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
 }
