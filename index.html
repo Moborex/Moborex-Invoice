@@ -228,11 +228,12 @@ async function del(store,id){let r=await req(store,'readwrite',s=>s.delete(id));
 /* ---------------- Sync engine (Google Drive appDataFolder) ---------------- */
 const Sync={
   configured:false, tokenClient:null, accessToken:null, user:null, connected:false,
-  pin:null, dirty:false, pushTimer:null, pullTimer:null, busy:false,
+  pin:null, plainMode:false, dirty:false, pushTimer:null, pullTimer:null, busy:false,
   scope:'openid email profile https://www.googleapis.com/auth/drive.appdata',
   async init(){
     this.configured = !!(window.MOBOREX_GOOGLE_CLIENT_ID && !window.MOBOREX_GOOGLE_CLIENT_ID.includes('PASTE_'));
     this.connected = localStorage.getItem('moborex_google_connected')==='1';
+    this.plainMode = localStorage.getItem('moborex_plain_mode')==='1';
     this.paintStatus();
     if(!this.configured) return false;
     const wait=()=>new Promise(resolve=>{if(window.google?.accounts?.oauth2)resolve();else setTimeout(()=>wait().then(resolve),120)});
@@ -282,14 +283,27 @@ const Sync={
   async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes'];const out={version:1,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await req('business','readonly',s=>s.get('main'))}catch(e){out.business=null}return out},
   async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(Array.isArray(biz))biz=biz[0];if(biz&&biz.id)await req('business','readwrite',st=>st.put(biz))},
 
-  markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&this.pin){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),4000)}},
+  markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),4000)}},
 
   async connect(){
     const ok=await this.auth(); if(!ok) return;
     const remote=await this.listBackup().catch(()=>null);
-    const pin=await this.ensurePin(!remote); if(!pin){this.pin=null;return}
-    if(remote && confirm('A backup already exists in this Google account. Pull it now and merge into this device? (Recommended the first time you connect a new device.)')){
-      await this.pull(true);
+    let usePin;
+    if(remote){
+      // An existing backup already decides the format — detect it instead of asking again.
+      usePin = null; // resolved during pull below
+    } else {
+      usePin = confirm('For extra privacy, lock your backup with a PIN only you know?\n\nOK = Yes, use a PIN (recommended if this device is shared)\nCancel = No, keep it simple (recommended for most people)');
+    }
+    if(usePin){
+      const pin=await this.ensurePin(true); if(!pin){return}
+      this.plainMode=false;
+    } else if(usePin===false){
+      this.plainMode=true;
+    }
+    localStorage.setItem('moborex_plain_mode', this.plainMode?'1':'0');
+    if(remote){
+      await this.pull(true, true);
     } else {
       await this.push();
     }
@@ -297,37 +311,44 @@ const Sync={
     this.paintStatus();
   },
   async push(){
-    if(!this.connected||!this.accessToken||!this.pin) return;
+    if(!this.connected||!this.accessToken||!(this.pin||this.plainMode)) return;
     this.busy=true; this.paintStatus();
     try{
-      const data=await this.exportAll(), enc=await this.encrypt(data,this.pin);
-      await this.uploadEncrypted(enc);
+      const data=await this.exportAll();
+      const text = this.pin ? await this.encrypt(data,this.pin) : JSON.stringify(data);
+      await this.uploadEncrypted(text);
       this.dirty=false; localStorage.setItem('moborex_last_backup',new Date().toISOString());
     }catch(e){console.error(e)}
     this.busy=false; this.paintStatus();
   },
-  async pull(force){
-    if(!this.connected||!this.accessToken||!this.pin) return;
+  async pull(force, resolvingConnect){
+    if(!this.connected||!this.accessToken) return;
     if(this.dirty && !force) return; // don't clobber unsynced local edits
     this.busy=true; this.paintStatus();
     try{
       const r=await this.downloadEncrypted();
       if(r){
-        const data=await this.decrypt(r.text,this.pin);
-        await this.importAll(data);
-        localStorage.setItem('moborex_last_pull',new Date().toISOString());
-        await refresh();
+        let parsed; try{ parsed = JSON.parse(r.text); }catch(e){ parsed=null; }
+        const isEncrypted = parsed && parsed.format==='MOBOREX-ENC-1';
+        if(resolvingConnect){
+          // First connect on a device where a backup already exists: match whatever format is already there.
+          if(isEncrypted){ const pin=await this.ensurePin(false); if(!pin){this.busy=false;this.paintStatus();return} this.plainMode=false; }
+          else { this.plainMode=true; }
+          localStorage.setItem('moborex_plain_mode', this.plainMode?'1':'0');
+        }
+        const data = isEncrypted ? await this.decrypt(r.text, this.pin) : parsed;
+        if(data){ await this.importAll(data); localStorage.setItem('moborex_last_pull',new Date().toISOString()); await refresh(); }
       }
-    }catch(e){console.error(e);if(force)alert('Could not read the cloud backup. Check your Sync PIN.')}
+    }catch(e){console.error(e);if(force)alert('Could not read the cloud backup.'+(this.pin?' Check your Sync PIN.':''))}
     this.busy=false; this.paintStatus();
   },
   startAutoPull(){clearInterval(this.pullTimer);this.pullTimer=setInterval(()=>this.pull(false),60000)},
   async resumeSession(){ // re-auth silently-ish for this browser tab session (Google requires a click)
     const ok=await this.auth(); if(!ok) return;
-    const pin=await this.ensurePin(false); if(!pin){this.pin=null;return}
+    if(!this.plainMode){ const pin=await this.ensurePin(false); if(!pin){this.pin=null;return} }
     await this.pull(true); this.startAutoPull(); this.paintStatus();
   },
-  disconnect(){this.accessToken=null;this.user=null;this.pin=null;this.connected=false;clearInterval(this.pullTimer);localStorage.removeItem('moborex_google_connected');this.paintStatus()}
+  disconnect(){this.accessToken=null;this.user=null;this.pin=null;this.plainMode=false;this.connected=false;clearInterval(this.pullTimer);localStorage.removeItem('moborex_google_connected');localStorage.removeItem('moborex_plain_mode');this.paintStatus()}
 };
 window.addEventListener('DOMContentLoaded',()=>Sync.init());
 </script>
@@ -628,15 +649,20 @@ async function downloadInvoicePDF(number){
 /* ---------------- Backup / Sync UI ---------------- */
 function showCloudSync(){
  const lastPush=localStorage.getItem('moborex_last_backup'), lastPull=localStorage.getItem('moborex_last_pull');
+ const modeLine = Sync.connected
+   ? (Sync.plainMode
+       ? '<b>Simple mode.</b> Backed up to your Google account\'s private app folder — no PIN needed, nothing to remember.'
+       : '<b>PIN-protected mode.</b> Your data is encrypted on this device with your Sync PIN before it reaches Google — Google itself can\'t read it.')
+   : '<b>No server, just your own Google account.</b> When you connect, you\'ll choose between the simplest option (no PIN, recommended for most people) or a PIN-protected option for extra privacy.';
  openModal(`<h2>☁ Sync & Backup</h2>
- <div class="notice"><b>Encrypted, no server.</b> Your data is encrypted on this device with your Sync PIN before it's stored in your Google account's private app folder — Google itself can't read it. Sync happens automatically while the app is open on a connected device: changes push a few seconds after you save, and this device checks for updates from your other devices about once a minute.</div>
+ <div class="notice">${modeLine} Sync happens automatically while the app is open on a connected device: changes push a few seconds after you save, and this device checks for updates from your other devices about once a minute.</div>
  <div class="cloudBox">
  <div id="cloudStatus">Checking…</div>
  <div class="cloudLast">Last sent: ${lastPush?new Date(lastPush).toLocaleString():'Never'} · Last received: ${lastPull?new Date(lastPull).toLocaleString():'Never'}</div>
  <button class="btn primary full" onclick="Sync.connected?Sync.resumeSession():Sync.connect()">${Sync.connected?'Resume Sync on This Device':'Connect Google Account'}</button>
  <button class="btn secondary full" onclick="Sync.push()">Sync Now</button>
  <button class="btn danger full" onclick="Sync.disconnect();closeModal();showCloudSync()">Disconnect</button>
- <small>Use the same Google account and the same Sync PIN on every device (phone, tablet, laptop) you want kept in sync. If you edit the same invoice on two devices before they sync, the version synced last will win — so it's best to sync before switching devices.</small>
+ <small>Use the same Google account on every device (phone, tablet, laptop) you want kept in sync${Sync.connected&&!Sync.plainMode?' — and the same Sync PIN':''}. If you edit the same invoice on two devices before they sync, the version synced last will win — so it's best to sync before switching devices.</small>
  </div>
  <h3 style="font-size:14px;margin-top:18px">Manual file backup</h3>
  <div class="notice">A plain downloadable backup file, separate from cloud sync — handy before big changes or for moving data manually.</div>
