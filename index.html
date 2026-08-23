@@ -645,7 +645,25 @@ function showCloudSync(){
  Sync.paintStatus();
 }
 async function downloadBackup(){let d=await Sync.exportAll();let blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='moborex-invoice-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click()}
-async function restoreBackup(ev){let f=ev.target.files[0];if(!f)return;let r=new FileReader();r.onload=async()=>{try{let d=JSON.parse(r.result);await Sync.importAll(d);closeModal();await refresh();alert('Backup restored successfully.')}catch(x){alert('Invalid backup file.')}};r.readAsText(f)}
+async function restoreBackup(ev){
+  let f=ev.target.files[0];if(!f)return;
+  let r=new FileReader();
+  r.onload=async()=>{
+    let d;
+    try{ d=JSON.parse(r.result); }
+    catch(x){ alert('This file could not be read as valid JSON.\n\nDetails: '+x.message); return; }
+    const looksLikeBackup = d && typeof d==='object' && ('invoices' in d || 'business' in d || 'customers' in d || 'version' in d);
+    if(!looksLikeBackup){ alert('This file was read fine, but it doesn\'t look like a Moborex backup — none of the expected data (invoices, business, customers) was found in it.'); return; }
+    try{
+      await Sync.importAll(d); closeModal(); await refresh();
+      alert('Backup restored successfully.');
+    }catch(x){
+      alert('The backup file looked valid, but restoring it failed partway through.\n\nDetails: '+(x&&x.message?x.message:x));
+    }
+  };
+  r.onerror=()=>alert('Could not read the selected file from this device.');
+  r.readAsText(f);
+}
 
 openDB().then(refresh).catch(()=>{alert('IndexedDB is unavailable in this browser. Please open the app in Chrome, Safari, or another modern browser.');});
 
