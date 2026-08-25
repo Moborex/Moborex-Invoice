@@ -1,7 +1,7 @@
 {
-  "name": "Moborex Invoice App",
-  "short_name": "Moborex",
-  "description": "Invoicing, customers, expenses and reports for your business.",
+  "name": "Moborex Ledger Vault",
+  "short_name": "Ledger Vault",
+  "description": "Beyond Invoicing — to Reports & Tax. Invoicing, multi-business books, personal finances, salary tracking, tax reporting, and audit — all in one place.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#16233D">
-<title>Moborex Invoice App</title>
+<title>Moborex Ledger Vault</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Moborex">
+<meta name="apple-mobile-web-app-title" content="Ledger Vault">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,6 +41,7 @@ button{font-family:var(--font-body);cursor:pointer}
 .brandmark .seal{width:42px;height:42px;border-radius:12px;background:#ffffff1a;border:1px solid #ffffff33;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:17px;overflow:hidden}
 .brandmark .seal img{width:100%;height:100%;object-fit:contain}
 .appname{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;opacity:.68;font-weight:600}
+.tagline{font-size:10px;opacity:.5;font-style:italic;margin-top:1px;margin-bottom:4px}
 .bizname{font-family:var(--font-display);font-weight:600;font-size:19px;line-height:1.15}
 .iconbtn{border:1px solid #ffffff3a;background:#ffffff14;color:#fff;width:42px;height:42px;border-radius:12px;font-size:18px;display:flex;align-items:center;justify-content:center}
 .hello{margin-top:18px;font-size:12.5px;opacity:.72}
@@ -79,6 +80,9 @@ button{font-family:var(--font-body);cursor:pointer}
 .stamp{font-family:var(--font-display);font-weight:700;font-size:10px;letter-spacing:.09em;text-transform:uppercase;padding:3px 9px 2px;border-radius:20px;border:1.4px solid currentColor;transform:rotate(-3deg);display:inline-block}
 .stamp.paid{color:var(--good);background:var(--goodSoft)}
 .stamp.due{color:var(--brass);background:var(--brassSoft)}
+.stamp.overdue{color:var(--danger);background:var(--dangerSoft)}
+.stamp.duesoon{color:#8a5a1f;background:#FBEFD9}
+.stamp.void{color:var(--muted);background:var(--line2);text-decoration:line-through}
 .empty{padding:28px;text-align:center;color:var(--muted);font-size:13px}
 
 /* ---------- overlays ---------- */
@@ -119,15 +123,19 @@ button{font-family:var(--font-body);cursor:pointer}
 .notice{padding:12px 13px;background:var(--brassSoft);border:1px solid #e6cf9f;border-radius:var(--r-sm);font-size:12px;color:#7a5a1f;line-height:1.5}
 .logoPreview{width:76px;height:76px;object-fit:contain;border-radius:12px;border:1.4px dashed var(--line);margin-top:7px}
 
-.invoicePreview{background:#fff;border:1px solid #ddd;padding:26px;border-radius:12px;font-family:Georgia,'Times New Roman',serif;color:#111;font-weight:500}
+.invoicePreview{background:#fff;border:1px solid #ddd;padding:26px;border-radius:12px;font-family:Georgia,'Times New Roman',Arial,'Noto Sans',sans-serif;color:#111;font-weight:500;overflow-wrap:break-word;word-break:break-word}
 .invoicePreview .sampleTop{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2.6px solid var(--ink);padding-bottom:14px}
 .invoicePreview .sampleLogo img{max-width:80px;max-height:70px}
-.invoicePreview .sampleCompany{display:flex;gap:12px;align-items:flex-start;text-align:left;font-size:12.5px;line-height:1.55;font-weight:600}
+.invoicePreview .sampleCompany{display:flex;gap:12px;align-items:flex-start;text-align:left;font-size:12.5px;line-height:1.55;font-weight:600;max-width:60%}
 .invoicePreview .sampleCompany h1{font-size:20px;margin:0 0 4px;font-weight:700}
-.invoicePreview .metaRight{text-align:right;font-size:12.5px;font-weight:600;white-space:nowrap}
-.invoicePreview .sampleMeta{display:flex;justify-content:space-between;gap:16px;margin-top:16px;font-size:12.5px;font-weight:600}
+.invoicePreview .metaRight{text-align:right;font-size:12.5px;font-weight:600;white-space:nowrap;flex-shrink:0}
+.invoicePreview .sampleMeta{display:flex;justify-content:space-between;gap:16px;margin-top:20px;padding-top:4px;font-size:12.5px;font-weight:600}
+.invoicePreview .sampleMeta > div{max-width:70%}
+.invoicePreview .sampleMeta strong{display:block;margin-top:2px;line-height:1.4}
+.invoicePreview .sampleMeta span{display:block;line-height:1.5}
 .invoicePreview b{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#555;font-weight:800;margin-top:8px}
-.invoicePreview .vehicleBand{margin-top:14px;padding:10px 12px;background:#f4f4f2;border-radius:8px;font-size:12.5px;font-weight:600}
+.invoicePreview .vehicleBand{margin-top:16px;padding:10px 12px;background:#f4f4f2;border-radius:8px;font-size:12.5px;font-weight:600;line-height:1.5}
+.invoicePreview .vehicleBand strong{display:block;margin-top:3px}
 .invoicePreview table{width:100%;border-collapse:collapse;margin-top:16px}
 .invoicePreview th{padding:8px;border-bottom:2px solid #333;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:800}
 .invoicePreview td{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12.5px;font-weight:600}
@@ -174,6 +182,12 @@ button{font-family:var(--font-body);cursor:pointer}
 .installBar.show{display:flex}
 .installBar span{flex:1;line-height:1.4}
 @media(min-width:900px){.installBar{left:250px}}
+
+.lockScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:200;align-items:center;justify-content:center;padding:24px}
+.lockScreen.show{display:flex}
+body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hidden}
+.bizSwitch{background:none;border:0;padding:0;color:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:4px}
+.bizSwitch .chev{font-size:10px;opacity:.6}
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -181,7 +195,7 @@ button{font-family:var(--font-body);cursor:pointer}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 /* =====================================================================
-   Moborex Invoice App — single-file PWA.
+   Moborex Ledger Vault — single-file PWA. "Beyond Invoicing — to Reports & Tax."
    Storage: IndexedDB (per device). Sync: encrypted snapshot synced to
    the signed-in Google account's private app-data area (no server,
    no third-party database — reuses the Google account you already have).
@@ -202,9 +216,9 @@ function money(n){
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=1;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=3;
 let idb;
-const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0}};
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:''}};
 function openDB(){
  return new Promise((resolve,reject)=>{
   const r=indexedDB.open(DB_NAME,DB_VERSION);
@@ -215,12 +229,103 @@ function openDB(){
    if(!d.objectStoreNames.contains('products')){let s=d.createObjectStore('products',{keyPath:'id'});s.createIndex('name','name')}
    if(!d.objectStoreNames.contains('customers')){let s=d.createObjectStore('customers',{keyPath:'id'});s.createIndex('name','name')}
    if(!d.objectStoreNames.contains('expenseTypes')){let s=d.createObjectStore('expenseTypes',{keyPath:'id'});s.createIndex('name','name')}
+   if(!d.objectStoreNames.contains('taxSubmissions')){let s=d.createObjectStore('taxSubmissions',{keyPath:'id'});s.createIndex('year','year')}
+   if(!d.objectStoreNames.contains('auditRecords'))d.createObjectStore('auditRecords',{keyPath:'id'});
+   if(!d.objectStoreNames.contains('otherIncome')){let s=d.createObjectStore('otherIncome',{keyPath:'id'});s.createIndex('date','date')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};r.onerror=()=>reject(r.error);
  })
 }
 function req(store,mode,action){return new Promise((resolve,reject)=>{let t=idb.transaction(store,mode),s=t.objectStore(store),r=action(s);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
-async function getBusiness(){let b=await req('business','readonly',s=>s.get('main'));if(!b){b={id:'main',...defaults.business};await req('business','readwrite',s=>s.put(b))}window.CURRENT_CURRENCY=b.currency||'NGN';return b}
+/* ---- Multi-business: each business is its own record in the 'business' store;
+   invoices/customers/products/business-kind expenses & expense types carry a
+   businessId. Personal expenses/categories stay global — they're the person's,
+   not any one business's. ---- */
+async function getActiveBusinessId(){
+  let id = localStorage.getItem('moborex_active_business');
+  const list = await all('business');
+  if(id && list.some(b=>b.id===id)) return id;
+  if(list.some(b=>b.id==='main')){ localStorage.setItem('moborex_active_business','main'); return 'main'; } // pre-multi-business installs
+  if(list.length>0){ localStorage.setItem('moborex_active_business', list[0].id); return list[0].id; }
+  const nb = {id:crypto.randomUUID(), ...defaults.business};
+  await req('business','readwrite',s=>s.put(nb));
+  localStorage.setItem('moborex_active_business', nb.id);
+  return nb.id;
+}
+async function getBusiness(){
+  const id = await getActiveBusinessId();
+  let b = await req('business','readonly',s=>s.get(id));
+  if(!b){ b={id,...defaults.business}; await req('business','readwrite',s=>s.put(b)); }
+  window.CURRENT_CURRENCY=b.currency||'NGN';
+  return b;
+}
+async function bizInvoices(){const id=await getActiveBusinessId();return (await all('invoices')).filter(x=>x.businessId===id)}
+async function bizCustomers(){const id=await getActiveBusinessId();return (await all('customers')).filter(x=>x.businessId===id)}
+async function bizProducts(){const id=await getActiveBusinessId();return (await all('products')).filter(x=>x.businessId===id)}
+async function businessExpenseTypes(){const id=await getActiveBusinessId();return (await all('expenseTypes')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
+async function businessExpenses(){const id=await getActiveBusinessId();return (await all('expenses')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
+
+/* ---- Cross-business figures: bank balance and tax reporting look at every
+   business at once (plus shared personal expenses and recorded tax payments),
+   so the same combined balance shows no matter which business is active. ---- */
+async function businessFinancials(bizId){
+  const b=(await all('business')).find(x=>x.id===bizId);
+  if(!b) return null;
+  const invs=(await all('invoices')).filter(i=>i.businessId===bizId && i.status!=='void');
+  const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===bizId);
+  const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openBal=Number(b.openingBalance)||0;
+  const sales=invs.reduce((a,i)=>a+i.total,0);
+  const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
+  const expTotal=exps.reduce((a,e)=>a+e.amount,0);
+  const lifetimeProfit=(openRev+sales)-(openExp+expTotal);
+  const bankBalance=openBal+received-expTotal;
+  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal};
+}
+async function allBusinessFinancials(){const list=await all('business');const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
+async function getGlobalBankBalance(){
+  const perBiz=await allBusinessFinancials();
+  const businessTotal=perBiz.reduce((a,f)=>a+f.bankBalance,0);
+  const personalExpenses=(await all('expenses')).filter(e=>e.kind==='personal').reduce((a,e)=>a+e.amount,0);
+  const otherIncomeTotal=(await all('otherIncome')).reduce((a,e)=>a+(Number(e.amount)||0),0);
+  const taxPaid=(await all('taxSubmissions')).reduce((a,t)=>a+(Number(t.amountPaid)||0),0);
+  return businessTotal + otherIncomeTotal - personalExpenses - taxPaid;
+}
+async function migrateBusinessScopeIfNeeded(){
+  // One-time-per-record cleanup: anything created before multi-business existed
+  // gets assigned to whichever business is currently active. Idempotent & cheap.
+  const id = await getActiveBusinessId();
+  for(const store of ['invoices','customers','products']){
+    for(const item of await all(store)) if(!item.businessId){ item.businessId=id; await req(store,'readwrite',s=>s.put(item)); }
+  }
+  for(const t of await all('expenseTypes')) if(t.kind!=='personal' && !t.businessId){ t.businessId=id; await req('expenseTypes','readwrite',s=>s.put(t)); }
+  for(const e of await all('expenses')) if(e.kind!=='personal' && !e.businessId){ e.businessId=id; await req('expenses','readwrite',s=>s.put(e)); }
+}
+async function autoGenerateSalaryIfDue(){
+  const businesses = await all('business');
+  const curYM = new Date().toISOString().slice(0,7);
+  for(const b of businesses){
+    if(b.type==='salary' && b.salaryAutoGenerate && (Number(b.salaryAmount)||0)>0 && b.salaryLastGenerated!==curYM){
+      const monthName = new Date().toLocaleString('default',{month:'long',year:'numeric'});
+      let number='';
+      if(b.invoiceMode==='auto'){ number=String(b.nextNumber||1).padStart(4,'0'); b.nextNumber=(b.nextNumber||1)+1; }
+      const employers = (await all('customers')).filter(c=>c.businessId===b.id);
+      const employerName = employers.length ? employers[employers.length-1].name : (b.salaryEmployer||'Employer');
+      const rec = {
+        id:crypto.randomUUID(), businessId:b.id, status:'active', number,
+        date:new Date().toISOString().slice(0,10), dueDate:'',
+        customerId:employers.length?employers[employers.length-1].id:'', customer:employerName, phone:'', address:'',
+        vehicleDetails:'Auto-generated monthly salary', discount:0,
+        items:[{productId:'',description:'Salary — '+monthName,qty:1,price:Number(b.salaryAmount)||0,comment:''}],
+        payments:[{id:crypto.randomUUID(),amount:Number(b.salaryAmount)||0,date:new Date().toISOString().slice(0,10),method:'Salary'}],
+        headerComment:'', salesComment:'', total:Number(b.salaryAmount)||0
+      };
+      await req('invoices','readwrite',s=>s.put(rec));
+      b.salaryLastGenerated=curYM;
+      await req('business','readwrite',s=>s.put(b));
+      Sync.markDirty();
+    }
+  }
+}
 async function all(store){return req(store,'readonly',s=>s.getAll())}
 async function put(store,obj,skipDirty){obj.updatedAt=Date.now();let r=await req(store,'readwrite',s=>s.put(obj));if(!skipDirty)Sync.markDirty();return r}
 async function del(store,id){let r=await req(store,'readwrite',s=>s.delete(id));Sync.markDirty();return r}
@@ -280,8 +385,8 @@ const Sync={
   async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
   async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
 
-  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes'];const out={version:1,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await req('business','readonly',s=>s.get('main'))}catch(e){out.business=null}return out},
-  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(Array.isArray(biz))biz=biz[0];if(biz&&biz.id)await req('business','readwrite',st=>st.put(biz))},
+  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome'];const out={version:4,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
 
   markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),4000)}},
 
@@ -354,8 +459,18 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 </script>
 </head>
 <body>
+<script>if(localStorage.getItem('moborex_applock_hash'))document.body.classList.add('locked')</script>
+<div class="lockScreen" id="lockScreen">
+  <div style="max-width:320px;width:100%;text-align:center;color:#fff">
+    <div style="font-family:var(--font-display);font-size:22px;margin-bottom:6px">🔒 Locked</div>
+    <div style="font-size:13px;opacity:.7;margin-bottom:18px">Enter your App Lock PIN to continue</div>
+    <input id="lockInput" type="password" inputmode="numeric" style="width:100%;padding:14px;border-radius:12px;border:0;text-align:center;font-size:18px;letter-spacing:.2em" placeholder="••••">
+    <div id="lockError" style="display:none;color:#f2a5a5;font-size:12px;margin-top:8px">Incorrect PIN, try again.</div>
+    <button class="btn accent full" id="lockSubmit" style="margin-top:14px">Unlock</button>
+  </div>
+</div>
 <div class="installBar" id="installBar">
-  <span id="installText">Install Moborex Invoice App on this device for one-tap access — no app store needed.</span>
+  <span id="installText">Install Moborex Ledger Vault on this device for one-tap access — no app store needed.</span>
   <button class="btn accent" id="installBtn" style="padding:8px 14px;font-size:12.5px" onclick="doInstall()">Install</button>
   <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#ffffff40" onclick="dismissInstallBar()">×</button>
 </div>
@@ -367,31 +482,36 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 <div class="shell">
 
 <aside class="sidebar">
-  <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Moborex Invoice</div><div class="bizname" id="bizNameWide" style="font-size:15px">Business</div></div></div>
+  <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Moborex Ledger Vault</div><div class="tagline">Beyond Invoicing — to Reports &amp; Tax.</div><button class="bizname bizSwitch" style="font-size:15px" onclick="showBusinessSwitcher()"><span id="bizNameWide">Business</span> <span class="chev">▾</span></button></div></div>
   <button class="navbtn" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
   <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> Invoices</button>
-  <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> Customers</button>
-  <button class="navbtn" onclick="showProducts()"><span class="ic">▦</span> Products / Services</button>
+  <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
+  <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
   <button class="navbtn" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
   <button class="navbtn" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
+  <button class="navbtn" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
   <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
   <button class="navbtn" onclick="showReports()"><span class="ic">▥</span> Reports</button>
+  <button class="navbtn" onclick="showTaxReport()"><span class="ic">🏛</span> Tax Report</button>
+  <button class="navbtn" onclick="showAudit()"><span class="ic">🔍</span> Audit of Me</button>
   <div style="flex:1"></div>
+  <button class="navbtn" onclick="showBusinessSwitcher()"><span class="ic">🏢</span> Switch Business</button>
   <button class="navbtn" onclick="showCloudSync()"><span class="ic">☁</span> Sync & Backup</button>
   <button class="navbtn" onclick="showSettings()"><span class="ic">⚙</span> Business Settings</button>
+  <button class="navbtn" onclick="showAppLockSettings()"><span class="ic">🔒</span> App Lock</button>
 </aside>
 
 <header class="topbar">
 <div class="topbar-row">
-<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Moborex Invoice</div><div class="bizname" id="brandName">Business</div></div></div>
+<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Moborex Ledger Vault</div><button class="bizname bizSwitch" onclick="showBusinessSwitcher()"><span id="brandName">Business</span> <span class="chev">▾</span></button></div></div>
 <button class="iconbtn drawerToggle" onclick="openDrawer()">☰</button>
 </div>
 <div class="hello">Business dashboard</div><div class="pagehead">Good day 👋</div>
 </header>
 
 <main class="main">
-<div class="heroBalance"><div class="lbl">Cash &amp; Bank Balance</div><div class="val" id="bankBalance">—</div><div class="sub">Opening balance + received − business &amp; personal expenses</div></div>
+<div class="heroBalance"><div class="lbl">Cash &amp; Bank Balance — All Businesses</div><div class="val" id="bankBalance">—</div><div class="sub">Combined across every business, minus personal spend &amp; recorded tax payments — same figure in every business view</div></div>
 <div class="stats">
 <div class="stat"><div class="lbl">Total Sales</div><div class="val" id="sales">—</div></div>
 <div class="stat"><div class="lbl">Received</div><div class="val" id="received">—</div></div>
@@ -402,7 +522,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 
 <div class="sectionhead"><h3>Quick actions</h3></div>
 <div class="actions">
-<button class="action primary" onclick="openInvoice()"><div class="ico">＋</div><strong>New Invoice</strong><span>Create a customer invoice</span></button>
+<button class="action primary" onclick="openInvoice()"><div class="ico">＋</div><strong id="navNewInvoiceLabel">New Invoice</strong><span id="navNewInvoiceSub">Create a customer invoice</span></button>
 <button class="action" onclick="showInvoices()"><div class="ico">▤</div><strong>Invoices</strong><span>Find & manage</span></button>
 <button class="action" onclick="showExpenses()"><div class="ico">◈</div><strong>Expenses</strong><span>Record spending</span></button>
 <button class="action" onclick="showReports()"><div class="ico">▥</div><strong>Reports</strong><span>Sales & profit</span></button>
@@ -417,15 +537,20 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 <div class="dhead"><div class="dtitle">Menu</div><button class="iconbtn" onclick="closeDrawer()">×</button></div>
 <button class="navbtn" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
 <button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> Invoices</button>
-<button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> Customers</button>
-<button class="navbtn" onclick="showProducts();closeDrawer()"><span class="ic">▦</span> Products / Services</button>
+<button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
+<button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
 <button class="navbtn" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
 <button class="navbtn" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
+<button class="navbtn" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
 <button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
 <button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
 <button class="navbtn" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
+<button class="navbtn" onclick="showTaxReport();closeDrawer()"><span class="ic">🏛</span> Tax Report</button>
+<button class="navbtn" onclick="showAudit();closeDrawer()"><span class="ic">🔍</span> Audit of Me</button>
+<button class="navbtn" onclick="showBusinessSwitcher();closeDrawer()"><span class="ic">🏢</span> Switch Business</button>
 <button class="navbtn" onclick="showCloudSync();closeDrawer()"><span class="ic">☁</span> Sync & Backup</button>
 <button class="navbtn" onclick="showSettings();closeDrawer()"><span class="ic">⚙</span> Business Settings</button>
+<button class="navbtn" onclick="showAppLockSettings();closeDrawer()"><span class="ic">🔒</span> App Lock</button>
 </aside></div>
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 
@@ -446,32 +571,100 @@ function openModal(h){sheet.innerHTML='<button class="sheetBack" onclick="closeM
 function closeModal(){modal.classList.remove('show');popNavIfNeeded()}
 
 async function refresh(){
- const b=await getBusiness(), inv=await all('invoices'), ex=await all('expenses');
+ const b=await getBusiness(), invAll=await bizInvoices(), inv=invAll.filter(i=>i.status!=='void'), ex=await businessExpenses(), personalEx=(await all('expenses')).filter(e=>e.kind==='personal');
  window.CURRENT_CURRENCY=b.currency||'NGN';
  const logoHtml=b.logo?`<img src="${b.logo}">`:'▦';
  document.getElementById('bizNameWide').textContent=b.name;
  document.getElementById('brandLogoWide').innerHTML=logoHtml;
  brandName.textContent=b.name; brandLogo.innerHTML=logoHtml;
- let openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openBal=Number(b.openingBalance)||0;
+ const isSalary=b.type==='salary';
+ const prodLabel=isSalary?'Salary Setup':'Products / Services', custLabel=isSalary?'Employer':'Customers';
+ if(navProductsLabel)navProductsLabel.textContent=prodLabel; if(navProductsLabelDrawer)navProductsLabelDrawer.textContent=prodLabel;
+ if(navCustomersLabel)navCustomersLabel.textContent=custLabel; if(navCustomersLabelDrawer)navCustomersLabelDrawer.textContent=custLabel;
+ if(navNewInvoiceLabel){navNewInvoiceLabel.textContent=isSalary?'Log Salary':'New Invoice';navNewInvoiceSub.textContent=isSalary?'Add a salary payment':'Create a customer invoice';}
+ let openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0;
  let sales=inv.reduce((a,i)=>a+i.total,0),paid=inv.reduce((a,i)=>a+i.payments.reduce((x,p)=>x+p.amount,0),0);
- let bizExpenses=ex.filter(e=>e.kind!=='personal').reduce((a,e)=>a+e.amount,0);
- let personalExpenses=ex.filter(e=>e.kind==='personal').reduce((a,e)=>a+e.amount,0);
- let lifetimeProfit=(openRev+sales)-(openExp+bizExpenses);
- let bankBalance=openBal+paid-bizExpenses-personalExpenses;
+ let bizExpensesTotal=ex.reduce((a,e)=>a+e.amount,0);
+ let personalExpenses=personalEx.reduce((a,e)=>a+e.amount,0);
+ let lifetimeProfit=(openRev+sales)-(openExp+bizExpensesTotal);
+ let bankBalance=await getGlobalBankBalance();
  document.getElementById('sales').textContent=money(openRev+sales);document.getElementById('received').textContent=money(paid);document.getElementById('outstanding').textContent=money(sales-paid);document.getElementById('profit').textContent=money(lifetimeProfit);document.getElementById('personalSpend').textContent=money(personalExpenses);
  document.getElementById('bankBalance').textContent=money(bankBalance);
  inv.sort((a,b)=>b.date.localeCompare(a.date));
- recent.innerHTML=inv.slice(0,5).map(i=>{let p=i.payments.reduce((a,x)=>a+x.amount,0),isPaid=p>=i.total&&i.total>0;
-  return `<div class="row-item"><div><b>${esc(i.number)}</b><small>${esc(i.customer||'Walk-in')} · ${esc(i.date)}</small></div><div class="row-right"><strong class="money">${money(i.total)}</strong><span class="stamp ${isPaid?'paid':'due'}">${isPaid?'Paid':'Balance '+money(i.total-p)}</span></div></div>`
+ recent.innerHTML=inv.slice(0,5).map(i=>{const st=invoiceStatusStamp(i);
+  return `<div class="row-item"><div><b>${esc(i.number)}</b><small>${esc(i.customer||'Walk-in')} · ${esc(i.date)}</small></div><div class="row-right"><strong class="money">${money(i.total)}</strong><span class="stamp ${st.cls}">${st.label}</span></div></div>`
  }).join('')||'<div class="empty">No invoices yet. Create your first one above.</div>';
 }
+
+/* ---------------- Business Switcher ---------------- */
+async function showBusinessSwitcher(){
+ const list=await all('business'), activeId=await getActiveBusinessId();
+ openModal(`<h2>Switch Business</h2>
+ <div class="notice">Each business keeps its own invoices, customers, products, and settings — completely separate books. Personal expenses stay shared across all of them, since they're yours, not any one business's.</div>
+ <div class="list" id="bizList"></div>
+ <button class="btn accent full" onclick="addBusiness()">＋ Add New Business</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ document.getElementById('bizList').innerHTML = list.sort((a,b)=>a.name.localeCompare(b.name)).map(b=>`
+  <div class="row-item">
+   <div><b>${esc(b.name)}</b><small>${b.type==='salary'?'Salary / Employment':'Business'}</small>${b.id===activeId?' <span class="stamp paid" style="margin-left:6px">Active</span>':''}</div>
+   <div class="row-right" style="flex-direction:row;gap:6px">
+    ${b.id!==activeId?`<button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="switchBusiness('${b.id}')">Switch</button>`:''}
+    <button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteBusiness('${b.id}')">Delete</button>
+   </div>
+  </div>`).join('') || '<div class="empty">No businesses yet.</div>';
+}
+async function switchBusiness(id){localStorage.setItem('moborex_active_business',id);closeModal();await refresh();}
+async function addBusiness(){
+ const name=prompt('Name of the new business:');
+ if(!name||!name.trim())return;
+ const nb={id:crypto.randomUUID(),...defaults.business,name:name.trim()};
+ await put('business',nb);
+ localStorage.setItem('moborex_active_business',nb.id);
+ closeModal();await refresh();
+}
+async function deleteBusiness(id){
+ const list=await all('business');
+ if(list.length<=1){alert('You need at least one business.');return;}
+ if(!confirm('Delete this business and ALL its invoices, customers, products, and expenses? This cannot be undone.'))return;
+ for(const store of ['invoices','customers','products']){for(const item of (await all(store)).filter(x=>x.businessId===id))await del(store,item.id);}
+ for(const t of (await all('expenseTypes')).filter(t=>t.kind!=='personal'&&t.businessId===id))await del('expenseTypes',t.id);
+ for(const e of (await all('expenses')).filter(e=>e.kind!=='personal'&&e.businessId===id))await del('expenses',e.id);
+ await req('business','readwrite',s=>s.delete(id));
+ if(localStorage.getItem('moborex_active_business')===id)localStorage.removeItem('moborex_active_business');
+ closeModal();await showBusinessSwitcher();await refresh();
+}
+
+/* ---------------- App Lock ---------------- */
+async function sha256Hex(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('')}
+function showAppLockSettings(){
+ const enabled=!!localStorage.getItem('moborex_applock_hash');
+ openModal(`<h2>App Lock</h2>
+ <div class="notice">${enabled?'A PIN is required to open this app on this device.':'Add a PIN so this app can\'t be opened without it — useful if this device is shared with others.'}</div>
+ ${enabled?`<button class="btn danger full" onclick="turnOffAppLock()">Turn Off App Lock</button><button class="btn secondary full" onclick="promptSetAppLockPin()">Change PIN</button>`:`<button class="btn accent full" onclick="promptSetAppLockPin()">Set a PIN</button>`}
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function promptSetAppLockPin(){
+ const p1=prompt('Enter a new App Lock PIN (4+ characters):');
+ if(!p1)return;
+ const p2=prompt('Confirm PIN:');
+ if(p1!==p2){alert('PINs did not match.');return;}
+ if(p1.length<4){alert('Use at least 4 characters.');return;}
+ localStorage.setItem('moborex_applock_hash',await sha256Hex(p1));
+ alert('App Lock PIN set.');
+ closeModal();showAppLockSettings();
+}
+function turnOffAppLock(){if(!confirm('Turn off App Lock?'))return;localStorage.removeItem('moborex_applock_hash');closeModal();}
 
 /* ---------------- Business Settings ---------------- */
 async function showSettings(){
  let b=await getBusiness();
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
  openModal(`<h2>Business Settings</h2>
- <div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div>
+ <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div><div class="field"><label>Type</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option></select></div></div>
+ <div id="salaryFieldsBox" style="display:none">
+  <div class="notice">Once set up, this business logs a salary payment automatically each month until you switch off auto-generate, change amount, or change employer. "Customers" becomes "Employer" for this business.</div>
+  <div class="row2"><div class="field"><label>Monthly Salary Amount</label><input id="bsalAmt" type="number" min="0" value="${b.salaryAmount||0}"></div><div class="field"><label>Auto-generate monthly</label><select id="bsalAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div></div>
+ </div>
  <div class="field"><label>Address</label><input id="ba" value="${esc(b.address)}"></div>
  <div class="row2"><div class="field"><label>Phone</label><input id="bp" value="${esc(b.phone)}"></div><div class="field"><label>Email</label><input id="be" value="${esc(b.email)}"></div></div>
  <div class="row2"><div class="field"><label>Currency</label><select id="bcur">${curOpts}</select></div><div class="field"><label>Tax ID</label><input id="btax" value="${esc(b.taxId||'')}"></div></div>
@@ -483,35 +676,54 @@ async function showSettings(){
  <h3 style="font-size:14px;margin-top:16px">Invoice numbering</h3>
  <div class="row2"><div class="field"><label>Mode</label><select id="bm"><option value="manual">Manual</option><option value="auto">Automatic</option></select></div><div class="field"><label>Next automatic number</label><input id="bnext" type="number" value="${b.nextNumber}"></div></div>
  <button class="btn primary full" onclick="saveSettings()">Save Settings</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- bm.value=b.invoiceMode;
+ bm.value=b.invoiceMode; btype.value=b.type||'business'; toggleSalaryFields();
 }
+function toggleSalaryFields(){salaryFieldsBox.style.display = btype.value==='salary' ? 'block' : 'none';}
 async function saveSettings(){
  let b=await getBusiness();
- let done=async logo=>{b.name=bn.value;b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;if(logo!==undefined)b.logo=logo;await put('business',b);closeModal();refresh()};
+ let done=async logo=>{b.name=bn.value;b.type=btype.value;b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}if(logo!==undefined)b.logo=logo;await put('business',b);closeModal();refresh()};
  if(bl.files[0]){let r=new FileReader();r.onload=()=>done(r.result);r.readAsDataURL(bl.files[0])}else done();
 }
 
-/* ---------------- Products / Services ---------------- */
-async function showProducts(){let p=await all('products');window.editingProductId=null;openModal(`<h2>Products / Services</h2><div class="row2"><div class="field"><label>Name</label><input id="pName"></div><div class="field"><label>Price</label><input id="pPrice" type="number" min="0"></div></div><button class="btn accent full" id="pSaveBtn" onclick="saveProduct()">＋ Add Product</button><button class="btn secondary full" id="pCancelBtn" style="display:none" onclick="cancelEditProduct()">Cancel Edit</button><div class="sectionhead" style="margin-top:18px"><h3>All products</h3></div><div class="list" id="pList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.pCache=p;drawProducts()}
+/* ---------------- Products / Services (or Salary Setup, for salary-type businesses) ---------------- */
+async function showProductsDispatch(){const b=await getBusiness();if(b.type==='salary')await showSalarySetup();else await showProducts();}
+async function showSalarySetup(){
+ const b=await getBusiness();
+ openModal(`<h2>Salary Setup — ${esc(b.name)}</h2>
+ <div class="notice">Once auto-generate is on, this business logs a salary payment automatically each month until you switch it off, change the amount, or move to a new employer. Manage employer names under "Employer" in the menu.</div>
+ <div class="field"><label>Monthly Salary Amount</label><input id="saAmt" type="number" min="0" value="${b.salaryAmount||0}"></div>
+ <div class="field"><label>Auto-generate monthly</label><select id="saAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div>
+ ${b.salaryLastGenerated?`<div class="cloudLast">Last auto-logged: ${esc(b.salaryLastGenerated)}</div>`:''}
+ <button class="btn primary full" onclick="saveSalarySetup()">Save</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+}
+async function saveSalarySetup(){
+ const b=await getBusiness();
+ b.salaryAmount=Number(saAmt.value)||0;
+ b.salaryAutoGenerate=saAuto.value==='1';
+ await put('business',b);
+ closeModal();await refresh();
+}
+
+async function showProducts(){let p=await bizProducts();window.editingProductId=null;openModal(`<h2>Products / Services</h2><div class="row2"><div class="field"><label>Name</label><input id="pName"></div><div class="field"><label>Price</label><input id="pPrice" type="number" min="0"></div></div><button class="btn accent full" id="pSaveBtn" onclick="saveProduct()">＋ Add Product</button><button class="btn secondary full" id="pCancelBtn" style="display:none" onclick="cancelEditProduct()">Cancel Edit</button><div class="sectionhead" style="margin-top:18px"><h3>All products</h3></div><div class="list" id="pList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.pCache=p;drawProducts()}
 function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="row-item"><div><b>${esc(p.name)}</b></div><div class="row-right"><strong class="money">${money(p.price)}</strong><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="editProduct('${p.id}')">Edit</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button></span></div></div>`).join('')||'<div class="empty">No products yet.</div>'}
 function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
 function cancelEditProduct(){window.editingProductId=null;pName.value='';pPrice.value='';pSaveBtn.textContent='＋ Add Product';pCancelBtn.style.display='none'}
 async function saveProduct(){if(!pName.value.trim())return alert('Enter a product name.');
  if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;await put('products',p);}
- else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0};await put('products',p);pCache.push(p);}
+ else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId()};await put('products',p);pCache.push(p);}
  cancelEditProduct();drawProducts()}
 async function deleteProduct(id){if(!confirm('Delete this product?'))return;await del('products',id);pCache=pCache.filter(x=>x.id!==id);drawProducts()}
 
 /* ---------------- Customers ---------------- */
-async function showCustomers(){let c=await all('customers');openModal(`<h2>Customers</h2><div class="field"><label>Name</label><input id="cName"></div><div class="row2"><div class="field"><label>Phone</label><input id="cPhone"></div><div class="field"><label>Address</label><input id="cAddress"></div></div><button class="btn accent full" onclick="addCustomer()">＋ Add Customer</button><div class="sectionhead" style="margin-top:18px"><h3>All customers</h3></div><div class="list" id="cList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.cCache=c;drawCustomers()}
+async function showCustomers(){const biz=await getBusiness();const label=biz.type==='salary'?'Employer':'Customer';let c=await bizCustomers();openModal(`<h2>${label}s</h2><div class="field"><label>Name</label><input id="cName"></div><div class="row2"><div class="field"><label>Phone</label><input id="cPhone"></div><div class="field"><label>Address</label><input id="cAddress"></div></div><button class="btn accent full" onclick="addCustomer()">＋ Add ${label}</button><div class="sectionhead" style="margin-top:18px"><h3>All ${label.toLowerCase()}s</h3></div><div class="list" id="cList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.cCache=c;drawCustomers()}
 function drawCustomers(){cList.innerHTML=cCache.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<div class="row-item"><div><b>${esc(c.name)}</b><small>${esc(c.phone||'')}</small></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteCustomer('${c.id}')">Delete</button></div>`).join('')||'<div class="empty">No customers yet.</div>'}
-async function addCustomer(){if(!cName.value.trim())return alert('Enter a customer name.');let c={id:crypto.randomUUID(),name:cName.value.trim(),phone:cPhone.value.trim(),address:cAddress.value.trim()};await put('customers',c);cCache.push(c);cName.value='';cPhone.value='';cAddress.value='';drawCustomers()}
+async function addCustomer(){if(!cName.value.trim())return alert('Enter a customer name.');let c={id:crypto.randomUUID(),name:cName.value.trim(),phone:cPhone.value.trim(),address:cAddress.value.trim(),businessId:await getActiveBusinessId()};await put('customers',c);cCache.push(c);cName.value='';cPhone.value='';cAddress.value='';drawCustomers()}
 async function deleteCustomer(id){if(!confirm('Delete this customer?'))return;await del('customers',id);cCache=cCache.filter(x=>x.id!==id);drawCustomers()}
 
 /* ---------------- Expense Types ---------------- */
-async function showExpenseTypes(){let t=(await all('expenseTypes')).filter(x=>x.kind!=='personal');openModal(`<h2>Expense Types</h2><div class="notice">Categories for Business Expenses. For personal spending categories, use Personal Categories instead.</div><div class="field"><label>Type name</label><input id="tName" placeholder="Fuel, transport, tools..."></div><button class="btn accent full" onclick="addExpenseType()">＋ Add Type</button><div class="sectionhead" style="margin-top:18px"><h3>All types</h3></div><div class="list" id="tList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.tCache=t;drawExpenseTypes()}
+async function showExpenseTypes(){let t=await businessExpenseTypes();openModal(`<h2>Expense Types</h2><div class="notice">Categories for Business Expenses. For personal spending categories, use Personal Categories instead.</div><div class="field"><label>Type name</label><input id="tName" placeholder="Fuel, transport, tools..."></div><button class="btn accent full" onclick="addExpenseType()">＋ Add Type</button><div class="sectionhead" style="margin-top:18px"><h3>All types</h3></div><div class="list" id="tList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.tCache=t;drawExpenseTypes()}
 function drawExpenseTypes(){tList.innerHTML=tCache.sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<div class="row-item"><div><b>${esc(t.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteExpenseType('${t.id}')">Delete</button></div>`).join('')||'<div class="empty">No expense types yet.</div>'}
-async function addExpenseType(){if(!tName.value.trim())return alert('Enter a type name.');let t={id:crypto.randomUUID(),name:tName.value.trim(),kind:'business'};await put('expenseTypes',t);tCache.push(t);tName.value='';drawExpenseTypes()}
+async function addExpenseType(){if(!tName.value.trim())return alert('Enter a type name.');let t={id:crypto.randomUUID(),name:tName.value.trim(),kind:'business',businessId:await getActiveBusinessId()};await put('expenseTypes',t);tCache.push(t);tName.value='';drawExpenseTypes()}
 async function deleteExpenseType(id){if(!confirm('Delete this expense type?'))return;await del('expenseTypes',id);tCache=tCache.filter(x=>x.id!==id);drawExpenseTypes()}
 
 /* ---------------- Personal Categories ---------------- */
@@ -528,50 +740,106 @@ async function addPersonalCategory(){if(!ptName.value.trim())return alert('Enter
 async function deletePersonalCategory(id){if(!confirm('Delete this category?'))return;await del('expenseTypes',id);ptCache=ptCache.filter(x=>x.id!==id);drawPersonalCategories()}
 
 /* ---------------- Invoices ---------------- */
+function invoiceStatusStamp(i){
+  if(i.status==='void') return {cls:'void',label:'Void'};
+  const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0), isPaid=paid>=i.total&&i.total>0;
+  if(isPaid) return {cls:'paid',label:'Paid'};
+  const today=new Date().toISOString().slice(0,10);
+  if(i.dueDate && i.dueDate<today) return {cls:'overdue',label:'Overdue'};
+  if(i.dueDate){const days=Math.ceil((new Date(i.dueDate)-new Date(today))/86400000);if(days>=0&&days<=3)return {cls:'duesoon',label:'Due in '+days+'d'};}
+  return {cls:'due',label:'Balance '+money(i.total-paid)};
+}
 async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextNumber||1;b.nextNumber=n+1;await put('business',b);return String(n).padStart(4,'0')}
 async function openInvoice(id){
- let b=await getBusiness(),allInv=await all('invoices'),inv=id?allInv.find(x=>x.id===id):null,customers=await all('customers');
- inv=inv||{id:crypto.randomUUID(),number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
+ let b=await getBusiness(),allInv=await bizInvoices(),inv=id?allInv.find(x=>x.id===id):null,customers=await bizCustomers();
+ inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
  window.editing=inv;window.items=(inv.items||[]).map(x=>({...x}));window.invoiceExpenses=(await all('expenses')).filter(x=>x.invoiceId===inv.id);
- const custOpts='<option value="">Select saved customer</option>'+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
- openModal(`<h2>${id?'Edit Invoice':'New Invoice'}</h2>
- <div class="row2"><div class="field"><label>Invoice number</label><input id="fNo" value="${esc(inv.number)}"></div><div class="field"><label>Invoice date</label><input id="fDate" type="date" value="${inv.date}"></div></div>
- <div class="row2"><div class="field"><label>Customer</label><select id="fCustomerSelect" onchange="selectCustomer(this.value)">${custOpts}</select></div><div class="field"><label>Due date</label><input id="fDue" type="date" value="${inv.dueDate||''}"></div></div>
- <div class="row2"><div class="field"><label>Customer phone</label><input id="fPhone" value="${esc(inv.phone)}" readonly></div><div class="field"><label>Customer address</label><input id="fAddress" value="${esc(inv.address)}" readonly></div></div>
- <div class="field"><label>Job details</label><input id="fVehicle" value="${esc(inv.vehicleDetails||'')}" placeholder="Optional — job reference, service description, etc."></div>
- <div class="field"><label>Header note</label><textarea id="fHeader">${esc(inv.headerComment||'')}</textarea></div>
- <div class="sectionhead"><h3>Sales lines</h3><button class="btn secondary" onclick="addLine()">＋ Add</button></div><div id="lines"></div>
- <div class="field"><label>Note below sales lines</label><textarea id="fSales">${esc(inv.salesComment||'')}</textarea></div>
- <div class="field"><label>Discount</label><input id="fDiscount" type="number" min="0" value="${inv.discount||0}" oninput="updateInvoiceTotal()"></div>
- <div class="sectionhead"><h3>Job expenses</h3><button class="btn secondary" onclick="addInvoiceExpense()">＋ Add</button></div>
+ const isVoid=inv.status==='void';
+ const isSalary=b.type==='salary';
+ const custLabel=isSalary?'Employer':'Customer';
+ const custOpts=`<option value="">Select saved ${custLabel.toLowerCase()}</option>`+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
+ openModal(`<h2>${id?(isSalary?'Edit Salary Payment':'Edit Invoice'):(isSalary?'Log Salary Payment':'New Invoice')}</h2>
+ ${isSalary?'<div class="notice">This entry is treated like an invoice under the hood, so it shows up in Reports, Tax Report, and your bank balance the same way regular sales do.</div>':''}
+ ${isVoid?`<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)"><b>This ${isSalary?'entry':'invoice'} is void.</b> It's kept for your records and numbering, but excluded from sales, profit, and reports.</div>`:''}
+ <div class="row2"><div class="field"><label>${isSalary?'Reference':'Invoice'} number</label><input id="fNo" value="${esc(inv.number)}" ${isVoid?'disabled':''}></div><div class="field"><label>${isSalary?'Pay':'Invoice'} date</label><input id="fDate" type="date" value="${inv.date}" ${isVoid?'disabled':''}></div></div>
+ <div class="row2"><div class="field"><label>${custLabel}</label><select id="fCustomerSelect" onchange="selectCustomer(this.value)" ${isVoid?'disabled':''}>${custOpts}</select></div><div class="field"><label>Due date</label><input id="fDue" type="date" value="${inv.dueDate||''}" ${isVoid?'disabled':''}></div></div>
+ <div class="row2"><div class="field"><label>${custLabel} phone</label><input id="fPhone" value="${esc(inv.phone)}" readonly></div><div class="field"><label>${custLabel} address</label><input id="fAddress" value="${esc(inv.address)}" readonly></div></div>
+ <div class="field"><label>Job details</label><input id="fVehicle" value="${esc(inv.vehicleDetails||'')}" placeholder="Optional — job reference, service description, etc." ${isVoid?'disabled':''}></div>
+ <div class="field"><label>Header note</label><textarea id="fHeader" ${isVoid?'disabled':''}>${esc(inv.headerComment||'')}</textarea></div>
+ <div class="sectionhead"><h3>Sales lines</h3>${isVoid?'':'<button class="btn secondary" onclick="addLine()">＋ Add</button>'}</div><div id="lines"></div>
+ <div class="field"><label>Note below sales lines</label><textarea id="fSales" ${isVoid?'disabled':''}>${esc(inv.salesComment||'')}</textarea></div>
+ <div class="field"><label>Discount</label><input id="fDiscount" type="number" min="0" value="${inv.discount||0}" oninput="updateInvoiceTotal()" ${isVoid?'disabled':''}></div>
+ <div class="sectionhead"><h3>Job expenses</h3>${isVoid?'':'<button class="btn secondary" onclick="addInvoiceExpense()">＋ Add</button>'}</div>
  <div class="notice">Expenses here are for your profit reporting only — they never appear on the customer's invoice.</div><div id="invoiceExpenseLines"></div>
  <div class="totalBox"><div class="totalRow"><span>Sales</span><b id="lineTotal">—</b></div><div class="totalRow"><span>Discount</span><b id="discTotal">—</b></div><div class="totalRow"><span>Job expenses</span><b id="invExpTotal">—</b></div><div class="totalRow grand"><span>Customer total</span><b id="grandTotal">—</b></div></div>
- <button class="btn primary full" onclick="saveInvoice()">Save Invoice</button>${id?`<button class="btn secondary full" onclick="payments('${id}')">Payments</button><button class="btn secondary full" onclick="previewInvoice('${id}')">Preview & PDF</button>`:''}<button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ ${isVoid?'':'<button class="btn primary full" onclick="saveInvoice()">Save Invoice</button>'}${id?`<button class="btn secondary full" onclick="payments('${id}')">Payments</button><button class="btn secondary full" onclick="previewInvoice('${id}')">Preview & PDF</button><button class="btn secondary full" onclick="duplicateInvoice('${id}')">Duplicate</button>${isVoid?`<button class="btn secondary full" onclick="restoreInvoice('${id}')">Restore (Un-void)</button>`:`<button class="btn danger full" onclick="voidInvoiceConfirm('${id}')">Void Invoice</button>`}`:''}<button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
  window.selectedCustomerId=inv.customerId||'';if(fCustomerSelect)fCustomerSelect.value=window.selectedCustomerId;if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();updateInvoiceTotal();
 }
-async function selectCustomer(id){window.selectedCustomerId=id;const cs=await all('customers'),c=cs.find(x=>x.id===id);fPhone.value=c?.phone||'';fAddress.value=c?.address||'';}
-async function drawInvoiceExpenses(){const types=await all('expenseTypes'),opts='<option value="">Select expense type</option>'+types.sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');invoiceExpenseLines.innerHTML=invoiceExpenses.map((x,n)=>`<div class="line"><select onchange="invoiceExpenses[${n}].typeId=this.value">${opts}</select><input type="number" min="0" placeholder="Amount" value="${x.amount||0}" oninput="invoiceExpenses[${n}].amount=Number(this.value);updateInvoiceTotal()"><input placeholder="Note" value="${esc(x.description||'')}" oninput="invoiceExpenses[${n}].description=this.value"><button class="btn danger" onclick="invoiceExpenses.splice(${n},1);drawInvoiceExpenses();updateInvoiceTotal()">×</button></div>`).join('');invoiceExpenses.forEach((x,n)=>{let q=invoiceExpenseLines.querySelectorAll('select')[n];if(q)q.value=x.typeId||'';});}
+async function selectCustomer(id){window.selectedCustomerId=id;const cs=await bizCustomers(),c=cs.find(x=>x.id===id);fPhone.value=c?.phone||'';fAddress.value=c?.address||'';}
+async function drawInvoiceExpenses(){const types=await businessExpenseTypes(),opts='<option value="">Select expense type</option>'+types.sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');invoiceExpenseLines.innerHTML=invoiceExpenses.map((x,n)=>`<div class="line"><select onchange="invoiceExpenses[${n}].typeId=this.value">${opts}</select><input type="number" min="0" placeholder="Amount" value="${x.amount||0}" oninput="invoiceExpenses[${n}].amount=Number(this.value);updateInvoiceTotal()"><input placeholder="Note" value="${esc(x.description||'')}" oninput="invoiceExpenses[${n}].description=this.value"><button class="btn danger" onclick="invoiceExpenses.splice(${n},1);drawInvoiceExpenses();updateInvoiceTotal()">×</button></div>`).join('');invoiceExpenses.forEach((x,n)=>{let q=invoiceExpenseLines.querySelectorAll('select')[n];if(q)q.value=x.typeId||'';});}
 async function addInvoiceExpense(){invoiceExpenses.push({id:crypto.randomUUID(),invoiceId:editing.id,typeId:'',amount:0,description:''});await drawInvoiceExpenses();updateInvoiceTotal();}
 function invoiceExpenseAmount(){return invoiceExpenses.reduce((a,x)=>a+(Number(x.amount)||0),0);}
 async function drawLines(){
- const products=await all('products');
+ const products=await bizProducts();
  const opts='<option value="">Select product / service</option>'+products.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
  lines.innerHTML=items.map((x,n)=>`<div class="line"><select onchange="selectProduct(${n},this.value)">${opts}</select><input type="number" min="0" value="${x.qty}" oninput="items[${n}].qty=Number(this.value);updateInvoiceTotal()"><input type="number" min="0" value="${x.price}" title="Editable — overrides the catalogue price for this invoice only" oninput="items[${n}].price=Number(this.value);updateInvoiceTotal()"><button class="btn danger" onclick="items.splice(${n},1);drawLines();updateInvoiceTotal()">×</button><input class="comment" placeholder="Line comment (optional)" value="${esc(x.comment||'')}" oninput="items[${n}].comment=this.value"></div>`).join('');
  items.forEach((x,n)=>{const sel=lines.querySelectorAll('select')[n];if(sel)sel.value=x.productId||''});
 }
-async function selectProduct(n,id){const products=await all('products'),p=products.find(x=>x.id===id);if(!p)return;items[n].productId=p.id;items[n].description=p.name;items[n].price=Number(p.price)||0;await drawLines();updateInvoiceTotal()}
+async function selectProduct(n,id){const products=await bizProducts(),p=products.find(x=>x.id===id);if(!p)return;items[n].productId=p.id;items[n].description=p.name;items[n].price=Number(p.price)||0;await drawLines();updateInvoiceTotal()}
 function addLine(){items.push({productId:'',description:'',qty:1,price:0,comment:''});drawLines()}
 function updateInvoiceTotal(){let s=items.reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0),d=Number(fDiscount?.value||0),e=invoiceExpenseAmount();lineTotal.textContent=money(s);discTotal.textContent=money(d);if(invExpTotal)invExpTotal.textContent=money(e);grandTotal.textContent=money(Math.max(0,s-d))}
-async function saveInvoice(){let sales=items.reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0),discount=Number(fDiscount.value||0),customers=await all('customers'),selected=customers.find(c=>c.id===window.selectedCustomerId);if(!selected)return alert('Please select a saved customer.');if(!fNo.value.trim())return alert('Enter an invoice number.');let i={...editing,number:fNo.value.trim(),date:fDate.value,dueDate:fDue.value,customerId:selected.id,customer:selected.name,phone:fPhone.value.trim(),address:fAddress.value.trim(),vehicleDetails:fVehicle.value.trim(),headerComment:fHeader.value,salesComment:fSales.value,discount,items:items.map(x=>({...x})),total:Math.max(0,sales-discount)};await put('invoices',i);for(const x of (await all('expenses')).filter(x=>x.invoiceId===i.id))await del('expenses',x.id);const types=await all('expenseTypes');for(const x of invoiceExpenses.filter(x=>(Number(x.amount)||0)>0)){const t=types.find(q=>q.id===x.typeId);await put('expenses',{id:x.id,invoiceId:i.id,date:i.date,category:t?.name||'Invoice Expense',amount:Number(x.amount)||0,description:x.description||'',typeId:x.typeId||'',kind:'business'});}closeModal();await refresh();}
-async function showInvoices(){let inv=await all('invoices');openModal(`<h2>Invoices</h2><div class="toolbar"><input id="iq" placeholder="Search invoice number or customer" oninput="drawInvoiceSearch()"></div><div id="ilist"></div>`);window.invoiceCache=inv;drawInvoiceSearch()}
-function drawInvoiceSearch(){let q=(iq.value||'').toLowerCase(),arr=invoiceCache.filter(i=>(i.number+' '+i.customer).toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date));ilist.innerHTML=arr.map(i=>`<div class="row-item"><div><b>${esc(i.number)}</b><small>${esc(i.customer||'Walk-in')} · ${esc(i.date)}</small></div><div class="row-right"><strong class="money">${money(i.total)}</strong><button class="btn secondary" style="padding:6px 10px;font-size:12px" onclick="openInvoice('${i.id}')">Open</button></div></div>`).join('')||'<div class="empty">No invoices found.</div>'}
+async function saveInvoice(){
+ let sales=items.reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0),discount=Number(fDiscount.value||0),customers=await bizCustomers(),selected=customers.find(c=>c.id===window.selectedCustomerId);
+ if(!selected)return alert('Please select a saved customer.');
+ if(!fNo.value.trim())return alert('Enter an invoice number.');
+ const bizId=await getActiveBusinessId();
+ const siblings=(await bizInvoices()).filter(x=>x.id!==editing.id && x.status!=='void' && x.number===fNo.value.trim());
+ if(siblings.length && !confirm(`Invoice number "${fNo.value.trim()}" is already used by another invoice. Save anyway?`)) return;
+ let i={...editing,businessId:bizId,status:editing.status||'active',number:fNo.value.trim(),date:fDate.value,dueDate:fDue.value,customerId:selected.id,customer:selected.name,phone:fPhone.value.trim(),address:fAddress.value.trim(),vehicleDetails:fVehicle.value.trim(),headerComment:fHeader.value,salesComment:fSales.value,discount,items:items.map(x=>({...x})),total:Math.max(0,sales-discount)};
+ await put('invoices',i);
+ for(const x of (await all('expenses')).filter(x=>x.invoiceId===i.id))await del('expenses',x.id);
+ const types=await businessExpenseTypes();
+ for(const x of invoiceExpenses.filter(x=>(Number(x.amount)||0)>0)){const t=types.find(q=>q.id===x.typeId);await put('expenses',{id:x.id,invoiceId:i.id,date:i.date,category:t?.name||'Invoice Expense',amount:Number(x.amount)||0,description:x.description||'',typeId:x.typeId||'',kind:'business',businessId:bizId});}
+ closeModal();await refresh();
+}
+async function voidInvoiceConfirm(id){if(!confirm('Void this invoice? It will stay in your records for numbering and history, but be removed from sales, profit, and reports.'))return;const inv=(await all('invoices')).find(x=>x.id===id);inv.status='void';await put('invoices',inv);closeModal();await refresh();}
+async function restoreInvoice(id){const inv=(await all('invoices')).find(x=>x.id===id);inv.status='active';await put('invoices',inv);closeModal();await openInvoice(id);}
+async function duplicateInvoice(id){
+ const src=(await all('invoices')).find(x=>x.id===id); if(!src) return;
+ const newNumber=await nextNo();
+ const dup={...src,id:crypto.randomUUID(),status:'active',number:newNumber||(src.number+'-copy'),date:new Date().toISOString().slice(0,10),dueDate:'',payments:[],items:src.items.map(x=>({...x}))};
+ await put('invoices',dup); closeModal(); await openInvoice(dup.id);
+}
+async function showInvoices(){
+ let inv=await bizInvoices();
+ openModal(`<h2>Invoices</h2><div class="toolbar"><input id="iq" placeholder="Search invoice number or customer" oninput="drawInvoiceSearch()"></div>
+ <div class="row2"><div class="field"><label>Status</label><select id="ifStatus" onchange="drawInvoiceSearch()"><option value="">All</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="overdue">Overdue</option><option value="void">Void</option></select></div><div class="field"><label>From date</label><input id="ifFrom" type="date" onchange="drawInvoiceSearch()"></div></div>
+ <div id="ilist"></div>`);
+ window.invoiceCache=inv;drawInvoiceSearch();
+}
+function drawInvoiceSearch(){
+ let q=(iq.value||'').toLowerCase(),status=ifStatus.value,from=ifFrom.value,today=new Date().toISOString().slice(0,10);
+ let arr=invoiceCache.filter(i=>{
+  if(!(i.number+' '+i.customer).toLowerCase().includes(q))return false;
+  if(from && i.date<from)return false;
+  if(status){
+   const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0),isPaid=paid>=i.total&&i.total>0,isVoid=i.status==='void',isOverdue=!isVoid&&!isPaid&&i.dueDate&&i.dueDate<today;
+   if(status==='paid'&&!isPaid)return false;
+   if(status==='unpaid'&&(isPaid||isVoid))return false;
+   if(status==='overdue'&&!isOverdue)return false;
+   if(status==='void'&&!isVoid)return false;
+  }
+  return true;
+ }).sort((a,b)=>b.date.localeCompare(a.date));
+ ilist.innerHTML=arr.map(i=>{const st=invoiceStatusStamp(i);return `<div class="row-item"><div><b>${esc(i.number)}</b><small>${esc(i.customer||'Walk-in')} · ${esc(i.date)}</small></div><div class="row-right"><strong class="money">${money(i.total)}</strong><span class="stamp ${st.cls}">${st.label}</span><button class="btn secondary" style="padding:6px 10px;font-size:12px;margin-top:4px" onclick="openInvoice('${i.id}')">Open</button></div></div>`}).join('')||'<div class="empty">No invoices found.</div>';
+}
 async function payments(id){let i=(await all('invoices')).find(x=>x.id===id),paid=i.payments.reduce((a,p)=>a+p.amount,0);openModal(`<h2>Payments · ${esc(i.number)}</h2><div class="totalBox"><div class="totalRow"><span>Invoice total</span><b>${money(i.total)}</b></div><div class="totalRow"><span>Paid</span><b>${money(paid)}</b></div><div class="totalRow grand"><span>Balance</span><b>${money(i.total-paid)}</b></div></div><div class="row2"><div class="field"><label>Amount</label><input id="pa" type="number"></div><div class="field"><label>Date</label><input id="pd" type="date" value="${new Date().toISOString().slice(0,10)}"></div></div><div class="field"><label>Method</label><select id="pm"><option>Cash</option><option>Bank Transfer</option><option>POS</option><option>Card</option><option>Other</option></select></div><button class="btn primary full" onclick="addPayment('${id}')">Save Payment</button>${i.payments.length?'<h3 style="font-size:14px;margin-top:16px">Payment history</h3>'+i.payments.map(p=>`<div class="row-item"><div><b>${esc(p.method)}</b><small>${p.date}</small></div><strong class="money">${money(p.amount)}</strong></div>`).join(''):'<div class="empty">No payments recorded.</div>'}<button class="btn secondary full" onclick="openInvoice('${id}')">Back</button>`)}
 async function addPayment(id){let a=Number(pa.value||0);if(a<=0)return alert('Enter an amount.');let i=(await all('invoices')).find(x=>x.id===id);i.payments.push({id:crypto.randomUUID(),amount:a,date:pd.value,method:pm.value});await put('invoices',i);await payments(id);refresh()}
 
 /* ---------------- Expenses ---------------- */
-async function showExpenses(){let ex=(await all('expenses')).filter(e=>e.kind!=='personal'),inv=await all('invoices');openModal(`<h2>Business Expenses</h2><div class="notice">These reduce business profit and count in Reports. For non-business spending, use Personal Expenses instead.</div><div class="field"><label>Date</label><input id="ed" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="row2"><div class="field"><label>Category</label><input id="ec" placeholder="Fuel, transport..."></div><div class="field"><label>Amount</label><input id="ea" type="number"></div></div><div class="field"><label>Description</label><input id="ex"></div><div class="field"><label>Linked invoice (optional)</label><select id="ei"><option value="">None</option>${inv.map(i=>`<option value="${i.id}">${esc(i.number)}</option>`).join('')}</select></div><button class="btn primary full" onclick="addExpense()">Save Expense</button><h3 style="font-size:14px;margin-top:16px">Recorded expenses</h3><div id="elist"></div>`);window.expCache=ex;drawExpenses()}
+async function showExpenses(){let ex=await businessExpenses(),inv=await bizInvoices();openModal(`<h2>Business Expenses</h2><div class="notice">These reduce business profit and count in Reports. For non-business spending, use Personal Expenses instead.</div><div class="field"><label>Date</label><input id="ed" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="row2"><div class="field"><label>Category</label><input id="ec" placeholder="Fuel, transport..."></div><div class="field"><label>Amount</label><input id="ea" type="number"></div></div><div class="field"><label>Description</label><input id="ex"></div><div class="field"><label>Linked invoice (optional)</label><select id="ei"><option value="">None</option>${inv.map(i=>`<option value="${i.id}">${esc(i.number)}</option>`).join('')}</select></div><button class="btn primary full" onclick="addExpense()">Save Expense</button><h3 style="font-size:14px;margin-top:16px">Recorded expenses</h3><div id="elist"></div>`);window.expCache=ex;drawExpenses()}
 function drawExpenses(){elist.innerHTML=expCache.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="row-item"><div><b>${esc(e.category||'Expense')}</b><small>${e.date} · ${esc(e.description)}</small></div><div class="row-right"><strong class="money">${money(e.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteExpense('${e.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No expenses recorded.</div>'}
-async function addExpense(){let a=Number(ea.value||0);if(a<=0)return alert('Enter an amount.');let e={id:crypto.randomUUID(),date:ed.value,category:ec.value,amount:a,description:ex.value,invoiceId:ei.value,kind:'business'};await put('expenses',e);expCache.push(e);drawExpenses();refresh()}
+async function addExpense(){let a=Number(ea.value||0);if(a<=0)return alert('Enter an amount.');let e={id:crypto.randomUUID(),date:ed.value,category:ec.value,amount:a,description:ex.value,invoiceId:ei.value,kind:'business',businessId:await getActiveBusinessId()};await put('expenses',e);expCache.push(e);drawExpenses();refresh()}
 async function deleteExpense(id){if(!confirm('Delete this expense?'))return;await del('expenses',id);expCache=expCache.filter(x=>x.id!==id);drawExpenses();refresh()}
 
 /* ---------------- Personal Expenses (kept separate from business books) ---------------- */
@@ -580,7 +848,54 @@ function drawPersonalExpenses(){pelist.innerHTML=pexpCache.sort((a,b)=>b.date.lo
 async function addPersonalExpense(){let a=Number(pea.value||0);if(a<=0)return alert('Enter an amount.');if(!pec.value)return alert('Select a category.');let e={id:crypto.randomUUID(),date:ped.value,category:pec.value,amount:a,description:pex.value,invoiceId:'',kind:'personal'};await put('expenses',e);pexpCache.push(e);drawPersonalExpenses();refresh()}
 async function deletePersonalExpense(id){if(!confirm('Delete this expense?'))return;await del('expenses',id);pexpCache=pexpCache.filter(x=>x.id!==id);drawPersonalExpenses();refresh()}
 
+/* ---------------- Other Income (gifts, inheritance, dividends, rent, etc.) ----------------
+   Global, like Personal Expenses — this money isn't tied to any one business. It
+   adds to the combined bank balance and is broken out separately in the Tax
+   Report since gifts/inheritance are typically taxed differently from dividends
+   or rental income. ---------------- */
+const DEFAULT_INCOME_CATEGORIES=[{name:'Cash Gift',taxable:false},{name:'Inheritance',taxable:false},{name:'Investment Dividend',taxable:true},{name:'Rental Income',taxable:true},{name:'Interest Income',taxable:true},{name:'Other',taxable:true}];
+async function ensureIncomeCategorySeed(){
+ let existing=(await all('expenseTypes')).filter(x=>x.kind==='income');
+ if(!existing.length){for(const c of DEFAULT_INCOME_CATEGORIES)await put('expenseTypes',{id:crypto.randomUUID(),name:c.name,kind:'income',taxable:c.taxable},true);}
+}
+async function showIncomeCategories(){
+ await ensureIncomeCategorySeed();
+ let t=(await all('expenseTypes')).filter(x=>x.kind==='income');
+ openModal(`<h2>Income Categories</h2><div class="notice">Mark each category taxable or not — gifts and inheritance are usually not taxable income; dividends, rent, and interest usually are. Check with your tax adviser for your situation.</div>
+ <div class="row2"><div class="field"><label>Category name</label><input id="itName" placeholder="e.g. Freelance Fee"></div><div class="field"><label>Taxable?</label><select id="itTaxable"><option value="1">Yes</option><option value="0">No</option></select></div></div>
+ <button class="btn accent full" onclick="addIncomeCategory()">＋ Add Category</button>
+ <div class="sectionhead" style="margin-top:18px"><h3>All categories</h3></div><div class="list" id="itList"></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.itCache=t; drawIncomeCategories();
+}
+function drawIncomeCategories(){itList.innerHTML=itCache.sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<div class="row-item"><div><b>${esc(t.name)}</b><small>${t.taxable?'Taxable':'Not taxable'}</small></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteIncomeCategory('${t.id}')">Delete</button></div>`).join('')||'<div class="empty">No categories yet.</div>'}
+async function addIncomeCategory(){if(!itName.value.trim())return alert('Enter a category name.');let t={id:crypto.randomUUID(),name:itName.value.trim(),kind:'income',taxable:itTaxable.value==='1'};await put('expenseTypes',t);itCache.push(t);itName.value='';drawIncomeCategories()}
+async function deleteIncomeCategory(id){if(!confirm('Delete this category?'))return;await del('expenseTypes',id);itCache=itCache.filter(x=>x.id!==id);drawIncomeCategories()}
+
+async function showOtherIncome(){
+ await ensureIncomeCategorySeed();
+ let inc=await all('otherIncome'), cats=(await all('expenseTypes')).filter(x=>x.kind==='income').sort((a,b)=>a.name.localeCompare(b.name));
+ const opts='<option value="">Select category</option>'+cats.map(c=>`<option value="${esc(c.name)}" data-taxable="${c.taxable?1:0}">${esc(c.name)}${c.taxable?'':' (not taxable)'}</option>`).join('');
+ openModal(`<h2>Other Income</h2><div class="notice">Cash gifts, inheritance, investment dividends, rental income, and similar money coming in outside your regular business sales — cuts across all your businesses, and adds to your combined bank balance.</div>
+ <div class="field"><label>Date</label><input id="oid" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+ <div class="row2"><div class="field"><label>Category</label><select id="oic">${opts}</select></div><div class="field"><label>Amount</label><input id="oia" type="number"></div></div>
+ <div class="field"><label>Description / source</label><input id="oix" placeholder="e.g. From uncle Bayo, or 14 Marina Street rent"></div>
+ <button class="btn accent full" onclick="addOtherIncome()">Save Income</button><button class="btn secondary full" onclick="showIncomeCategories()">Manage Categories</button>
+ <h3 style="font-size:14px;margin-top:16px">Recorded income</h3><div id="oilist"></div>`);
+ window.oiCache=inc; drawOtherIncome();
+}
+function drawOtherIncome(){oilist.innerHTML=oiCache.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="row-item"><div><b>${esc(e.category||'Income')}</b><small>${e.date} · ${esc(e.description)}</small></div><div class="row-right"><strong class="money">${money(e.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteOtherIncome('${e.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No other income recorded.</div>'}
+async function addOtherIncome(){
+ let a=Number(oia.value||0); if(a<=0)return alert('Enter an amount.');
+ if(!oic.value)return alert('Select a category.');
+ const taxable=oic.selectedOptions[0].dataset.taxable==='1';
+ let e={id:crypto.randomUUID(),date:oid.value,category:oic.value,amount:a,description:oix.value,taxable};
+ await put('otherIncome',e); oiCache.push(e); drawOtherIncome(); refresh();
+}
+async function deleteOtherIncome(id){if(!confirm('Delete this income record?'))return;await del('otherIncome',id);oiCache=oiCache.filter(x=>x.id!==id);drawOtherIncome();refresh()}
+
 /* ---------------- Opening Balances (migrating pre-app history) ---------------- */
+
 async function showOpeningBalances(){
  let b=await getBusiness();
  openModal(`<h2>Opening Balances</h2><div class="notice">One-time figures for the business you were already running before this app — so your totals and profit/loss reflect your real history, not just what's been entered here. Leave any field at 0 if you're starting completely fresh.</div>
@@ -593,14 +908,236 @@ async function showOpeningBalances(){
 }
 async function saveOpeningBalances(){let b=await getBusiness();b.openingAsOfDate=oDate.value;b.openingRevenue=Number(oRev.value)||0;b.openingExpenses=Number(oExp.value)||0;b.openingBalance=Number(oBal.value)||0;await put('business',b);closeModal();await refresh();}
 
+/* ---------------- Tax Report & Government Submissions ---------------- */
+async function showTaxReport(){
+ const curYear=new Date().getFullYear();
+ let yearOpts='';
+ for(let y=2026;y<=curYear;y++) yearOpts+=`<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`;
+ openModal(`<h2>Tax Report</h2>
+ <div class="notice">Pulls together every business you've set up, plus your personal expenses, into the same combined bank balance shown everywhere else in the app — so what you submit matches what you see.</div>
+ <div id="taxCurrencyWarning"></div>
+ <div class="field"><label>Tax year</label><select id="taxYear" onchange="loadTaxReport()">${yearOpts}</select></div>
+ <div id="taxReportBody"></div>
+ <div class="row2" style="margin-top:12px"><button class="btn secondary full" onclick="downloadTaxReportPDF()">Save PDF</button><button class="btn secondary full" onclick="exportTaxReportCSV()">Export CSV</button></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ await loadTaxReport();
+}
+async function loadTaxReport(){
+ const year=Number(taxYear.value)||new Date().getFullYear();
+ const curYear=new Date().getFullYear();
+ const from=year+'-01-01', to=year+'-12-31';
+ const businesses=await all('business');
+ const currencies=new Set(businesses.map(b=>b.currency||'NGN'));
+ taxCurrencyWarning.innerHTML = currencies.size>1 ? `<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">Your businesses use different currencies (${[...currencies].join(', ')}) — the combined totals below add these together directly, which isn't meaningful across currencies. Treat the per-business figures as the accurate ones.</div>` : '';
+ let rows='', totalRevenue=0, totalExpenses=0, totalProfit=0;
+ for(const b of businesses){
+  const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
+  const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
+  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal;
+  totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit;
+  rows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':''}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}</small></div></div>`;
+ }
+ const personalExp=(await all('expenses')).filter(e=>e.kind==='personal' && e.date>=from && e.date<=to).reduce((a,e)=>a+e.amount,0);
+ const yearIncome=(await all('otherIncome')).filter(e=>e.date>=from && e.date<=to);
+ const taxableIncome=yearIncome.filter(e=>e.taxable).reduce((a,e)=>a+e.amount,0);
+ const nonTaxableIncome=yearIncome.filter(e=>!e.taxable).reduce((a,e)=>a+e.amount,0);
+ const globalBalance=await getGlobalBankBalance();
+ const submission=(await all('taxSubmissions')).find(t=>t.year===year);
+ taxReportBody.innerHTML=`
+ <h3 style="font-size:14px;margin-top:16px">Per-business (${year})</h3>
+ <div class="list">${rows||'<div class="empty">No businesses.</div>'}</div>
+ <div class="totalBox"><div class="totalRow"><span>Combined revenue</span><b>${money(totalRevenue)}</b></div><div class="totalRow"><span>Combined business expenses</span><b>${money(totalExpenses)}</b></div><div class="totalRow"><span>Personal expenses (${year})</span><b>${money(personalExp)}</b></div><div class="totalRow grand"><span>Combined profit before personal spend</span><b>${money(totalProfit)}</b></div></div>
+ <h3 style="font-size:14px;margin-top:16px">Other Income (${year})</h3>
+ <div class="totalBox"><div class="totalRow"><span>Taxable (dividends, rent, interest, etc.)</span><b>${money(taxableIncome)}</b></div><div class="totalRow"><span>Not taxable (gifts, inheritance, etc.)</span><b>${money(nonTaxableIncome)}</b></div></div>
+ <h3 style="font-size:14px;margin-top:16px">Current Bank Balance (all businesses)</h3>
+ <div class="totalBox"><div class="totalRow grand"><span>As of today</span><b>${money(globalBalance)}</b></div></div>
+ <h3 style="font-size:14px;margin-top:16px">Government Submission — ${year}</h3>
+ ${submission ? `<div class="notice"><b>Marked submitted.</b> ${money(submission.amountPaid)} paid on ${esc(submission.dateSubmitted)}.${submission.note?' Note: '+esc(submission.note):''}</div><button class="btn secondary full" onclick="unmarkTaxSubmission('${submission.id}')">Undo Submission Mark</button>`
+  : `<div class="notice">Not yet marked as submitted for ${year}.</div><button class="btn accent full" onclick="markTaxSubmission(${year})">Mark ${year} as Submitted to Government</button>`}
+ <h3 style="font-size:14px;margin-top:18px">Submission History</h3>
+ <div class="list" id="taxHistoryList"></div>`;
+ const allSubs=await all('taxSubmissions');
+ let histRows='';
+ for(let y=2026;y<=curYear;y++){
+  const s=allSubs.find(x=>x.year===y);
+  histRows+=`<div class="row-item"><div><b>${y}</b></div><div class="row-right">${s?`<span class="stamp paid">Submitted ${esc(s.dateSubmitted)}</span>`:`<span class="stamp overdue">Not submitted</span>`}</div></div>`;
+ }
+ taxHistoryList.innerHTML=histRows;
+}
+async function markTaxSubmission(year){
+ const amt=prompt('Amount paid to government for '+year+':');
+ if(amt===null)return;
+ const amount=Number(amt)||0;
+ const date=prompt('Date submitted (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+ if(!date)return;
+ const note=prompt('Optional note (reference number, etc.):')||'';
+ const existing=(await all('taxSubmissions')).find(t=>t.year===year);
+ const rec={id:existing?existing.id:crypto.randomUUID(), year, amountPaid:amount, dateSubmitted:date, note};
+ await put('taxSubmissions',rec);
+ alert(year+' marked as submitted. '+money(amount)+' deducted from your combined bank balance.');
+ await loadTaxReport(); await refresh();
+}
+async function unmarkTaxSubmission(id){
+ if(!confirm('Remove this submission record? This adds the amount back into your bank balance.'))return;
+ await del('taxSubmissions',id);
+ await loadTaxReport(); await refresh();
+}
+async function exportTaxReportCSV(){
+ const year=Number(taxYear.value)||new Date().getFullYear();
+ const from=year+'-01-01', to=year+'-12-31';
+ const businesses=await all('business');
+ const rows=[['Business','Currency','Revenue','Expenses','Profit']];
+ for(const b of businesses){
+  const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
+  const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
+  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0);
+  rows.push([b.name,b.currency||'NGN',rev,expTotal,rev-expTotal]);
+ }
+ downloadCSV(rows,'tax-report-'+year+'.csv');
+}
+async function downloadTaxReportPDF(){
+ if(!window.jspdf){alert('The PDF file writer needs to load from the internet the first time — try again once connected.');return;}
+ const {jsPDF}=window.jspdf;
+ const doc=new jsPDF({unit:'pt',format:'a4'});
+ await doc.html(document.getElementById('taxReportBody'),{x:24,y:24,width:547,windowWidth:800});
+ doc.save('tax-report-'+(taxYear?taxYear.value:new Date().getFullYear())+'.pdf');
+}
+
+/* ---------------- Audit of Me ---------------- */
+async function runAudit(){
+ const findings=[];
+ const businesses=await all('business');
+ const allInvoices=await all('invoices');
+ const allExpenses=await all('expenses');
+ for(const b of businesses){
+  const invs=allInvoices.filter(i=>i.businessId===b.id);
+  const activeInvs=invs.filter(i=>i.status!=='void');
+  const exps=allExpenses.filter(e=>e.kind!=='personal'&&e.businessId===b.id);
+  const nums=activeInvs.map(i=>i.number).filter(n=>/^\d+$/.test(n)).map(Number).sort((a,c)=>a-c);
+  for(let k=1;k<nums.length;k++){
+   if(nums[k]-nums[k-1]>1) findings.push({id:crypto.randomUUID(),category:'Invoice Numbering',severity:'medium',business:b.name,description:`Gap in invoice numbers for ${b.name}: jumps from ${nums[k-1]} to ${nums[k]} — ${nums[k]-nums[k-1]-1} number(s) missing.`});
+  }
+  const amounts=exps.map(e=>e.amount).sort((a,c)=>a-c);
+  const median=amounts.length?amounts[Math.floor(amounts.length/2)]:0;
+  for(const e of exps){
+   if(median>0 && e.amount>median*3 && (!e.description||!e.description.trim())) findings.push({id:crypto.randomUUID(),category:'Large Expense',severity:'high',business:b.name,description:`${b.name}: expense of ${money(e.amount)} on ${e.date} (${e.category||'uncategorized'}) has no description, and is unusually large relative to your typical expenses.`});
+  }
+  for(const i of activeInvs){
+   const subtotal=(i.items||[]).reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0);
+   if(subtotal>0 && (i.discount||0)>subtotal*0.3) findings.push({id:crypto.randomUUID(),category:'Large Discount',severity:'medium',business:b.name,description:`${b.name}: invoice ${i.number} for ${esc(i.customer)} has a discount of ${money(i.discount)}, over 30% of the ${money(subtotal)} subtotal.`});
+  }
+  const today=new Date().toISOString().slice(0,10);
+  for(const i of activeInvs){
+   const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0);
+   if(paid<i.total && i.dueDate && i.dueDate<today){
+    const daysLate=Math.floor((new Date(today)-new Date(i.dueDate))/86400000);
+    if(daysLate>60) findings.push({id:crypto.randomUUID(),category:'Receivables Risk',severity:'medium',business:b.name,description:`${b.name}: invoice ${i.number} for ${esc(i.customer)} is ${daysLate} days overdue with ${money(i.total-paid)} outstanding.`});
+   }
+  }
+  for(const i of invs.filter(x=>x.status==='void')){
+   if(i.total>0) findings.push({id:crypto.randomUUID(),category:'Void Invoice',severity:'low',business:b.name,description:`${b.name}: invoice ${i.number} (${money(i.total)}) was voided. Confirm this wasn't a completed sale.`});
+  }
+  const uncategorized=exps.filter(e=>!e.category||!e.category.trim());
+  if(uncategorized.length) findings.push({id:crypto.randomUUID(),category:'Record Keeping',severity:'low',business:b.name,description:`${b.name}: ${uncategorized.length} expense(s) have no category assigned.`});
+ }
+ const personalExp=allExpenses.filter(e=>e.kind==='personal');
+ const byMonth={};
+ for(const e of personalExp){const m=e.date.slice(0,7);byMonth[m]=(byMonth[m]||0)+e.amount;}
+ const monthVals=Object.values(byMonth);
+ if(monthVals.length>=3){
+  const avg=monthVals.reduce((a,v)=>a+v,0)/monthVals.length;
+  for(const [m,v] of Object.entries(byMonth)){
+   if(avg>0 && v>avg*2.5) findings.push({id:crypto.randomUUID(),category:'Personal Spend',severity:'low',business:'Personal',description:`Personal spending in ${m} (${money(v)}) is well above your typical monthly average of ${money(avg)}.`});
+  }
+ }
+ const curYear=new Date().getFullYear();
+ const subs=await all('taxSubmissions');
+ for(let y=2026;y<curYear;y++){
+  if(!subs.some(s=>s.year===y)) findings.push({id:crypto.randomUUID(),category:'Tax Compliance',severity:'high',business:'All',description:`No government submission has been recorded for ${y}.`});
+ }
+ return findings;
+}
+async function showAudit(){
+ const findings=await runAudit();
+ window.auditFindings=findings;
+ openModal(`<h2>Audit of Me</h2>
+ <div class="notice">A rules-based scan of your invoices, expenses, and tax records — not a substitute for a professional auditor, but a first pass flagging the kinds of things a real audit would ask about. ${findings.length} item(s) found. Add a short explanation for each before generating the final report.</div>
+ <div>${findings.map((f,n)=>`
+  <div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
+   <div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(f.category)}</b><span class="stamp ${f.severity==='high'?'overdue':f.severity==='medium'?'duesoon':'paid'}">${esc(f.severity)}</span></div>
+   <small>${esc(f.description)}</small>
+   <textarea placeholder="Your explanation (optional but recommended)..." oninput="auditFindings[${n}].explanation=this.value" style="min-height:50px;padding:8px;border:1.4px solid var(--line);border-radius:8px;font-size:13px"></textarea>
+  </div>`).join('') || '<div class="empty">No issues found — clean scan.</div>'}
+ </div>
+ <button class="btn primary full" onclick="generateAuditReport()">Generate Final Audit Report</button>
+ <button class="btn secondary full" onclick="showAuditHistory()">Past Audits</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function generateAuditReport(){
+ const findings=window.auditFindings||[];
+ const perBiz=await allBusinessFinancials();
+ const globalBalance=await getGlobalBankBalance();
+ const record={
+  id:crypto.randomUUID(), createdAt:new Date().toISOString(), status:'draft',
+  findings:findings.map(f=>({category:f.category,severity:f.severity,business:f.business,description:f.description,explanation:f.explanation||''})),
+  snapshot:{perBusiness:perBiz.map(f=>({name:f.business.name,currency:f.business.currency,sales:f.sales,expenses:f.expenses,profit:f.lifetimeProfit,bankBalance:f.bankBalance})),globalBankBalance:globalBalance}
+ };
+ await put('auditRecords',record);
+ closeModal();
+ await showAuditReportPreview(record.id);
+}
+async function showAuditReportPreview(id){
+ const rec=(await all('auditRecords')).find(x=>x.id===id);
+ const highCount=rec.findings.filter(f=>f.severity==='high').length;
+ const unexplained=rec.findings.filter(f=>!f.explanation||!f.explanation.trim()).length;
+ openModal(`<h2>Audit Report — ${new Date(rec.createdAt).toLocaleDateString()}</h2>
+ <div class="invoicePreview" id="auditPdfTarget">
+  <h1 style="font-size:20px">Internal Audit Report</h1>
+  <div style="font-size:12px;color:#555">Generated ${new Date(rec.createdAt).toLocaleString()}</div>
+  <b>Summary</b>
+  <table><tr><th>Business</th><th>Currency</th><th>Sales</th><th>Expenses</th><th>Profit</th></tr>
+  ${rec.snapshot.perBusiness.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.currency)}</td><td class="r">${money(p.sales)}</td><td class="r">${money(p.expenses)}</td><td class="r">${money(p.profit)}</td></tr>`).join('')}
+  </table>
+  <div class="totalRow grand" style="margin-top:10px"><span>Combined Bank Balance (all businesses)</span><b>${money(rec.snapshot.globalBankBalance)}</b></div>
+  <b style="margin-top:16px;display:block">Findings (${rec.findings.length})</b>
+  ${rec.findings.map(f=>`<div style="margin-top:8px;padding:8px;background:#f7f7f5;border-radius:6px"><b>${esc(f.category)} (${esc(f.severity)})</b> — ${esc(f.business)}<div style="font-size:12px;margin-top:2px">${esc(f.description)}</div><div style="font-size:12px;margin-top:4px;font-style:italic;color:#555">Explanation: ${f.explanation?esc(f.explanation):'— not provided —'}</div></div>`).join('') || '<div>No findings — clean scan.</div>'}
+  ${rec.status==='stamped' ? `<div style="margin-top:20px;text-align:center"><div class="stamp paid" style="font-size:16px;padding:10px 24px;transform:rotate(-6deg);display:inline-block">AUDITED &amp; SUBMITTED — ${new Date(rec.stampedAt).toLocaleDateString()}</div></div>` : ''}
+ </div>
+ ${rec.status!=='stamped' ? `<div class="notice">${unexplained>0?unexplained+' finding(s) still have no explanation. ':''}${highCount>0?highCount+' high-severity finding(s).':'No high-severity findings.'}</div><button class="btn accent full" onclick="stampAudit('${id}')">Stamp Done &amp; Submitted</button>` : ''}
+ <button class="btn secondary full" onclick="downloadAuditPDF('${id}')">Save PDF</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function stampAudit(id){
+ if(!confirm('Stamp this audit as Done & Submitted? This marks it final.'))return;
+ const rec=(await all('auditRecords')).find(x=>x.id===id);
+ rec.status='stamped'; rec.stampedAt=new Date().toISOString();
+ await put('auditRecords',rec);
+ await showAuditReportPreview(id);
+}
+async function downloadAuditPDF(id){
+ if(!window.jspdf){alert('The PDF file writer needs to load from the internet the first time — try again once connected.');return;}
+ const {jsPDF}=window.jspdf;
+ const doc=new jsPDF({unit:'pt',format:'a4'});
+ await doc.html(document.getElementById('auditPdfTarget'),{x:24,y:24,width:547,windowWidth:800});
+ doc.save('audit-report-'+id.slice(0,8)+'.pdf');
+}
+async function showAuditHistory(){
+ const recs=(await all('auditRecords')).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+ openModal(`<h2>Past Audits</h2><div class="list">${recs.map(r=>`<div class="row-item"><div><b>${new Date(r.createdAt).toLocaleDateString()}</b><small>${r.findings.length} finding(s)</small></div><div class="row-right">${r.status==='stamped'?'<span class="stamp paid">Stamped</span>':'<span class="stamp due">Draft</span>'}<button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="showAuditReportPreview('${r.id}')">View</button></div></div>`).join('')||'<div class="empty">No audits yet.</div>'}</div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+
 /* ---------------- Reports ---------------- */
+
 async function showReports(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>Sales & Profit Report</h2><div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div><button class="btn primary full" onclick="calculateReport()">Calculate Report</button><div id="reportResult"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ openModal(`<h2>Sales & Profit Report</h2><div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div><button class="btn primary full" onclick="calculateReport()">Calculate Report</button><div id="reportResult"></div>
+ <h3 style="font-size:14px;margin-top:18px">Export</h3>
+ <div class="row2"><button class="btn secondary full" onclick="exportInvoicesCSV()">Invoices CSV</button><button class="btn secondary full" onclick="exportExpensesCSV()">Expenses CSV</button></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
  await calculateReport();
 }
 async function calculateReport(){
- const from=rf.value,to=rt.value,inv=await all('invoices'),ex=(await all('expenses')).filter(e=>e.kind!=='personal'),b=await getBusiness();
+ const from=rf.value,to=rt.value,inv=(await bizInvoices()).filter(i=>i.status!=='void'),ex=await businessExpenses(),b=await getBusiness();
  const filteredInv=inv.filter(i=>(!from||i.date>=from)&&(!to||i.date<=to));
  const ids=new Set(filteredInv.map(i=>i.id));
  const filteredEx=ex.filter(e=>ids.has(e.invoiceId)||(!e.invoiceId&&(!from||e.date>=from)&&(!to||e.date<=to)));
@@ -611,8 +1148,22 @@ async function calculateReport(){
  const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0;
  const allTimeSales=inv.reduce((a,i)=>a+(Number(i.total)||0),0), allTimeExp=ex.reduce((a,e)=>a+(Number(e.amount)||0),0);
  const lifetimeProfit=(openRev+allTimeSales)-(openExp+allTimeExp);
- reportResult.innerHTML=`<div class="stats" style="grid-template-columns:1fr 1fr;margin-top:14px"><div class="stat"><div class="lbl">Sales</div><div class="val">${money(sales)}</div></div><div class="stat"><div class="lbl">Received</div><div class="val">${money(received)}</div></div><div class="stat"><div class="lbl">Outstanding</div><div class="val">${money(sales-received)}</div></div><div class="stat accent"><div class="lbl">Job Expenses</div><div class="val">${money(linked)}</div></div></div><div class="totalBox"><div class="totalRow"><span>Sales</span><b>${money(sales)}</b></div><div class="totalRow"><span>Invoice-linked expenses</span><b>${money(linked)}</b></div><div class="totalRow"><span>Other business expenses</span><b>${money(other)}</b></div><div class="totalRow grand"><span>Estimated Profit (this period)</span><b>${money(sales-linked-other)}</b></div></div><div class="notice">Neither type of expense is printed on the customer invoice. Personal expenses are excluded from this report.</div>
+ reportResult.innerHTML=`<div class="stats" style="grid-template-columns:1fr 1fr;margin-top:14px"><div class="stat"><div class="lbl">Sales</div><div class="val">${money(sales)}</div></div><div class="stat"><div class="lbl">Received</div><div class="val">${money(received)}</div></div><div class="stat"><div class="lbl">Outstanding</div><div class="val">${money(sales-received)}</div></div><div class="stat accent"><div class="lbl">Job Expenses</div><div class="val">${money(linked)}</div></div></div><div class="totalBox"><div class="totalRow"><span>Sales</span><b>${money(sales)}</b></div><div class="totalRow"><span>Invoice-linked expenses</span><b>${money(linked)}</b></div><div class="totalRow"><span>Other business expenses</span><b>${money(other)}</b></div><div class="totalRow grand"><span>Estimated Profit (this period)</span><b>${money(sales-linked-other)}</b></div></div><div class="notice">Neither type of expense is printed on the customer invoice. Personal and voided items are excluded from this report.</div>
  ${(openRev||openExp)?`<h3 style="font-size:14px;margin-top:18px">Lifetime Profit &amp; Loss</h3><div class="totalBox"><div class="totalRow"><span>Revenue brought forward (as of ${esc(b.openingAsOfDate||'—')})</span><b>${money(openRev)}</b></div><div class="totalRow"><span>Expenses brought forward</span><b>${money(openExp)}</b></div><div class="totalRow"><span>All-time sales since (this app)</span><b>${money(allTimeSales)}</b></div><div class="totalRow"><span>All-time business expenses (this app)</span><b>${money(allTimeExp)}</b></div><div class="totalRow grand"><span>Lifetime Profit</span><b>${money(lifetimeProfit)}</b></div></div>`:''}`;
+}
+function csvEscape(v){v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+function downloadCSV(rows,filename){const text=rows.map(r=>r.map(csvEscape).join(',')).join('\r\n');const blob=new Blob([text],{type:'text/csv'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click()}
+async function exportInvoicesCSV(){
+ const inv=await bizInvoices();
+ const rows=[['Invoice Number','Date','Due Date','Customer','Status','Total','Paid','Balance']];
+ for(const i of inv){const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0);rows.push([i.number,i.date,i.dueDate||'',i.customer||'',i.status==='void'?'Void':(paid>=i.total?'Paid':'Unpaid'),i.total,paid,i.total-paid]);}
+ downloadCSV(rows,'invoices.csv');
+}
+async function exportExpensesCSV(){
+ const ex=await businessExpenses();
+ const rows=[['Date','Category','Description','Amount']];
+ for(const e of ex)rows.push([e.date,e.category||'',e.description||'',e.amount]);
+ downloadCSV(rows,'expenses.csv');
 }
 
 /* ---------------- Preview / PDF ---------------- */
@@ -697,7 +1248,23 @@ async function restoreBackup(ev){
   r.readAsText(f);
 }
 
-openDB().then(refresh).then(autoDownloadBackupIfDue).catch(()=>{alert('IndexedDB is unavailable in this browser. Please open the app in Chrome, Safari, or another modern browser.');});
+openDB().then(migrateBusinessScopeIfNeeded).then(autoGenerateSalaryIfDue).then(refresh).then(autoDownloadBackupIfDue).catch(()=>{alert('IndexedDB is unavailable in this browser. Please open the app in Chrome, Safari, or another modern browser.');});
+
+/* ---------------- App Lock unlock handler ---------------- */
+window.addEventListener('DOMContentLoaded', ()=>{
+  if(localStorage.getItem('moborex_applock_hash')){
+    lockScreen.classList.add('show');
+    const tryUnlock=async()=>{
+      const h=await sha256Hex(lockInput.value||'');
+      if(h===localStorage.getItem('moborex_applock_hash')){
+        document.body.classList.remove('locked');
+        lockScreen.classList.remove('show');
+      } else { lockError.style.display='block'; lockInput.value=''; }
+    };
+    lockSubmit.onclick=tryUnlock;
+    lockInput.addEventListener('keydown', e=>{if(e.key==='Enter')tryUnlock()});
+  }
+});
 
 /* ---------------- Automatic daily backup file (for Android's own "back up Downloads to
    Google Drive" feature to pick up — needs no developer setup, no Google sign-in in the app) ---------------- */
@@ -733,7 +1300,7 @@ window.addEventListener('beforeinstallprompt', e=>{
 window.addEventListener('appinstalled', ()=>{installBar.classList.remove('show')});
 window.addEventListener('DOMContentLoaded', ()=>{
   if(isIOS() && !isStandalone() && !sessionStorage.getItem('moborex_install_dismissed')){
-    installText.textContent='Add Moborex Invoice App to your Home Screen: tap Share, then "Add to Home Screen".';
+    installText.textContent='Add Moborex Ledger Vault to your Home Screen: tap Share, then "Add to Home Screen".';
     installBar.classList.add('show');
   }
 });
