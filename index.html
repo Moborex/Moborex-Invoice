@@ -1254,29 +1254,43 @@ async function loadTaxReport(){
  <div class="totalBox"><div class="totalRow grand"><span>As of today</span><b>${money(globalBalance)}</b></div></div>
 
  <h3 style="font-size:14px;margin-top:16px">Government Submission — ${year}</h3>
- ${submission ? `<div class="notice"><b>Marked submitted.</b> ${money(submission.amountPaid)} paid on ${esc(submission.dateSubmitted)}.${submission.note?' Note: '+esc(submission.note):''}</div><button class="btn secondary full" onclick="unmarkTaxSubmission('${submission.id}')">Undo Submission Mark</button>`
-  : `<div class="notice">Not yet marked as submitted for ${year}.</div><button class="btn accent full" onclick="markTaxSubmission(${year})">Mark ${year} as Submitted to Government</button>`}
+ ${submission ? `<div class="notice"><b>Marked submitted.</b> ${money(submission.amountPaid)} paid on ${esc(submission.dateSubmitted)}.${submission.note?' Note: '+esc(submission.note):''}<br><span class="stamp ${submission.paymentStatus==='partial'?'due':'paid'}" style="margin-top:6px">${submission.paymentStatus==='partial'?'Balance still owing: '+money(submission.balanceRemaining||0):'Fully paid / closed'}</span></div><button class="btn secondary full" onclick="showMarkTaxSubmission(${year})">Edit Submission</button><button class="btn secondary full" onclick="unmarkTaxSubmission('${submission.id}')">Undo Submission Mark</button>`
+  : `<div class="notice">Not yet marked as submitted for ${year}.</div><button class="btn accent full" onclick="showMarkTaxSubmission(${year})">Mark ${year} as Submitted to Government</button>`}
  <h3 style="font-size:14px;margin-top:18px">Submission History</h3>
  <div class="list" id="taxHistoryList"></div>`;
  const allSubs=await all('taxSubmissions');
  let histRows='';
  for(let y=2026;y<=curYear;y++){
   const s=allSubs.find(x=>x.year===y);
-  histRows+=`<div class="row-item"><div><b>${y}</b></div><div class="row-right">${s?`<span class="stamp paid">Submitted ${esc(s.dateSubmitted)}</span>`:`<span class="stamp overdue">Not submitted</span>`}</div></div>`;
+  histRows+=`<div class="row-item"><div><b>${y}</b></div><div class="row-right">${s?(s.paymentStatus==='partial'?`<span class="stamp due">Balance owing ${money(s.balanceRemaining||0)}</span>`:`<span class="stamp paid">Submitted ${esc(s.dateSubmitted)}</span>`):`<span class="stamp overdue">Not submitted</span>`}</div></div>`;
  }
  taxHistoryList.innerHTML=histRows;
 }
-async function markTaxSubmission(year){
- const amt=prompt('Amount paid to government for '+year+':');
- if(amt===null)return;
- const amount=Number(amt)||0;
- const date=prompt('Date submitted (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
- if(!date)return;
- const note=prompt('Optional note (reference number, etc.):')||'';
+async function showMarkTaxSubmission(year){
  const existing=(await all('taxSubmissions')).find(t=>t.year===year);
- const rec={id:existing?existing.id:crypto.randomUUID(), year, amountPaid:amount, dateSubmitted:date, note};
+ openModal(`<h2>Mark ${year} as Submitted</h2>
+ <div class="field"><label>Amount paid to government</label><input id="tsAmount" type="number" min="0" value="${existing?existing.amountPaid:0}"></div>
+ <div class="field"><label>Date submitted</label><input id="tsDate" type="date" value="${existing?existing.dateSubmitted:new Date().toISOString().slice(0,10)}"></div>
+ <div class="field"><label>Payment status ${hb("Is this the full amount owed for the year, or was this a part-payment with more still due to FIRS/LIRS?")}</label><select id="tsStatus" onchange="toggleTaxBalanceField()">
+  <option value="closed" ${!existing||existing.paymentStatus!=='partial'?'selected':''}>Closed — fully paid</option>
+  <option value="partial" ${existing&&existing.paymentStatus==='partial'?'selected':''}>Balance still owing</option>
+ </select></div>
+ <div class="field" id="tsBalanceField" style="display:none"><label>Balance remaining</label><input id="tsBalance" type="number" min="0" value="${existing?existing.balanceRemaining||0:0}"></div>
+ <div class="field"><label>Note (optional)</label><input id="tsNote" value="${esc(existing&&existing.note?existing.note:'')}" placeholder="Reference number, etc."></div>
+ <button class="btn primary full" onclick="saveTaxSubmission(${year})">Save</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ toggleTaxBalanceField();
+}
+function toggleTaxBalanceField(){tsBalanceField.style.display = tsStatus.value==='partial' ? 'block' : 'none';}
+async function saveTaxSubmission(year){
+ const amount=Number(tsAmount.value)||0;
+ const date=tsDate.value||new Date().toISOString().slice(0,10);
+ const status=tsStatus.value;
+ const balanceRemaining=status==='partial'?(Number(tsBalance.value)||0):0;
+ const note=tsNote.value.trim();
+ const existing=(await all('taxSubmissions')).find(t=>t.year===year);
+ const rec={id:existing?existing.id:crypto.randomUUID(), year, amountPaid:amount, dateSubmitted:date, note, paymentStatus:status, balanceRemaining};
  await put('taxSubmissions',rec);
- alert(year+' marked as submitted. '+money(amount)+' deducted from your combined bank balance.');
+ closeModal();
  await loadTaxReport(); await refresh();
 }
 async function unmarkTaxSubmission(id){
