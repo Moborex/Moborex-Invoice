@@ -52,6 +52,10 @@ button{font-family:var(--font-body);cursor:pointer}
 .heroBalance .lbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;opacity:.72;font-weight:600}
 .heroBalance .val{font-family:var(--font-mono);font-size:32px;font-weight:600;margin-top:6px;color:var(--brass2)}
 .heroBalance .sub{font-size:11px;opacity:.62;margin-top:6px}
+.heroSplit{display:flex;gap:14px;margin-top:10px}
+.heroSide{background:#ffffff14;border-radius:10px;padding:8px 12px}
+.heroSideLbl{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.65}
+.heroSideVal{display:block;font-family:var(--font-mono);font-size:15px;font-weight:600;margin-top:2px;color:var(--brass2)}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .stat{background:var(--card);border-radius:var(--r-md);padding:14px 15px;box-shadow:var(--shadow);border:1px solid var(--line2)}
 .stat .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
@@ -184,6 +188,9 @@ button{font-family:var(--font-body);cursor:pointer}
 @media(min-width:900px){.installBar{left:250px}}
 
 .lockScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:200;align-items:center;justify-content:center;padding:24px}
+.helpBtn{width:18px;height:18px;border-radius:50%;border:1.4px solid var(--brass);background:var(--brassSoft);color:var(--brass);font-size:10.5px;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:6px;vertical-align:middle;padding:0}
+.helpBubble{display:none;position:fixed;z-index:300;max-width:260px;background:var(--ink);color:#fff;padding:10px 12px;border-radius:10px;font-size:12.5px;line-height:1.5;box-shadow:var(--shadow-lg)}
+.helpBubble.show{display:block}
 .lockScreen.show{display:flex}
 body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hidden}
 .bizSwitch{background:none;border:0;padding:0;color:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:4px}
@@ -214,11 +221,31 @@ function money(n){
   catch(e){return c+' '+(Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:2})}
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+/* ---------------- Help balloons ---------------- */
+function hb(text){return `<button type="button" class="helpBtn" onclick="showHelpBalloon(this)" data-help="${esc(text)}">?</button>`}
+function showHelpBalloon(el){
+ const bubble=document.getElementById('helpBubble');
+ bubble.textContent=el.dataset.help;
+ const rect=el.getBoundingClientRect(), vw=window.innerWidth, vh=window.innerHeight;
+ bubble.style.left='10px'; bubble.style.top=(rect.bottom+8)+'px';
+ bubble.classList.add('show');
+ requestAnimationFrame(()=>{
+  const bw=bubble.offsetWidth, bh=bubble.offsetHeight;
+  let left=rect.left; if(left+bw>vw-10)left=vw-bw-10; if(left<10)left=10;
+  let top=rect.bottom+8; if(top+bh>vh-10)top=rect.top-bh-8;
+  bubble.style.left=left+'px'; bubble.style.top=top+'px';
+ });
+ if(window.event)window.event.stopPropagation();
+}
+document.addEventListener('click',e=>{
+ const bubble=document.getElementById('helpBubble');
+ if(bubble && bubble.classList.contains('show') && !e.target.classList.contains('helpBtn')) bubble.classList.remove('show');
+});
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=3;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=5;
 let idb;
-const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:''}};
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
 function openDB(){
  return new Promise((resolve,reject)=>{
   const r=indexedDB.open(DB_NAME,DB_VERSION);
@@ -231,6 +258,8 @@ function openDB(){
    if(!d.objectStoreNames.contains('expenseTypes')){let s=d.createObjectStore('expenseTypes',{keyPath:'id'});s.createIndex('name','name')}
    if(!d.objectStoreNames.contains('taxSubmissions')){let s=d.createObjectStore('taxSubmissions',{keyPath:'id'});s.createIndex('year','year')}
    if(!d.objectStoreNames.contains('auditRecords'))d.createObjectStore('auditRecords',{keyPath:'id'});
+   if(!d.objectStoreNames.contains('taxProfile'))d.createObjectStore('taxProfile',{keyPath:'id'});
+   if(!d.objectStoreNames.contains('quotations')){let s=d.createObjectStore('quotations',{keyPath:'id'});s.createIndex('number','number');s.createIndex('customer','customer');s.createIndex('date','date')}
    if(!d.objectStoreNames.contains('otherIncome')){let s=d.createObjectStore('otherIncome',{keyPath:'id'});s.createIndex('date','date')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};r.onerror=()=>reject(r.error);
@@ -262,6 +291,7 @@ async function getBusiness(){
 async function bizInvoices(){const id=await getActiveBusinessId();return (await all('invoices')).filter(x=>x.businessId===id)}
 async function bizCustomers(){const id=await getActiveBusinessId();return (await all('customers')).filter(x=>x.businessId===id)}
 async function bizProducts(){const id=await getActiveBusinessId();return (await all('products')).filter(x=>x.businessId===id)}
+async function bizQuotations(){const id=await getActiveBusinessId();return (await all('quotations')).filter(x=>x.businessId===id)}
 async function businessExpenseTypes(){const id=await getActiveBusinessId();return (await all('expenseTypes')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 async function businessExpenses(){const id=await getActiveBusinessId();return (await all('expenses')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 
@@ -289,6 +319,10 @@ async function getGlobalBankBalance(){
   const otherIncomeTotal=(await all('otherIncome')).reduce((a,e)=>a+(Number(e.amount)||0),0);
   const taxPaid=(await all('taxSubmissions')).reduce((a,t)=>a+(Number(t.amountPaid)||0),0);
   return businessTotal + otherIncomeTotal - personalExpenses - taxPaid;
+}
+async function getGlobalOutstanding(){
+  const perBiz=await allBusinessFinancials();
+  return perBiz.reduce((a,f)=>a+Math.max(0,f.outstanding),0);
 }
 async function migrateBusinessScopeIfNeeded(){
   // One-time-per-record cleanup: anything created before multi-business existed
@@ -385,8 +419,8 @@ const Sync={
   async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
   async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
 
-  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome'];const out={version:4,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
-  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
+  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations'];const out={version:6,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
 
   markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),4000)}},
 
@@ -469,6 +503,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
     <button class="btn accent full" id="lockSubmit" style="margin-top:14px">Unlock</button>
   </div>
 </div>
+<div class="helpBubble" id="helpBubble"></div>
 <div class="installBar" id="installBar">
   <span id="installText">Install Moborex Ledger Vault on this device for one-tap access — no app store needed.</span>
   <button class="btn accent" id="installBtn" style="padding:8px 14px;font-size:12.5px" onclick="doInstall()">Install</button>
@@ -485,6 +520,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
   <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Moborex Ledger Vault</div><div class="tagline">Beyond Invoicing — to Reports &amp; Tax.</div><button class="bizname bizSwitch" style="font-size:15px" onclick="showBusinessSwitcher()"><span id="bizNameWide">Business</span> <span class="chev">▾</span></button></div></div>
   <button class="navbtn" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
   <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> Invoices</button>
+  <button class="navbtn" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
   <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
   <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
   <button class="navbtn" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
@@ -511,7 +547,14 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 </header>
 
 <main class="main">
-<div class="heroBalance"><div class="lbl">Cash &amp; Bank Balance — All Businesses</div><div class="val" id="bankBalance">—</div><div class="sub">Combined across every business, minus personal spend &amp; recorded tax payments — same figure in every business view</div></div>
+<div class="heroBalance">
+  <div class="lbl">Cash &amp; Bank Balance — All Businesses</div>
+  <div class="val" id="bankBalance">—</div>
+  <div class="heroSplit">
+    <div class="heroSide"><span class="heroSideLbl">Unpaid (all businesses)</span><span class="heroSideVal" id="heroOutstanding">—</span></div>
+  </div>
+  <div class="sub">Combined across every business, minus personal spend &amp; recorded tax payments — same figure in every business view. Unpaid invoices don't count until marked paid.</div>
+</div>
 <div class="stats">
 <div class="stat"><div class="lbl">Total Sales</div><div class="val" id="sales">—</div></div>
 <div class="stat"><div class="lbl">Received</div><div class="val" id="received">—</div></div>
@@ -537,6 +580,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 <div class="dhead"><div class="dtitle">Menu</div><button class="iconbtn" onclick="closeDrawer()">×</button></div>
 <button class="navbtn" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
 <button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> Invoices</button>
+<button class="navbtn" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
 <button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
 <button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
 <button class="navbtn" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
@@ -588,8 +632,10 @@ async function refresh(){
  let personalExpenses=personalEx.reduce((a,e)=>a+e.amount,0);
  let lifetimeProfit=(openRev+sales)-(openExp+bizExpensesTotal);
  let bankBalance=await getGlobalBankBalance();
+ let globalOutstanding=await getGlobalOutstanding();
  document.getElementById('sales').textContent=money(openRev+sales);document.getElementById('received').textContent=money(paid);document.getElementById('outstanding').textContent=money(sales-paid);document.getElementById('profit').textContent=money(lifetimeProfit);document.getElementById('personalSpend').textContent=money(personalExpenses);
  document.getElementById('bankBalance').textContent=money(bankBalance);
+ document.getElementById('heroOutstanding').textContent=money(globalOutstanding);
  inv.sort((a,b)=>b.date.localeCompare(a.date));
  recent.innerHTML=inv.slice(0,5).map(i=>{const st=invoiceStatusStamp(i);
   return `<div class="row-item"><div><b>${esc(i.number)}</b><small>${esc(i.customer||'Walk-in')} · ${esc(i.date)}</small></div><div class="row-right"><strong class="money">${money(i.total)}</strong><span class="stamp ${st.cls}">${st.label}</span></div></div>`
@@ -599,7 +645,7 @@ async function refresh(){
 /* ---------------- Business Switcher ---------------- */
 async function showBusinessSwitcher(){
  const list=await all('business'), activeId=await getActiveBusinessId();
- openModal(`<h2>Switch Business</h2>
+ openModal(`<h2>Switch Business ${hb("Each business keeps its own invoices, customers, products, and settings, completely separate. Personal expenses stay shared across all of them.")}</h2>
  <div class="notice">Each business keeps its own invoices, customers, products, and settings — completely separate books. Personal expenses stay shared across all of them, since they're yours, not any one business's.</div>
  <div class="list" id="bizList"></div>
  <button class="btn accent full" onclick="addBusiness()">＋ Add New Business</button>
@@ -638,7 +684,7 @@ async function deleteBusiness(id){
 async function sha256Hex(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('')}
 function showAppLockSettings(){
  const enabled=!!localStorage.getItem('moborex_applock_hash');
- openModal(`<h2>App Lock</h2>
+ openModal(`<h2>App Lock ${hb("A PIN that locks the whole app on this device. Separate from the Sync PIN — this one just keeps someone else from opening the app if they pick up your phone.")}</h2>
  <div class="notice">${enabled?'A PIN is required to open this app on this device.':'Add a PIN so this app can\'t be opened without it — useful if this device is shared with others.'}</div>
  ${enabled?`<button class="btn danger full" onclick="turnOffAppLock()">Turn Off App Lock</button><button class="btn secondary full" onclick="promptSetAppLockPin()">Change PIN</button>`:`<button class="btn accent full" onclick="promptSetAppLockPin()">Set a PIN</button>`}
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
@@ -659,11 +705,15 @@ function turnOffAppLock(){if(!confirm('Turn off App Lock?'))return;localStorage.
 async function showSettings(){
  let b=await getBusiness();
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
- openModal(`<h2>Business Settings</h2>
- <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div><div class="field"><label>Type</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option></select></div></div>
+ openModal(`<h2>Business Settings ${hb("Everything specific to this one business: its name, currency, invoice numbering, and how it's classified for tax purposes.")}</h2>
+ <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div><div class="field"><label>Type ${hb("Business tracks sales and expenses normally. Salary auto-logs a monthly pay entry instead, and relabels Customers to Employer.")}</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option></select></div></div>
  <div id="salaryFieldsBox" style="display:none">
   <div class="notice">Once set up, this business logs a salary payment automatically each month until you switch off auto-generate, change amount, or change employer. "Customers" becomes "Employer" for this business.</div>
-  <div class="row2"><div class="field"><label>Monthly Salary Amount</label><input id="bsalAmt" type="number" min="0" value="${b.salaryAmount||0}"></div><div class="field"><label>Auto-generate monthly</label><select id="bsalAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div></div>
+  <div class="row2"><div class="field"><label>Monthly Salary Amount</label><input id="bsalAmt" type="number" min="0" value="${b.salaryAmount||0}"></div><div class="field"><label>Auto-generate monthly ${hb("When on, this business logs a salary payment for you automatically once a month, with no need to create it by hand.")}</label><select id="bsalAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div></div>
+ </div>
+ <div id="legalFormBox" style="display:none">
+  <div class="notice">This decides how the Tax Report estimates your obligations: a Business Name is taxed as your personal income; a Limited company pays Company Income Tax separately from you as an individual.</div>
+  <div class="row2"><div class="field"><label>Legal form ${hb("Business Name means you're taxed as an individual (Personal Income Tax). Limited means the company itself pays Company Income Tax, separately from you.")}</label><select id="blegal" onchange="toggleFixedAssets()"><option value="businessName">Business Name (Sole Proprietor)</option><option value="limited">Limited Company (Ltd/PLC)</option></select></div><div class="field" id="fixedAssetsField" style="display:none"><label>Fixed Assets (₦, approx.) ${hb("Used to check the small-company tax exemption: turnover under ₦100,000,000 AND fixed assets under ₦250,000,000 currently qualifies for 0% Company Income Tax.")}</label><input id="bassets" type="number" min="0" value="${b.fixedAssets||0}"></div></div>
  </div>
  <div class="field"><label>Address</label><input id="ba" value="${esc(b.address)}"></div>
  <div class="row2"><div class="field"><label>Phone</label><input id="bp" value="${esc(b.phone)}"></div><div class="field"><label>Email</label><input id="be" value="${esc(b.email)}"></div></div>
@@ -674,14 +724,19 @@ async function showSettings(){
  <div class="field"><label>Invoice header note</label><textarea id="bh">${esc(b.headerComment)}</textarea></div>
  <div class="field"><label>Invoice footer / terms</label><textarea id="bf">${esc(b.footerComment)}</textarea></div>
  <h3 style="font-size:14px;margin-top:16px">Invoice numbering</h3>
- <div class="row2"><div class="field"><label>Mode</label><select id="bm"><option value="manual">Manual</option><option value="auto">Automatic</option></select></div><div class="field"><label>Next automatic number</label><input id="bnext" type="number" value="${b.nextNumber}"></div></div>
+ <div class="row2"><div class="field"><label>Numbering Mode ${hb("Manual: you type each invoice number yourself. Automatic: the app assigns the next number in sequence for you.")}</label><select id="bm"><option value="manual">Manual</option><option value="auto">Automatic</option></select></div><div class="field"><label>Next automatic number</label><input id="bnext" type="number" value="${b.nextNumber}"></div></div>
  <button class="btn primary full" onclick="saveSettings()">Save Settings</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- bm.value=b.invoiceMode; btype.value=b.type||'business'; toggleSalaryFields();
+ bm.value=b.invoiceMode; btype.value=b.type||'business'; blegal.value=b.legalForm||'businessName'; toggleSalaryFields(); toggleFixedAssets();
 }
-function toggleSalaryFields(){salaryFieldsBox.style.display = btype.value==='salary' ? 'block' : 'none';}
+function toggleSalaryFields(){
+ const isSalary=btype.value==='salary';
+ salaryFieldsBox.style.display = isSalary ? 'block' : 'none';
+ legalFormBox.style.display = isSalary ? 'none' : 'block';
+}
+function toggleFixedAssets(){fixedAssetsField.style.display = blegal.value==='limited' ? 'block' : 'none';}
 async function saveSettings(){
  let b=await getBusiness();
- let done=async logo=>{b.name=bn.value;b.type=btype.value;b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}if(logo!==undefined)b.logo=logo;await put('business',b);closeModal();refresh()};
+ let done=async logo=>{b.name=bn.value;b.type=btype.value;b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}else{b.legalForm=blegal.value;if(blegal.value==='limited')b.fixedAssets=Number(bassets.value)||0;}if(logo!==undefined)b.logo=logo;await put('business',b);closeModal();refresh()};
  if(bl.files[0]){let r=new FileReader();r.onload=()=>done(r.result);r.readAsDataURL(bl.files[0])}else done();
 }
 
@@ -689,7 +744,7 @@ async function saveSettings(){
 async function showProductsDispatch(){const b=await getBusiness();if(b.type==='salary')await showSalarySetup();else await showProducts();}
 async function showSalarySetup(){
  const b=await getBusiness();
- openModal(`<h2>Salary Setup — ${esc(b.name)}</h2>
+ openModal(`<h2>Salary Setup — ${esc(b.name)} ${hb("Set your monthly pay and turn on auto-generate to have this business log a salary payment every month automatically, without you doing anything.")}</h2>
  <div class="notice">Once auto-generate is on, this business logs a salary payment automatically each month until you switch it off, change the amount, or move to a new employer. Manage employer names under "Employer" in the menu.</div>
  <div class="field"><label>Monthly Salary Amount</label><input id="saAmt" type="number" min="0" value="${b.salaryAmount||0}"></div>
  <div class="field"><label>Auto-generate monthly</label><select id="saAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div>
@@ -721,7 +776,7 @@ async function addCustomer(){if(!cName.value.trim())return alert('Enter a custom
 async function deleteCustomer(id){if(!confirm('Delete this customer?'))return;await del('customers',id);cCache=cCache.filter(x=>x.id!==id);drawCustomers()}
 
 /* ---------------- Expense Types ---------------- */
-async function showExpenseTypes(){let t=await businessExpenseTypes();openModal(`<h2>Expense Types</h2><div class="notice">Categories for Business Expenses. For personal spending categories, use Personal Categories instead.</div><div class="field"><label>Type name</label><input id="tName" placeholder="Fuel, transport, tools..."></div><button class="btn accent full" onclick="addExpenseType()">＋ Add Type</button><div class="sectionhead" style="margin-top:18px"><h3>All types</h3></div><div class="list" id="tList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.tCache=t;drawExpenseTypes()}
+async function showExpenseTypes(){let t=await businessExpenseTypes();openModal(`<h2>Expense Types ${hb("Categories used when logging Business Expenses, e.g. Fuel, Rent, Tools. Keeps your Reports and Tax Report broken down by category.")}</h2><div class="notice">Categories for Business Expenses. For personal spending categories, use Personal Categories instead.</div><div class="field"><label>Type name</label><input id="tName" placeholder="Fuel, transport, tools..."></div><button class="btn accent full" onclick="addExpenseType()">＋ Add Type</button><div class="sectionhead" style="margin-top:18px"><h3>All types</h3></div><div class="list" id="tList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.tCache=t;drawExpenseTypes()}
 function drawExpenseTypes(){tList.innerHTML=tCache.sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<div class="row-item"><div><b>${esc(t.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteExpenseType('${t.id}')">Delete</button></div>`).join('')||'<div class="empty">No expense types yet.</div>'}
 async function addExpenseType(){if(!tName.value.trim())return alert('Enter a type name.');let t={id:crypto.randomUUID(),name:tName.value.trim(),kind:'business',businessId:await getActiveBusinessId()};await put('expenseTypes',t);tCache.push(t);tName.value='';drawExpenseTypes()}
 async function deleteExpenseType(id){if(!confirm('Delete this expense type?'))return;await del('expenseTypes',id);tCache=tCache.filter(x=>x.id!==id);drawExpenseTypes()}
@@ -734,10 +789,115 @@ async function ensurePersonalCategorySeed(){
   for(const name of DEFAULT_PERSONAL_CATEGORIES) await put('expenseTypes',{id:crypto.randomUUID(),name,kind:'personal'},true);
  }
 }
-async function showPersonalCategories(){await ensurePersonalCategorySeed();let t=(await all('expenseTypes')).filter(x=>x.kind==='personal');openModal(`<h2>Personal Categories</h2><div class="notice">Categories for Personal Expenses, e.g. Home, Car, Feeding. Pre-filled with common ones — add more, or delete any you don't need.</div><div class="field"><label>Category name</label><input id="ptName" placeholder="Home, Car, School fees..."></div><button class="btn accent full" onclick="addPersonalCategory()">＋ Add Category</button><div class="sectionhead" style="margin-top:18px"><h3>All categories</h3></div><div class="list" id="ptList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.ptCache=t;drawPersonalCategories()}
+async function showPersonalCategories(){await ensurePersonalCategorySeed();let t=(await all('expenseTypes')).filter(x=>x.kind==='personal');openModal(`<h2>Personal Categories ${hb("Categories used when logging Personal Expenses. Comes pre-filled with common ones like Home and Car.")}</h2><div class="notice">Categories for Personal Expenses, e.g. Home, Car, Feeding. Pre-filled with common ones — add more, or delete any you don't need.</div><div class="field"><label>Category name</label><input id="ptName" placeholder="Home, Car, School fees..."></div><button class="btn accent full" onclick="addPersonalCategory()">＋ Add Category</button><div class="sectionhead" style="margin-top:18px"><h3>All categories</h3></div><div class="list" id="ptList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.ptCache=t;drawPersonalCategories()}
 function drawPersonalCategories(){ptList.innerHTML=ptCache.sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<div class="row-item"><div><b>${esc(t.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deletePersonalCategory('${t.id}')">Delete</button></div>`).join('')||'<div class="empty">No categories yet.</div>'}
 async function addPersonalCategory(){if(!ptName.value.trim())return alert('Enter a category name.');let t={id:crypto.randomUUID(),name:ptName.value.trim(),kind:'personal'};await put('expenseTypes',t);ptCache.push(t);ptName.value='';drawPersonalCategories()}
 async function deletePersonalCategory(id){if(!confirm('Delete this category?'))return;await del('expenseTypes',id);ptCache=ptCache.filter(x=>x.id!==id);drawPersonalCategories()}
+
+/* ---------------- Quotations ----------------
+   Deliberately separate from invoices: quotation values are never counted in sales,
+   profit, reports, tax, or bank balance — only a converted invoice counts. ---------------- */
+function quoteStatusStamp(q){
+ if(q.status==='converted') return {cls:'paid',label:'Converted'};
+ if(q.status==='approved') return {cls:'paid',label:'Approved'};
+ if(q.status==='rejected') return {cls:'overdue',label:'Rejected'};
+ if(q.status==='sent') return {cls:'duesoon',label:'Sent'};
+ return {cls:'due',label:'Draft'};
+}
+async function nextQuoteNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextQuoteNumber||1;b.nextQuoteNumber=n+1;await put('business',b);return 'Q-'+String(n).padStart(4,'0')}
+async function showQuotations(){
+ let qs=await bizQuotations();
+ openModal(`<h2>Quotations ${hb("A quote you can send before doing any work. Nothing here counts as a sale until you convert an approved quote into a real invoice.")}</h2><div class="notice">Quotations never appear in Sales, Profit, Reports, or Tax — only once a quotation is converted to an invoice does it count anywhere.</div>
+ <button class="btn accent full" onclick="openQuotation()">＋ New Quotation</button>
+ <div class="toolbar" style="margin-top:12px"><input id="qq" placeholder="Search quote number or customer" oninput="drawQuoteSearch()"></div>
+ <div class="field"><label>Status</label><select id="qfStatus" onchange="drawQuoteSearch()"><option value="">All</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="converted">Converted</option></select></div>
+ <div id="qlist"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.quoteCache=qs; drawQuoteSearch();
+}
+function drawQuoteSearch(){
+ let q=(qq.value||'').toLowerCase(), status=qfStatus.value;
+ let arr=quoteCache.filter(x=>{
+  if(!(x.number+' '+x.customer).toLowerCase().includes(q))return false;
+  if(status && x.status!==status)return false;
+  return true;
+ }).sort((a,b)=>b.date.localeCompare(a.date));
+ qlist.innerHTML=arr.map(x=>{const st=quoteStatusStamp(x);return `<div class="row-item"><div><b>${esc(x.number)}</b><small>${esc(x.customer||'—')} · ${esc(x.date)}</small></div><div class="row-right"><strong class="money">${money(x.total)}</strong><span class="stamp ${st.cls}">${st.label}</span><button class="btn secondary" style="padding:6px 10px;font-size:12px;margin-top:4px" onclick="openQuotation('${x.id}')">Open</button></div></div>`}).join('')||'<div class="empty">No quotations found.</div>';
+}
+async function openQuotation(id){
+ let allQ=await bizQuotations(), q=id?allQ.find(x=>x.id===id):null, customers=await bizCustomers();
+ q=q||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'draft',number:await nextQuoteNo(),date:new Date().toISOString().slice(0,10),validUntil:'',customerId:'',customer:'',phone:'',address:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],notes:'',headerComment:''};
+ window.qEditing=q; window.qItems=(q.items||[]).map(x=>({...x}));
+ const locked=q.status==='converted';
+ const custOpts='<option value="">Select saved customer</option>'+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
+ openModal(`<h2>${id?'Edit Quotation':'New Quotation'}</h2>
+ ${locked?`<div class="notice" style="background:var(--goodSoft);border-color:#bfe0d1;color:var(--good)"><b>Converted to invoice.</b> This quotation is now locked for editing — see the linked invoice for the live version.</div>`:''}
+ <div class="row2"><div class="field"><label>Quote number</label><input id="qNo" value="${esc(q.number)}" ${locked?'disabled':''}></div><div class="field"><label>Date</label><input id="qDate" type="date" value="${q.date}" ${locked?'disabled':''}></div></div>
+ <div class="row2"><div class="field"><label>Customer</label><select id="qCustomerSelect" onchange="selectQuoteCustomer(this.value)" ${locked?'disabled':''}>${custOpts}</select></div><div class="field"><label>Valid until</label><input id="qValid" type="date" value="${q.validUntil||''}" ${locked?'disabled':''}></div></div>
+ <div class="row2"><div class="field"><label>Customer phone</label><input id="qPhone" value="${esc(q.phone)}" readonly></div><div class="field"><label>Customer address</label><input id="qAddress" value="${esc(q.address)}" readonly></div></div>
+ <div class="field"><label>Header note</label><textarea id="qHeader" ${locked?'disabled':''}>${esc(q.headerComment||'')}</textarea></div>
+ <div class="sectionhead"><h3>Quoted items / services</h3>${locked?'':'<button class="btn secondary" onclick="addQuoteLine()">＋ Add</button>'}</div><div id="qlines"></div>
+ <div class="field"><label>Notes / terms</label><textarea id="qNotes" ${locked?'disabled':''}>${esc(q.notes||'')}</textarea></div>
+ <div class="field"><label>Discount</label><input id="qDiscount" type="number" min="0" value="${q.discount||0}" oninput="updateQuoteTotal()" ${locked?'disabled':''}></div>
+ <div class="totalBox"><div class="totalRow"><span>Subtotal</span><b id="qLineTotal">—</b></div><div class="totalRow"><span>Discount</span><b id="qDiscTotal">—</b></div><div class="totalRow grand"><span>Quoted Total</span><b id="qGrandTotal">—</b></div></div>
+ ${locked?'':'<button class="btn primary full" onclick="saveQuotation()">Save Quotation</button>'}
+ ${id?`<button class="btn secondary full" onclick="previewQuotation('${id}')">Preview / PDF</button>`:''}
+ ${id && !locked ? `<div class="row2">
+   <button class="btn secondary full" onclick="markQuoteStatus('${id}','sent')">Mark Sent</button>
+   <button class="btn secondary full" onclick="markQuoteStatus('${id}','approved')">Mark Approved</button>
+ </div>
+ <div class="row2">
+   <button class="btn danger full" onclick="markQuoteStatus('${id}','rejected')">Mark Rejected</button>
+   ${q.status==='approved'?`<button class="btn accent full" onclick="convertQuotationToInvoice('${id}')">Convert to Invoice</button>`:''}
+ </div>` : ''}
+ ${id?`<button class="btn danger full" onclick="deleteQuotation('${id}')">Delete Quotation</button>`:''}
+ <button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ window.qSelectedCustomerId=q.customerId||''; if(qCustomerSelect)qCustomerSelect.value=qSelectedCustomerId; if(qSelectedCustomerId)await selectQuoteCustomer(qSelectedCustomerId);
+ await drawQuoteLines(); updateQuoteTotal();
+}
+async function selectQuoteCustomer(id){window.qSelectedCustomerId=id;const cs=await bizCustomers(),c=cs.find(x=>x.id===id);qPhone.value=c?.phone||'';qAddress.value=c?.address||'';}
+async function drawQuoteLines(){
+ const products=await bizProducts();
+ const opts='<option value="">Select product / service</option>'+products.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
+ qlines.innerHTML=qItems.map((x,n)=>`<div class="line"><select onchange="selectQuoteProduct(${n},this.value)">${opts}</select><input type="number" min="0" value="${x.qty}" oninput="qItems[${n}].qty=Number(this.value);updateQuoteTotal()"><input type="number" min="0" value="${x.price}" oninput="qItems[${n}].price=Number(this.value);updateQuoteTotal()"><button class="btn danger" onclick="qItems.splice(${n},1);drawQuoteLines();updateQuoteTotal()">×</button><input class="comment" placeholder="Line comment (optional)" value="${esc(x.comment||'')}" oninput="qItems[${n}].comment=this.value"></div>`).join('');
+ qItems.forEach((x,n)=>{const sel=qlines.querySelectorAll('select')[n];if(sel)sel.value=x.productId||''});
+}
+async function selectQuoteProduct(n,id){const products=await bizProducts(),p=products.find(x=>x.id===id);if(!p)return;qItems[n].productId=p.id;qItems[n].description=p.name;qItems[n].price=Number(p.price)||0;await drawQuoteLines();updateQuoteTotal()}
+function addQuoteLine(){qItems.push({productId:'',description:'',qty:1,price:0,comment:''});drawQuoteLines()}
+function updateQuoteTotal(){let s=qItems.reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0),d=Number(qDiscount?.value||0);qLineTotal.textContent=money(s);qDiscTotal.textContent=money(d);qGrandTotal.textContent=money(Math.max(0,s-d))}
+async function saveQuotation(){
+ let sales=qItems.reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0), discount=Number(qDiscount.value||0);
+ let customers=await bizCustomers(), selected=customers.find(c=>c.id===window.qSelectedCustomerId);
+ if(!selected)return alert('Please select a saved customer.');
+ if(!qNo.value.trim())return alert('Enter a quote number.');
+ let q={...qEditing,businessId:await getActiveBusinessId(),status:qEditing.status||'draft',number:qNo.value.trim(),date:qDate.value,validUntil:qValid.value,customerId:selected.id,customer:selected.name,phone:qPhone.value.trim(),address:qAddress.value.trim(),headerComment:qHeader.value,notes:qNotes.value,discount,items:qItems.map(x=>({...x})),total:Math.max(0,sales-discount)};
+ await put('quotations',q); closeModal();
+}
+async function markQuoteStatus(id,status){
+ const q=(await all('quotations')).find(x=>x.id===id); if(!q)return;
+ q.status=status; await put('quotations',q); closeModal(); await openQuotation(id);
+}
+async function deleteQuotation(id){if(!confirm('Delete this quotation? This cannot be undone.'))return;await del('quotations',id);closeModal();}
+async function convertQuotationToInvoice(id){
+ const q=(await all('quotations')).find(x=>x.id===id); if(!q)return;
+ if(q.status!=='approved'){alert('Only an approved quotation can be converted to an invoice.');return;}
+ if(!confirm('Convert this quotation into a real invoice? This will count in your sales and reports from now on.'))return;
+ const number=await nextNo();
+ const inv={id:crypto.randomUUID(),businessId:q.businessId,status:'active',number:number||q.number,date:new Date().toISOString().slice(0,10),dueDate:'',customerId:q.customerId,customer:q.customer,phone:q.phone,address:q.address,vehicleDetails:'',discount:q.discount,items:q.items.map(x=>({...x})),payments:[],headerComment:q.headerComment,salesComment:q.notes,total:q.total};
+ await put('invoices',inv);
+ q.status='converted'; q.convertedInvoiceId=inv.id;
+ await put('quotations',q);
+ closeModal(); await refresh(); await openInvoice(inv.id);
+}
+async function previewQuotation(id){
+ const q=(await all('quotations')).find(x=>x.id===id), b=await getBusiness();
+ openModal(`<h2>Quotation Preview</h2><div class="invoicePreview" id="pdfTarget">
+ <div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div></div></div><div class="metaRight"><b>QUOTATION #</b><strong>${esc(q.number)}</strong><b>DATE</b><span>${esc(q.date)}</span>${q.validUntil?`<b>VALID UNTIL</b><span>${esc(q.validUntil)}</span>`:''}</div></div>
+ <div class="sampleMeta"><div><b>QUOTED TO</b><strong>${esc(q.customer)}</strong><span>${esc(q.phone||'')}</span><span>${esc(q.address||'')}</span></div></div>
+ ${q.headerComment?`<div class="comment">${esc(q.headerComment)}</div>`:''}
+ <table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${q.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>
+ <div class="paymentTotal"><div><b>NOTES / TERMS</b><div>${esc(q.notes||'This quotation is not a demand for payment.')}</div></div><div class="totalPill"><span>QUOTED TOTAL</span><b>${money(q.total)}</b></div></div>
+ </div><div class="pdfActions"><button class="btn secondary" onclick="printInvoice('${esc(q.number)}')">Print Only</button><button class="btn accent" onclick="downloadInvoicePDF('${esc(q.number)}')">Save PDF</button></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
 
 /* ---------------- Invoices ---------------- */
 function invoiceStatusStamp(i){
@@ -768,7 +928,7 @@ async function openInvoice(id){
  <div class="field"><label>Header note</label><textarea id="fHeader" ${isVoid?'disabled':''}>${esc(inv.headerComment||'')}</textarea></div>
  <div class="sectionhead"><h3>Sales lines</h3>${isVoid?'':'<button class="btn secondary" onclick="addLine()">＋ Add</button>'}</div><div id="lines"></div>
  <div class="field"><label>Note below sales lines</label><textarea id="fSales" ${isVoid?'disabled':''}>${esc(inv.salesComment||'')}</textarea></div>
- <div class="field"><label>Discount</label><input id="fDiscount" type="number" min="0" value="${inv.discount||0}" oninput="updateInvoiceTotal()" ${isVoid?'disabled':''}></div>
+ <div class="field"><label>Discount ${hb("A flat amount subtracted from this invoice's total. Doesn't affect the product's catalogue price for future invoices.")}</label><input id="fDiscount" type="number" min="0" value="${inv.discount||0}" oninput="updateInvoiceTotal()" ${isVoid?'disabled':''}></div>
  <div class="sectionhead"><h3>Job expenses</h3>${isVoid?'':'<button class="btn secondary" onclick="addInvoiceExpense()">＋ Add</button>'}</div>
  <div class="notice">Expenses here are for your profit reporting only — they never appear on the customer's invoice.</div><div id="invoiceExpenseLines"></div>
  <div class="totalBox"><div class="totalRow"><span>Sales</span><b id="lineTotal">—</b></div><div class="totalRow"><span>Discount</span><b id="discTotal">—</b></div><div class="totalRow"><span>Job expenses</span><b id="invExpTotal">—</b></div><div class="totalRow grand"><span>Customer total</span><b id="grandTotal">—</b></div></div>
@@ -812,7 +972,7 @@ async function duplicateInvoice(id){
 }
 async function showInvoices(){
  let inv=await bizInvoices();
- openModal(`<h2>Invoices</h2><div class="toolbar"><input id="iq" placeholder="Search invoice number or customer" oninput="drawInvoiceSearch()"></div>
+ openModal(`<h2>Invoices ${hb("Every invoice you've created for this business. Search by number or customer, or filter by paid/unpaid/overdue status.")}</h2><div class="toolbar"><input id="iq" placeholder="Search invoice number or customer" oninput="drawInvoiceSearch()"></div>
  <div class="row2"><div class="field"><label>Status</label><select id="ifStatus" onchange="drawInvoiceSearch()"><option value="">All</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="overdue">Overdue</option><option value="void">Void</option></select></div><div class="field"><label>From date</label><input id="ifFrom" type="date" onchange="drawInvoiceSearch()"></div></div>
  <div id="ilist"></div>`);
  window.invoiceCache=inv;drawInvoiceSearch();
@@ -861,7 +1021,7 @@ async function ensureIncomeCategorySeed(){
 async function showIncomeCategories(){
  await ensureIncomeCategorySeed();
  let t=(await all('expenseTypes')).filter(x=>x.kind==='income');
- openModal(`<h2>Income Categories</h2><div class="notice">Mark each category taxable or not — gifts and inheritance are usually not taxable income; dividends, rent, and interest usually are. Check with your tax adviser for your situation.</div>
+ openModal(`<h2>Income Categories ${hb("The categories used in Other Income. Mark each one taxable or not, based on how it's actually treated under current tax rules.")}</h2><div class="notice">Mark each category taxable or not — gifts and inheritance are usually not taxable income; dividends, rent, and interest usually are. Check with your tax adviser for your situation.</div>
  <div class="row2"><div class="field"><label>Category name</label><input id="itName" placeholder="e.g. Freelance Fee"></div><div class="field"><label>Taxable?</label><select id="itTaxable"><option value="1">Yes</option><option value="0">No</option></select></div></div>
  <button class="btn accent full" onclick="addIncomeCategory()">＋ Add Category</button>
  <div class="sectionhead" style="margin-top:18px"><h3>All categories</h3></div><div class="list" id="itList"></div>
@@ -876,7 +1036,7 @@ async function showOtherIncome(){
  await ensureIncomeCategorySeed();
  let inc=await all('otherIncome'), cats=(await all('expenseTypes')).filter(x=>x.kind==='income').sort((a,b)=>a.name.localeCompare(b.name));
  const opts='<option value="">Select category</option>'+cats.map(c=>`<option value="${esc(c.name)}" data-taxable="${c.taxable?1:0}">${esc(c.name)}${c.taxable?'':' (not taxable)'}</option>`).join('');
- openModal(`<h2>Other Income</h2><div class="notice">Cash gifts, inheritance, investment dividends, rental income, and similar money coming in outside your regular business sales — cuts across all your businesses, and adds to your combined bank balance.</div>
+ openModal(`<h2>Other Income ${hb("Money coming in that isn't a business sale: gifts, inheritance, dividends, rent. Each category is marked taxable or not, since they're treated differently at tax time.")}</h2><div class="notice">Cash gifts, inheritance, investment dividends, rental income, and similar money coming in outside your regular business sales — cuts across all your businesses, and adds to your combined bank balance.</div>
  <div class="field"><label>Date</label><input id="oid" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
  <div class="row2"><div class="field"><label>Category</label><select id="oic">${opts}</select></div><div class="field"><label>Amount</label><input id="oia" type="number"></div></div>
  <div class="field"><label>Description / source</label><input id="oix" placeholder="e.g. From uncle Bayo, or 14 Marina Street rent"></div>
@@ -898,29 +1058,84 @@ async function deleteOtherIncome(id){if(!confirm('Delete this income record?'))r
 
 async function showOpeningBalances(){
  let b=await getBusiness();
- openModal(`<h2>Opening Balances</h2><div class="notice">One-time figures for the business you were already running before this app — so your totals and profit/loss reflect your real history, not just what's been entered here. Leave any field at 0 if you're starting completely fresh.</div>
+ openModal(`<h2>Opening Balances ${hb("One-time figures for the business you were already running before starting this app, so your totals reflect real history, not just what's been entered here.")}</h2><div class="notice">One-time figures for the business you were already running before this app — so your totals and profit/loss reflect your real history, not just what's been entered here. Leave any field at 0 if you're starting completely fresh.</div>
  <div class="field"><label>As of date</label><input id="oDate" type="date" value="${b.openingAsOfDate||new Date().toISOString().slice(0,10)}"></div>
- <div class="field"><label>Revenue brought forward</label><input id="oRev" type="number" min="0" value="${b.openingRevenue||0}"></div>
- <div class="field"><label>Total expenses brought forward</label><input id="oExp" type="number" min="0" value="${b.openingExpenses||0}"></div>
- <div class="field"><label>Cash / bank balance brought forward</label><input id="oBal" type="number" value="${b.openingBalance||0}"></div>
+ <div class="field"><label>Revenue brought forward ${hb("Total sales this business made before you started using this app — so your lifetime totals include your real history.")}</label><input id="oRev" type="number" min="0" value="${b.openingRevenue||0}"></div>
+ <div class="field"><label>Total expenses brought forward ${hb("Total business expenses before you started using this app, matching Revenue brought forward.")}</label><input id="oExp" type="number" min="0" value="${b.openingExpenses||0}"></div>
+ <div class="field"><label>Cash / bank balance brought forward ${hb("The actual money you had in the bank on the date above — this feeds directly into your dashboard's Cash & Bank Balance.")}</label><input id="oBal" type="number" value="${b.openingBalance||0}"></div>
  <div class="notice">Revenue and expenses brought forward feed into Lifetime Profit &amp; Loss on the Reports screen. The cash/bank balance feeds directly into the Cash &amp; Bank Balance figure on your dashboard.</div>
  <button class="btn primary full" onclick="saveOpeningBalances()">Save Opening Balances</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
 }
 async function saveOpeningBalances(){let b=await getBusiness();b.openingAsOfDate=oDate.value;b.openingRevenue=Number(oRev.value)||0;b.openingExpenses=Number(oExp.value)||0;b.openingBalance=Number(oBal.value)||0;await put('business',b);closeModal();await refresh();}
 
 /* ---------------- Tax Report & Government Submissions ---------------- */
+/* ---------------- Nigeria Tax Estimators (Nigeria Tax Act 2025, effective 1 Jan 2026) ----------------
+   ESTIMATES ONLY, for planning — not a substitute for a tax professional or FIRS/LIRS filing.
+   Personal Income Tax bands, the ₦800,000 0% threshold, rent relief (20% of rent, capped at
+   ₦500,000), and full pension deductibility are drawn from public guidance on the Nigeria Tax
+   Act 2025. Company Income Tax's small-company exemption threshold is cited differently across
+   sources (₦100m turnover in most, ₦50m in a few) — this uses ₦100m/₦250m fixed assets, but
+   confirm current figures with FIRS before relying on this for a real filing. ---------------- */
+function calculateNigeriaPIT(taxableIncomeBeforeRelief, annualRentPaid, pensionContribution){
+ const rentRelief=Math.min(500000,(Number(annualRentPaid)||0)*0.2);
+ const pension=Number(pensionContribution)||0;
+ let taxable=Math.max(0,(Number(taxableIncomeBeforeRelief)||0)-rentRelief-pension);
+ const bands=[{upTo:800000,rate:0},{upTo:3000000,rate:0.15},{upTo:12000000,rate:0.18},{upTo:25000000,rate:0.21},{upTo:50000000,rate:0.23},{upTo:Infinity,rate:0.25}];
+ let remaining=taxable,prevCap=0,tax=0,breakdown=[];
+ for(const b of bands){
+  if(remaining<=0)break;
+  const bandSize=b.upTo-prevCap, taxedInBand=Math.min(remaining,bandSize);
+  if(taxedInBand>0){tax+=taxedInBand*b.rate;breakdown.push({from:prevCap,to:b.upTo===Infinity?null:b.upTo,rate:b.rate,amount:taxedInBand,tax:taxedInBand*b.rate});}
+  remaining-=taxedInBand; prevCap=b.upTo;
+ }
+ return {grossIncome:Number(taxableIncomeBeforeRelief)||0,rentRelief,pensionRelief:pension,taxableIncome:taxable,tax,breakdown};
+}
+function calculateNigeriaCIT(annualTurnover,fixedAssets,profit){
+ const turnover=Number(annualTurnover)||0, assets=Number(fixedAssets)||0, p=Math.max(0,Number(profit)||0);
+ const isSmall=turnover<=100000000 && assets<=250000000;
+ if(isSmall) return {isSmall:true,cit:0,levy:0,total:0,note:'Qualifies as a small company (turnover ≤ ₦100,000,000 and fixed assets ≤ ₦250,000,000) — 0% Company Income Tax under the Nigeria Tax Act 2025.'};
+ const cit=p*0.25, levy=p*0.04;
+ return {isSmall:false,cit,levy,total:cit+levy,note:'Standard rate: 25% Company Income Tax plus 4% Development Levy on assessable profit.'};
+}
+async function getTaxProfile(){
+ let p=await req('taxProfile','readonly',s=>s.get('profile'));
+ if(!p){p={id:'profile',annualRentPaid:0,pensionContribution:0};await req('taxProfile','readwrite',s=>s.put(p));}
+ return p;
+}
+async function showTaxProfile(){
+ const p=await getTaxProfile();
+ openModal(`<h2>Tax Profile ${hb("Your personal rent and pension figures. These reduce your taxable income under the current Nigeria Tax Act relief rules, and apply across all your salary and Business Name income combined.")}</h2>
+ <div class="notice">These apply to you as an individual, not any one business — used to estimate Personal Income Tax relief on salary and sole-proprietor (Business Name) profit combined, per the Nigeria Tax Act 2025.</div>
+ <div class="field"><label>Annual Rent Paid (₦) ${hb("Used to calculate rent relief: 20% of what you enter here, capped at ₦500,000, is deducted from your taxable income.")}</label><input id="tpRent" type="number" min="0" value="${p.annualRentPaid||0}"></div>
+ <div class="field"><label>Annual Pension Contribution (₦) ${hb("Fully deductible from your taxable income under current rules — enter your total yearly contribution.")}</label><input id="tpPension" type="number" min="0" value="${p.pensionContribution||0}"></div>
+ <div class="notice">Rent relief: 20% of rent paid, capped at ₦500,000. Pension contributions are fully deductible from taxable income.</div>
+ <button class="btn primary full" onclick="saveTaxProfile()">Save</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+}
+async function saveTaxProfile(){
+ const p=await getTaxProfile();
+ p.annualRentPaid=Number(tpRent.value)||0; p.pensionContribution=Number(tpPension.value)||0;
+ await req('taxProfile','readwrite',s=>s.put(p)); Sync.markDirty();
+ closeModal(); await showTaxReport();
+}
+
+/* ---------------- Tax Report & Government Submissions ---------------- */
 async function showTaxReport(){
  const curYear=new Date().getFullYear();
  let yearOpts='';
  for(let y=2026;y<=curYear;y++) yearOpts+=`<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`;
- openModal(`<h2>Tax Report</h2>
- <div class="notice">Pulls together every business you've set up, plus your personal expenses, into the same combined bank balance shown everywhere else in the app — so what you submit matches what you see.</div>
+ openModal(`<h2>Tax Report ${hb("Combines every business, personal spending, and all other income into one picture, with an estimated tax position for each business based on how it's classified.")}</h2>
+ <div class="notice">Combines every business, your personal expenses, and all other income into one analytic breakdown — plus an estimated tax position for each business, based on how you've classified it. <b>Estimates only</b> — confirm current rates and thresholds with FIRS, LIRS, or a tax professional before filing.</div>
  <div id="taxCurrencyWarning"></div>
- <div class="field"><label>Tax year</label><select id="taxYear" onchange="loadTaxReport()">${yearOpts}</select></div>
+ <div class="row2"><div class="field"><label>Tax year</label><select id="taxYear" onchange="loadTaxReport()">${yearOpts}</select></div><div class="field" style="display:flex;align-items:flex-end"><button class="btn secondary full" onclick="showTaxProfile()">Edit Tax Profile (Rent/Pension)</button></div></div>
  <div id="taxReportBody"></div>
  <div class="row2" style="margin-top:12px"><button class="btn secondary full" onclick="downloadTaxReportPDF()">Save PDF</button><button class="btn secondary full" onclick="exportTaxReportCSV()">Export CSV</button></div>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
  await loadTaxReport();
+}
+function groupByCategory(items, amountKey='amount', catKey='category'){
+ const map={};
+ for(const it of items){const cat=it[catKey]||'Uncategorized';map[cat]=(map[cat]||0)+(Number(it[amountKey])||0);}
+ return Object.entries(map).sort((a,b)=>b[1]-a[1]);
 }
 async function loadTaxReport(){
  const year=Number(taxYear.value)||new Date().getFullYear();
@@ -929,28 +1144,87 @@ async function loadTaxReport(){
  const businesses=await all('business');
  const currencies=new Set(businesses.map(b=>b.currency||'NGN'));
  taxCurrencyWarning.innerHTML = currencies.size>1 ? `<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">Your businesses use different currencies (${[...currencies].join(', ')}) — the combined totals below add these together directly, which isn't meaningful across currencies. Treat the per-business figures as the accurate ones.</div>` : '';
- let rows='', totalRevenue=0, totalExpenses=0, totalProfit=0;
+ const taxProfile=await getTaxProfile();
+
+ let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0;
+ let personalIncomeBase=0; // salary + business-name profit + taxable other income, feeds PIT
+ let bizTaxSections='';
  for(const b of businesses){
   const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
   const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal;
   totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit;
-  rows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':''}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}</small></div></div>`;
+  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}</small></div></div>`;
+  if(b.type==='salary'){
+   personalIncomeBase+=rev;
+   bizTaxSections+=`<div class="notice">${esc(b.name)} (Salary): ${money(rev)} for ${year} feeds into your combined Personal Income Tax estimate below.</div>`;
+  } else if(b.legalForm==='limited'){
+   const cit=calculateNigeriaCIT(rev, b.fixedAssets, profit);
+   bizTaxSections+=`<h3 style="font-size:13.5px;margin-top:14px">${esc(b.name)} — Company Income Tax (${year})</h3>
+   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div><div class="totalRow"><span>Assessable profit</span><b>${money(profit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
+   <div class="notice">${cit.note} Files with <b>FIRS</b> (Company Income Tax, VAT if turnover exceeds ₦25,000,000); PAYE for any staff salaries remits to <b>LIRS</b> if Lagos-based (or the relevant state IRS elsewhere).</div>`;
+  } else {
+   personalIncomeBase+=profit;
+   bizTaxSections+=`<div class="notice">${esc(b.name)} (Business Name): ${money(profit)} profit for ${year} is taxed as your personal income, not separately — it's included in the combined Personal Income Tax estimate below. Files with your state IRS (<b>LIRS</b> if Lagos-based) as an individual return.</div>`;
+  }
  }
- const personalExp=(await all('expenses')).filter(e=>e.kind==='personal' && e.date>=from && e.date<=to).reduce((a,e)=>a+e.amount,0);
+
+ const personalExpList=(await all('expenses')).filter(e=>e.kind==='personal' && e.date>=from && e.date<=to);
+ const personalExp=personalExpList.reduce((a,e)=>a+e.amount,0);
  const yearIncome=(await all('otherIncome')).filter(e=>e.date>=from && e.date<=to);
- const taxableIncome=yearIncome.filter(e=>e.taxable).reduce((a,e)=>a+e.amount,0);
- const nonTaxableIncome=yearIncome.filter(e=>!e.taxable).reduce((a,e)=>a+e.amount,0);
+ const taxableIncomeList=yearIncome.filter(e=>e.taxable);
+ const taxableOtherIncome=taxableIncomeList.reduce((a,e)=>a+e.amount,0);
+ const nonTaxableOtherIncome=yearIncome.filter(e=>!e.taxable).reduce((a,e)=>a+e.amount,0);
+ personalIncomeBase+=taxableOtherIncome;
+
+ const pit=calculateNigeriaPIT(personalIncomeBase, taxProfile.annualRentPaid, taxProfile.pensionContribution);
+
+ const fullProfitLoss = totalRevenue + nonTaxableOtherIncome + taxableOtherIncome - totalExpenses - personalExp;
  const globalBalance=await getGlobalBankBalance();
  const submission=(await all('taxSubmissions')).find(t=>t.year===year);
+
+ const expByCat=groupByCategory((await all('expenses')).filter(e=>e.kind!=='personal' && e.date>=from && e.date<=to));
+ const personalExpByCat=groupByCategory(personalExpList);
+ const incomeByCat=groupByCategory(yearIncome);
+
  taxReportBody.innerHTML=`
  <h3 style="font-size:14px;margin-top:16px">Per-business (${year})</h3>
- <div class="list">${rows||'<div class="empty">No businesses.</div>'}</div>
- <div class="totalBox"><div class="totalRow"><span>Combined revenue</span><b>${money(totalRevenue)}</b></div><div class="totalRow"><span>Combined business expenses</span><b>${money(totalExpenses)}</b></div><div class="totalRow"><span>Personal expenses (${year})</span><b>${money(personalExp)}</b></div><div class="totalRow grand"><span>Combined profit before personal spend</span><b>${money(totalProfit)}</b></div></div>
- <h3 style="font-size:14px;margin-top:16px">Other Income (${year})</h3>
- <div class="totalBox"><div class="totalRow"><span>Taxable (dividends, rent, interest, etc.)</span><b>${money(taxableIncome)}</b></div><div class="totalRow"><span>Not taxable (gifts, inheritance, etc.)</span><b>${money(nonTaxableIncome)}</b></div></div>
+ <div class="list">${bizRows||'<div class="empty">No businesses.</div>'}</div>
+
+ <h3 style="font-size:14px;margin-top:18px">Full Profit &amp; Loss — Business + Personal (${year})</h3>
+ <div class="notice">Everything in one place: business revenue and expenses, personal spending, and all other income — the complete picture, not just the business-only view in Reports.</div>
+ <div class="totalBox">
+  <div class="totalRow"><span>Business revenue (all businesses)</span><b>${money(totalRevenue)}</b></div>
+  <div class="totalRow"><span>Other income — taxable</span><b>${money(taxableOtherIncome)}</b></div>
+  <div class="totalRow"><span>Other income — not taxable (gifts, inheritance)</span><b>${money(nonTaxableOtherIncome)}</b></div>
+  <div class="totalRow"><span>Business expenses (all businesses)</span><b>${money(totalExpenses)}</b></div>
+  <div class="totalRow"><span>Personal expenses</span><b>${money(personalExp)}</b></div>
+  <div class="totalRow grand"><span>Net Position for ${year}</span><b>${money(fullProfitLoss)}</b></div>
+ </div>
+
+ <h3 style="font-size:14px;margin-top:18px">Breakdown by Category (${year})</h3>
+ <div class="row2">
+  <div><b style="display:block;font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Business Expenses</b>${expByCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty">None</div>'}</div>
+  <div><b style="display:block;font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Personal Expenses</b>${personalExpByCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty">None</div>'}</div>
+ </div>
+ <b style="display:block;font-size:11px;text-transform:uppercase;color:var(--muted);margin:10px 0 6px">Other Income</b>${incomeByCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty">None</div>'}
+
+ <h3 style="font-size:14px;margin-top:18px">Estimated Tax Position (${year})</h3>
+ ${bizTaxSections}
+ <h4 style="font-size:12.5px;margin-top:12px;font-weight:700">Combined Personal Income Tax (Salary + Business Name profit + taxable other income)</h4>
+ <div class="totalBox">
+  <div class="totalRow"><span>Gross taxable-source income</span><b>${money(pit.grossIncome)}</b></div>
+  <div class="totalRow"><span>Rent relief (20% of rent, max ₦500,000)</span><b>−${money(pit.rentRelief)}</b></div>
+  <div class="totalRow"><span>Pension relief</span><b>−${money(pit.pensionRelief)}</b></div>
+  <div class="totalRow"><span>Taxable income</span><b>${money(pit.taxableIncome)}</b></div>
+  ${pit.breakdown.map(bd=>`<div class="totalRow"><span>${money(bd.from)} – ${bd.to?money(bd.to):'above'} @ ${(bd.rate*100).toFixed(0)}%</span><b>${money(bd.tax)}</b></div>`).join('')}
+  <div class="totalRow grand"><span>Estimated Personal Income Tax</span><b>${money(pit.tax)}</b></div>
+ </div>
+ <div class="notice">Based on the Nigeria Tax Act 2025 (effective 1 January 2026): 0% up to ₦800,000, then 15/18/21/23/25% progressive bands. Limited company profit is <b>not</b> included here — it's taxed separately via Company Income Tax above.</div>
+
  <h3 style="font-size:14px;margin-top:16px">Current Bank Balance (all businesses)</h3>
  <div class="totalBox"><div class="totalRow grand"><span>As of today</span><b>${money(globalBalance)}</b></div></div>
+
  <h3 style="font-size:14px;margin-top:16px">Government Submission — ${year}</h3>
  ${submission ? `<div class="notice"><b>Marked submitted.</b> ${money(submission.amountPaid)} paid on ${esc(submission.dateSubmitted)}.${submission.note?' Note: '+esc(submission.note):''}</div><button class="btn secondary full" onclick="unmarkTaxSubmission('${submission.id}')">Undo Submission Mark</button>`
   : `<div class="notice">Not yet marked as submitted for ${year}.</div><button class="btn accent full" onclick="markTaxSubmission(${year})">Mark ${year} as Submitted to Government</button>`}
@@ -986,13 +1260,17 @@ async function exportTaxReportCSV(){
  const year=Number(taxYear.value)||new Date().getFullYear();
  const from=year+'-01-01', to=year+'-12-31';
  const businesses=await all('business');
- const rows=[['Business','Currency','Revenue','Expenses','Profit']];
+ const rows=[['Business','Type','Currency','Revenue','Expenses','Profit']];
  for(const b of businesses){
   const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
   const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0);
-  rows.push([b.name,b.currency||'NGN',rev,expTotal,rev-expTotal]);
+  rows.push([b.name,b.type==='salary'?'Salary':(b.legalForm==='limited'?'Limited':'Business Name'),b.currency||'NGN',rev,expTotal,rev-expTotal]);
  }
+ rows.push([]);
+ rows.push(['Personal Expenses','','','','',(await all('expenses')).filter(e=>e.kind==='personal'&&e.date>=from&&e.date<=to).reduce((a,e)=>a+e.amount,0)]);
+ rows.push(['Other Income (taxable)','','','','',(await all('otherIncome')).filter(e=>e.date>=from&&e.date<=to&&e.taxable).reduce((a,e)=>a+e.amount,0)]);
+ rows.push(['Other Income (not taxable)','','','','',(await all('otherIncome')).filter(e=>e.date>=from&&e.date<=to&&!e.taxable).reduce((a,e)=>a+e.amount,0)]);
  downloadCSV(rows,'tax-report-'+year+'.csv');
 }
 async function downloadTaxReportPDF(){
@@ -1060,7 +1338,7 @@ async function runAudit(){
 async function showAudit(){
  const findings=await runAudit();
  window.auditFindings=findings;
- openModal(`<h2>Audit of Me</h2>
+ openModal(`<h2>Audit of Me ${hb("A rules-based scan of your records for the kinds of things a real audit checks: numbering gaps, unexplained large expenses, overdue receivables, and missing tax submissions.")}</h2>
  <div class="notice">A rules-based scan of your invoices, expenses, and tax records — not a substitute for a professional auditor, but a first pass flagging the kinds of things a real audit would ask about. ${findings.length} item(s) found. Add a short explanation for each before generating the final report.</div>
  <div>${findings.map((f,n)=>`
   <div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
@@ -1189,7 +1467,7 @@ async function downloadInvoicePDF(number){
   try{
     await doc.html(target, { x:24, y:24, width:547, windowWidth:800 });
     doc.save(safeName+'.pdf');
-    setTimeout(()=>{ if(confirm('Invoice saved. Print it now on your POS printer?')) printInvoice(number); }, 300);
+    setTimeout(()=>{ if(confirm('Saved. Print it now on your POS printer?')) printInvoice(number); }, 300);
   }catch(e){
     console.error(e);
     alert('Could not build the PDF file directly — opening the Print dialog instead. Choose "Save as PDF" there.');
