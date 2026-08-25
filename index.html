@@ -245,7 +245,7 @@ document.addEventListener('click',e=>{
 /* ---------------- IndexedDB core ---------------- */
 const DB_NAME='MoborexInvoiceDB', DB_VERSION=5;
 let idb;
-const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,openingBalanceTaxStatus:'',type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
 function openDB(){
  return new Promise((resolve,reject)=>{
   const r=indexedDB.open(DB_NAME,DB_VERSION);
@@ -1063,10 +1063,15 @@ async function showOpeningBalances(){
  <div class="field"><label>Revenue brought forward ${hb("Total sales this business made before you started using this app — so your lifetime totals include your real history.")}</label><input id="oRev" type="number" min="0" value="${b.openingRevenue||0}"></div>
  <div class="field"><label>Total expenses brought forward ${hb("Total business expenses before you started using this app, matching Revenue brought forward.")}</label><input id="oExp" type="number" min="0" value="${b.openingExpenses||0}"></div>
  <div class="field"><label>Cash / bank balance brought forward ${hb("The actual money you had in the bank on the date above — this feeds directly into your dashboard's Cash & Bank Balance.")}</label><input id="oBal" type="number" value="${b.openingBalance||0}"></div>
- <div class="notice">Revenue and expenses brought forward feed into Lifetime Profit &amp; Loss on the Reports screen. The cash/bank balance feeds directly into the Cash &amp; Bank Balance figure on your dashboard.</div>
+ <div class="field"><label>Has tax already been paid on this balance? ${hb("This money existed before you started using Ledger Vault. Tell the Tax Report whether it was already taxed (e.g. savings, a previously-declared balance) or whether it should be declared as income now, so it isn't silently left out of — or wrongly duplicated into — your tax estimate.")}</label><select id="oTaxStatus">
+  <option value="">Not answered yet</option>
+  <option value="taxed" ${b.openingBalanceTaxStatus==='taxed'?'selected':''}>Already taxed — exclude from Tax Report income</option>
+  <option value="untaxed" ${b.openingBalanceTaxStatus==='untaxed'?'selected':''}>Not yet taxed — include as income in the Tax Report</option>
+ </select></div>
+ <div class="notice">Revenue and expenses brought forward feed into Lifetime Profit &amp; Loss on the Reports screen. The cash/bank balance feeds directly into the Cash &amp; Bank Balance figure on your dashboard, and — based on your answer above — into the Tax Report for the year matching "As of date".</div>
  <button class="btn primary full" onclick="saveOpeningBalances()">Save Opening Balances</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
 }
-async function saveOpeningBalances(){let b=await getBusiness();b.openingAsOfDate=oDate.value;b.openingRevenue=Number(oRev.value)||0;b.openingExpenses=Number(oExp.value)||0;b.openingBalance=Number(oBal.value)||0;await put('business',b);closeModal();await refresh();}
+async function saveOpeningBalances(){let b=await getBusiness();b.openingAsOfDate=oDate.value;b.openingRevenue=Number(oRev.value)||0;b.openingExpenses=Number(oExp.value)||0;b.openingBalance=Number(oBal.value)||0;b.openingBalanceTaxStatus=oTaxStatus.value||'';await put('business',b);closeModal();await refresh();}
 
 /* ---------------- Tax Report & Government Submissions ---------------- */
 /* ---------------- Nigeria Tax Estimators (Nigeria Tax Act 2025, effective 1 Jan 2026) ----------------
@@ -1148,24 +1153,44 @@ async function loadTaxReport(){
 
  let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0;
  let personalIncomeBase=0; // salary + business-name profit + taxable other income, feeds PIT
- let bizTaxSections='';
+ let bizTaxSections='', openingBalanceSection='', openingBalanceIncomeTotal=0;
  for(const b of businesses){
   const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
   const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal;
   totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit;
   bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}</small></div></div>`;
+
+  // Balance brought forward: a one-time pre-app figure, only relevant to the tax
+  // year matching its "as of" date. Whether it counts as income depends on
+  // whether it was already taxed before this business started using the app.
+  const ob=Number(b.openingBalance)||0, obYear=b.openingAsOfDate?Number(b.openingAsOfDate.slice(0,4)):null, obStatus=b.openingBalanceTaxStatus||'';
+  let obIncludedThisYear=0;
+  if(ob!==0){
+   if(obYear!==year){
+    openingBalanceSection+=`<div class="notice">${esc(b.name)}: ${money(ob)} balance brought forward${b.openingAsOfDate?` as of ${esc(b.openingAsOfDate)}`:' (no "as of" date set)'} isn't dated to ${year}, so it's not included in this year's report. <button class="btn secondary" style="padding:4px 10px;font-size:11px;margin-top:6px" onclick="showOpeningBalances()">Review Opening Balances</button></div>`;
+   } else if(obStatus===''){
+    openingBalanceSection+=`<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">${esc(b.name)}: ${money(ob)} balance brought forward as of ${esc(b.openingAsOfDate)} hasn't been marked as taxed or untaxed yet, so it's currently excluded from this estimate. Was tax already paid on it, or should it be declared as income now? <button class="btn secondary" style="padding:4px 10px;font-size:11px;margin-top:6px" onclick="showOpeningBalances()">Answer now</button></div>`;
+   } else if(obStatus==='taxed'){
+    openingBalanceSection+=`<div class="notice">${esc(b.name)}: ${money(ob)} balance brought forward as of ${esc(b.openingAsOfDate)} was already taxed previously — excluded from ${year}'s taxable income.</div>`;
+   } else if(obStatus==='untaxed'){
+    obIncludedThisYear=ob; openingBalanceIncomeTotal+=ob;
+    openingBalanceSection+=`<div class="notice">${esc(b.name)}: ${money(ob)} balance brought forward as of ${esc(b.openingAsOfDate)} has not been taxed before — included as income for ${year} below.</div>`;
+   }
+  }
+
   if(b.type==='salary'){
-   personalIncomeBase+=rev;
-   bizTaxSections+=`<div class="notice">${esc(b.name)} (Salary): ${money(rev)} for ${year} feeds into your combined Personal Income Tax estimate below.</div>`;
+   personalIncomeBase+=rev+obIncludedThisYear;
+   bizTaxSections+=`<div class="notice">${esc(b.name)} (Salary): ${money(rev)} for ${year}${obIncludedThisYear?` plus ${money(obIncludedThisYear)} balance brought forward`:''} feeds into your combined Personal Income Tax estimate below.</div>`;
   } else if(b.legalForm==='limited'){
-   const cit=calculateNigeriaCIT(rev, b.fixedAssets, profit);
+   const citProfit=profit+obIncludedThisYear;
+   const cit=calculateNigeriaCIT(rev+obIncludedThisYear, b.fixedAssets, citProfit);
    bizTaxSections+=`<h3 style="font-size:13.5px;margin-top:14px">${esc(b.name)} — Company Income Tax (${year})</h3>
-   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div><div class="totalRow"><span>Assessable profit</span><b>${money(profit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
+   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div>${obIncludedThisYear?`<div class="totalRow"><span>Balance brought forward (declared as income)</span><b>${money(obIncludedThisYear)}</b></div>`:''}<div class="totalRow"><span>Assessable profit</span><b>${money(citProfit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
    <div class="notice">${cit.note} Files with <b>FIRS</b> (Company Income Tax, VAT if turnover exceeds ₦25,000,000); PAYE for any staff salaries remits to <b>LIRS</b> if Lagos-based (or the relevant state IRS elsewhere).</div>`;
   } else {
-   personalIncomeBase+=profit;
-   bizTaxSections+=`<div class="notice">${esc(b.name)} (Business Name): ${money(profit)} profit for ${year} is taxed as your personal income, not separately — it's included in the combined Personal Income Tax estimate below. Files with your state IRS (<b>LIRS</b> if Lagos-based) as an individual return.</div>`;
+   personalIncomeBase+=profit+obIncludedThisYear;
+   bizTaxSections+=`<div class="notice">${esc(b.name)} (Business Name): ${money(profit)} profit for ${year}${obIncludedThisYear?` plus ${money(obIncludedThisYear)} balance brought forward`:''} is taxed as your personal income, not separately — it's included in the combined Personal Income Tax estimate below. Files with your state IRS (<b>LIRS</b> if Lagos-based) as an individual return.</div>`;
   }
  }
 
@@ -1179,7 +1204,7 @@ async function loadTaxReport(){
 
  const pit=calculateNigeriaPIT(personalIncomeBase, taxProfile.annualRentPaid, taxProfile.pensionContribution);
 
- const fullProfitLoss = totalRevenue + nonTaxableOtherIncome + taxableOtherIncome - totalExpenses - personalExp;
+ const fullProfitLoss = totalRevenue + openingBalanceIncomeTotal + nonTaxableOtherIncome + taxableOtherIncome - totalExpenses - personalExp;
  const globalBalance=await getGlobalBankBalance();
  const submission=(await all('taxSubmissions')).find(t=>t.year===year);
 
@@ -1191,10 +1216,13 @@ async function loadTaxReport(){
  <h3 style="font-size:14px;margin-top:16px">Per-business (${year})</h3>
  <div class="list">${bizRows||'<div class="empty">No businesses.</div>'}</div>
 
+ ${openingBalanceSection?`<h3 style="font-size:14px;margin-top:18px">Balance Brought Forward ${hb("Cash/bank balances entered under Opening Balances, before you started using Ledger Vault. Whether each counts as income for a given tax year depends on the answer you gave for that business: already taxed, or to be declared now.")}</h3>${openingBalanceSection}`:''}
+
  <h3 style="font-size:14px;margin-top:18px">Full Profit &amp; Loss — Business + Personal (${year})</h3>
  <div class="notice">Everything in one place: business revenue and expenses, personal spending, and all other income — the complete picture, not just the business-only view in Reports.</div>
  <div class="totalBox">
   <div class="totalRow"><span>Business revenue (all businesses)</span><b>${money(totalRevenue)}</b></div>
+  ${openingBalanceIncomeTotal?`<div class="totalRow"><span>Balance brought forward (declared as income this year)</span><b>${money(openingBalanceIncomeTotal)}</b></div>`:''}
   <div class="totalRow"><span>Other income — taxable</span><b>${money(taxableOtherIncome)}</b></div>
   <div class="totalRow"><span>Other income — not taxable (gifts, inheritance)</span><b>${money(nonTaxableOtherIncome)}</b></div>
   <div class="totalRow"><span>Business expenses (all businesses)</span><b>${money(totalExpenses)}</b></div>
@@ -1268,6 +1296,10 @@ async function exportTaxReportCSV(){
   rows.push([b.name,b.type==='salary'?'Salary':(b.legalForm==='limited'?'Limited':'Business Name'),b.currency||'NGN',rev,expTotal,rev-expTotal]);
  }
  rows.push([]);
+ for(const b of businesses){
+  const ob=Number(b.openingBalance)||0, obYear=b.openingAsOfDate?Number(b.openingAsOfDate.slice(0,4)):null, obStatus=b.openingBalanceTaxStatus||'';
+  if(ob!==0 && obYear===year) rows.push([`${b.name} — Balance brought forward`,'','',ob,'',obStatus==='untaxed'?'Included as income (not previously taxed)':(obStatus==='taxed'?'Excluded (already taxed)':'Excluded (not yet answered — see Opening Balances)')]);
+ }
  rows.push(['Personal Expenses','','','','',(await all('expenses')).filter(e=>e.kind==='personal'&&e.date>=from&&e.date<=to).reduce((a,e)=>a+e.amount,0)]);
  rows.push(['Other Income (taxable)','','','','',(await all('otherIncome')).filter(e=>e.date>=from&&e.date<=to&&e.taxable).reduce((a,e)=>a+e.amount,0)]);
  rows.push(['Other Income (not taxable)','','','','',(await all('otherIncome')).filter(e=>e.date>=from&&e.date<=to&&!e.taxable).reduce((a,e)=>a+e.amount,0)]);
