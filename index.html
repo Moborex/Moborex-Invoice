@@ -186,6 +186,8 @@ button{font-family:var(--font-body);cursor:pointer}
 .installBar.show{display:flex}
 .installBar span{flex:1;line-height:1.4}
 @media(min-width:900px){.installBar{left:250px}}
+.updateCover{display:none;position:fixed;inset:0;background:var(--ink);z-index:220;align-items:center;justify-content:center;padding:24px;text-align:center}
+.updateCover.show{display:flex}
 
 .lockScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:200;align-items:center;justify-content:center;padding:24px}
 .helpBtn{width:18px;height:18px;border-radius:50%;border:1.4px solid var(--brass);background:var(--brassSoft);color:var(--brass);font-size:10.5px;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:6px;vertical-align:middle;padding:0}
@@ -513,6 +515,19 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
   <span>Keep this data safe — back it up automatically to your Google Drive?</span>
   <button class="btn primary" style="padding:8px 14px;font-size:12.5px;background:var(--ink)" onclick="startOnboardingBackup()">Set Up Backup</button>
   <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#00000030" onclick="dismissBackupBar()">×</button>
+</div>
+<div class="installBar" id="updateBar" style="background:var(--good)">
+  <span>A new version of Ledger Vault is ready. Update now to get the latest fixes.</span>
+  <button class="btn primary" style="padding:8px 14px;font-size:12.5px;background:var(--ink)" onclick="applyUpdate()">Update Now</button>
+  <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#00000030" onclick="dismissUpdateBar()">×</button>
+</div>
+<div class="updateCover" id="updateCover">
+  <div style="max-width:340px;color:#fff">
+    <div class="seal" style="width:56px;height:56px;font-size:26px;margin:0 auto 16px">▦</div>
+    <h2 style="color:#fff;margin-bottom:8px">Update Required</h2>
+    <p style="color:#cfd6e0;font-size:13.5px;line-height:1.5;margin-bottom:18px">A new version of Ledger Vault has been available for a while. Please update now to keep using the app — your data stays exactly as it is.</p>
+    <button class="btn accent full" onclick="applyUpdate()">Update Now</button>
+  </div>
 </div>
 <div class="shell">
 
@@ -1639,11 +1654,67 @@ window.addEventListener('DOMContentLoaded', ()=>{
 });
 
 if('serviceWorker' in navigator){
-  let swRefreshed=false;
+  let swRefreshed=false, swRegistration=null;
+  let updateDismissCount=0, updateEscalateTimer=null, updateReprompt=null;
+
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{
-    if(swRefreshed) return; swRefreshed=true; window.location.reload();
+    if(swRefreshed) return; swRefreshed=true;
+    localStorage.removeItem('moborex_update_pending_since');
+    window.location.reload();
   });
-  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
+
+  function armUpdatePrompt(){
+    // First sighting of a waiting worker for this update.
+    if(!localStorage.getItem('moborex_update_pending_since')) localStorage.setItem('moborex_update_pending_since', String(Date.now()));
+    updateBar.classList.add('show');
+    if(!updateReprompt) updateReprompt=setInterval(()=>{ updateBar.classList.add('show'); }, 10*60*1000); // re-surface every 10 min if dismissed
+    if(!updateEscalateTimer) updateEscalateTimer=setInterval(checkForceEscalation, 60*1000);
+    checkForceEscalation();
+  }
+  function checkForceEscalation(){
+    const since=Number(localStorage.getItem('moborex_update_pending_since'))||Date.now();
+    const minutesPending=(Date.now()-since)/60000;
+    if(updateDismissCount>=3 || minutesPending>=60) forceUpdateCover();
+  }
+  function forceUpdateCover(){
+    updateBar.classList.remove('show');
+    updateCover.classList.add('show');
+  }
+  function dismissUpdateBar(){
+    updateBar.classList.remove('show');
+    updateDismissCount++;
+    checkForceEscalation();
+  }
+  window.dismissUpdateBar=dismissUpdateBar;
+  window.applyUpdate=function(){
+    if(swRegistration && swRegistration.waiting){
+      swRegistration.waiting.postMessage({type:'SKIP_WAITING'});
+    } else {
+      window.location.reload();
+    }
+  };
+
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').then(reg=>{
+      swRegistration=reg;
+      // A worker already sitting in "waiting" (e.g. from an earlier session that didn't update).
+      if(reg.waiting && reg.active) armUpdatePrompt();
+      else localStorage.removeItem('moborex_update_pending_since'); // fully up to date — clear any stale timer
+      reg.addEventListener('updatefound', ()=>{
+        const nw=reg.installing;
+        if(!nw) return;
+        nw.addEventListener('statechange', ()=>{
+          if(nw.state==='installed' && navigator.serviceWorker.controller) armUpdatePrompt();
+        });
+      });
+      // Standalone/installed PWAs don't always get a fresh update check on
+      // launch, so actively ask the browser to check — on load, whenever the
+      // app regains focus, and every 30 minutes while it's open.
+      reg.update().catch(()=>{});
+      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') reg.update().catch(()=>{}); });
+      setInterval(()=>reg.update().catch(()=>{}), 30*60*1000);
+    }).catch(()=>{});
+  });
 }
 </script>
 </body></html>

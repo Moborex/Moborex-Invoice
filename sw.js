@@ -1,4 +1,4 @@
-const CACHE = 'moborex-invoice-v16';
+const CACHE = 'moborex-invoice-v17';
 const ASSETS = ['./index.html','./manifest.json','./icon-192.png','./icon-512.png'];
 const OPTIONAL_ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
@@ -13,7 +13,13 @@ self.addEventListener('install', e=>{
       )); // PDF libraries cached best-effort; app still installs fine if offline
     })
   );
-  self.skipWaiting();
+  // Intentionally NOT calling skipWaiting() here. A newly-installed worker
+  // stays in "waiting" state until the page tells it to take over (see the
+  // SKIP_WAITING message below), so the update prompt / forced-update cover
+  // in index.html controls exactly when the switch happens.
+});
+self.addEventListener('message', e=>{
+  if(e.data && e.data.type==='SKIP_WAITING') self.skipWaiting();
 });
 self.addEventListener('activate', e=>{
   e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
