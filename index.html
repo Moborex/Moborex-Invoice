@@ -670,7 +670,18 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 let uiHistoryPushed=false;
 function isAnyOverlayOpen(){return modal.classList.contains('show')||drawerOverlay.classList.contains('show')}
 function pushNavIfNeeded(){if(!uiHistoryPushed){history.pushState({moborexUI:true},'');uiHistoryPushed=true}}
-function popNavIfNeeded(){if(uiHistoryPushed&&!isAnyOverlayOpen()){uiHistoryPushed=false;history.back()}}
+function popNavIfNeeded(){
+ // Deferred to a microtask on purpose: several flows close one screen and
+ // immediately open another right after (e.g. Generate Audit Report closes
+ // the findings screen, then opens the report preview). history.back() is
+ // asynchronous — calling it here and then synchronously re-opening a modal
+ // left a popstate event pending that would fire moments later and yank the
+ // just-opened modal back closed. Waiting a microtask lets that synchronous
+ // reopen (if any) happen first, so we only actually go back if the app is
+ // still closed once the current call chain has finished.
+ if(!uiHistoryPushed) return;
+ queueMicrotask(()=>{ if(uiHistoryPushed&&!isAnyOverlayOpen()){uiHistoryPushed=false;history.back()} });
+}
 window.addEventListener('popstate',()=>{modal.classList.remove('show');drawerOverlay.classList.remove('show');uiHistoryPushed=false});
 
 function openDrawer(){drawerOverlay.classList.add('show');pushNavIfNeeded()}
