@@ -130,25 +130,41 @@ button{font-family:var(--font-body);cursor:pointer}
 .invoicePreview{background:#fff;border:1px solid #ddd;padding:26px;border-radius:12px;font-family:Georgia,'Times New Roman',Arial,'Noto Sans',sans-serif;color:#111;font-weight:500;overflow-wrap:break-word;word-break:break-word}
 .invoicePreview .sampleTop{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2.6px solid var(--ink);padding-bottom:14px}
 .invoicePreview .sampleLogo img{max-width:80px;max-height:70px}
-.invoicePreview .sampleCompany{display:flex;gap:12px;align-items:flex-start;text-align:left;font-size:12.5px;line-height:1.55;font-weight:600;max-width:60%}
-.invoicePreview .sampleCompany h1{font-size:20px;margin:0 0 4px;font-weight:700}
-.invoicePreview .metaRight{text-align:right;font-size:12.5px;font-weight:600;white-space:nowrap;flex-shrink:0}
+.invoicePreview .sampleCompany{display:flex;gap:12px;align-items:flex-start;text-align:left;font-size:12.5px;line-height:1.55;font-weight:600;max-width:60%;min-width:0}
+.invoicePreview .sampleCompany > div{min-width:0;overflow-wrap:break-word;word-break:break-word}
+.invoicePreview .sampleCompany h1{font-size:20px;margin:0 0 4px;font-weight:700;overflow-wrap:break-word;word-break:break-word}
+.invoicePreview .metaRight{text-align:right;font-size:12.5px;font-weight:600;flex-shrink:0;max-width:42%;min-width:0;overflow-wrap:break-word;word-break:break-word}
+.invoicePreview .metaRight strong{display:block;overflow-wrap:break-word;word-break:break-word}
 .invoicePreview .sampleMeta{display:flex;justify-content:space-between;gap:16px;margin-top:20px;padding-top:4px;font-size:12.5px;font-weight:600}
-.invoicePreview .sampleMeta > div{max-width:70%}
-.invoicePreview .sampleMeta strong{display:block;margin-top:2px;line-height:1.4}
-.invoicePreview .sampleMeta span{display:block;line-height:1.5}
+.invoicePreview .sampleMeta > div{max-width:70%;min-width:0;overflow-wrap:break-word;word-break:break-word}
 .invoicePreview b{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#555;font-weight:800;margin-top:8px}
 .invoicePreview .vehicleBand{margin-top:16px;padding:10px 12px;background:#f4f4f2;border-radius:8px;font-size:12.5px;font-weight:600;line-height:1.5}
 .invoicePreview .vehicleBand strong{display:block;margin-top:3px}
-.invoicePreview table{width:100%;border-collapse:collapse;margin-top:16px}
+.invoicePreview table{width:100%;border-collapse:collapse;margin-top:16px;table-layout:fixed}
 .invoicePreview th{padding:8px;border-bottom:2px solid #333;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:800}
-.invoicePreview td{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12.5px;font-weight:600}
+.invoicePreview td{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12.5px;font-weight:600;overflow-wrap:break-word;word-break:break-word}
 .invoicePreview .r{text-align:right;font-family:var(--font-mono);font-weight:700}
 .invoicePreview .comment{font-size:11px;white-space:pre-wrap;margin-top:5px;color:#555;font-weight:500}
 .invoicePreview .paymentTotal{display:flex;justify-content:space-between;align-items:flex-end;margin-top:18px;gap:14px}
 .invoicePreview .totalPill{background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;text-align:right}
 .invoicePreview .totalPill span{display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700}
 .invoicePreview .totalPill b{color:#fff;font-family:var(--font-mono);font-size:19px;margin-top:2px;font-weight:700}
+
+/* ---- Receipt (POS/thermal) layout — a completely different, narrow
+   single-column presentation reusing the same #pdfTarget node. Toggled by
+   adding class "receiptMode" right before printing/saving, and removed
+   right after, so the A4 layout is untouched the rest of the time. ---- */
+.invoicePreview.receiptMode{width:78mm;max-width:78mm;margin:0 auto;padding:8px;border:0;border-radius:0;font-family:var(--font-mono),'Courier New',monospace;font-size:10.5px;line-height:1.45}
+.invoicePreview.receiptMode .receiptHead{text-align:center;border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px}
+.invoicePreview.receiptMode .receiptHead h1{font-size:14px;margin:0 0 3px}
+.invoicePreview.receiptMode .receiptHead div{font-size:10px}
+.invoicePreview.receiptMode .receiptRow{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
+.invoicePreview.receiptMode .receiptRule{border-top:1px dashed #000;margin:8px 0}
+.invoicePreview.receiptMode .receiptItems .receiptRow{align-items:flex-start}
+.invoicePreview.receiptMode .receiptItems .desc{flex:1;overflow-wrap:break-word;word-break:break-word}
+.invoicePreview.receiptMode .receiptItems .amt{white-space:nowrap;text-align:right}
+.invoicePreview.receiptMode .receiptTotal{font-weight:700;font-size:12.5px}
+.invoicePreview.receiptMode .receiptFoot{text-align:center;margin-top:10px;font-size:9.5px}
 
 @media print{
   .shell, #installBar, #backupBar, #drawerOverlay { display:none !important; }
@@ -158,6 +174,7 @@ button{font-family:var(--font-body);cursor:pointer}
   #pdfTarget{ border:0 !important; box-shadow:none !important; padding:0 !important; }
 }
 .pdfActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.pdfActions.receiptActions{grid-template-columns:1fr 1fr;margin-top:8px}
 
 .cloudBox{padding:13px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--paper);margin:12px 0}
 .cloudBox button{margin-top:8px}
@@ -223,6 +240,19 @@ function money(n){
   catch(e){return c+' '+(Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:2})}
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+/* ---------------- Invoice numbering ---------------- */
+function deriveInvoicePrefix(name){
+ // Culled from the company name: initials of each significant word, e.g.
+ // "Moborex Service Hub" -> "MSH", "Ravos Farm" -> "RF". A single-word name
+ // falls back to its first three letters, e.g. "Acme" -> "ACM". Always
+ // derived live from the current name — renaming the business updates the
+ // prefix on the next auto-generated number automatically.
+ const words=(name||'').trim().split(/\s+/).filter(Boolean);
+ if(!words.length) return 'INV';
+ if(words.length===1) return words[0].replace(/[^a-zA-Z0-9]/g,'').slice(0,3).toUpperCase()||'INV';
+ return words.map(w=>w[0]).join('').replace(/[^a-zA-Z0-9]/g,'').slice(0,5).toUpperCase()||'INV';
+}
+function nextInvoicePreview(b){ return deriveInvoicePrefix(b.name)+'-'+String(b.nextNumber||1).padStart(4,'0'); }
 /* ---------------- Help balloons ---------------- */
 function hb(text){return `<button type="button" class="helpBtn" onclick="showHelpBalloon(this)" data-help="${esc(text)}">?</button>`}
 function showHelpBalloon(el){
@@ -387,7 +417,7 @@ async function autoGenerateSalaryIfDue(){
     if(b.type==='salary' && b.salaryAutoGenerate && (Number(b.salaryAmount)||0)>0 && b.salaryLastGenerated!==curYM){
       const monthName = new Date().toLocaleString('default',{month:'long',year:'numeric'});
       let number='';
-      if(b.invoiceMode==='auto'){ number=String(b.nextNumber||1).padStart(4,'0'); b.nextNumber=(b.nextNumber||1)+1; }
+      if(b.invoiceMode==='auto'){ number=deriveInvoicePrefix(b.name)+'-'+String(b.nextNumber||1).padStart(4,'0'); b.nextNumber=(b.nextNumber||1)+1; }
       const employers = (await all('customers')).filter(c=>c.businessId===b.id);
       const employerName = employers.length ? employers[employers.length-1].name : (b.salaryEmployer||'Employer');
       const rec = {
@@ -784,7 +814,7 @@ async function showSettings(){
  let b=await getBusiness();
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
  openModal(`<h2>Business Settings ${hb("Everything specific to this one business: its name, currency, invoice numbering, and how it's classified for tax purposes.")}</h2>
- <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div><div class="field"><label>Type ${hb("Business tracks sales and expenses normally. Salary auto-logs a monthly pay entry instead, and relabels Customers to Employer.")}</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option></select></div></div>
+ <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}" oninput="updateInvoiceNumberPreview()"></div><div class="field"><label>Type ${hb("Business tracks sales and expenses normally. Salary auto-logs a monthly pay entry instead, and relabels Customers to Employer.")}</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option></select></div></div>
  <div id="salaryFieldsBox" style="display:none">
   <div class="notice">Once set up, this business logs a salary payment automatically each month until you switch off auto-generate, change amount, or change employer. "Customers" becomes "Employer" for this business.</div>
   <div class="row2"><div class="field"><label>Monthly Salary Amount</label><input id="bsalAmt" type="number" min="0" value="${b.salaryAmount||0}"></div><div class="field"><label>Auto-generate monthly ${hb("When on, this business logs a salary payment for you automatically once a month, with no need to create it by hand.")}</label><select id="bsalAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div></div>
@@ -802,9 +832,23 @@ async function showSettings(){
  <div class="field"><label>Invoice header note</label><textarea id="bh">${esc(b.headerComment)}</textarea></div>
  <div class="field"><label>Invoice footer / terms</label><textarea id="bf">${esc(b.footerComment)}</textarea></div>
  <h3 style="font-size:14px;margin-top:16px">Invoice numbering</h3>
- <div class="row2"><div class="field"><label>Numbering Mode ${hb("Manual: you type each invoice number yourself. Automatic: the app assigns the next number in sequence for you.")}</label><select id="bm"><option value="manual">Manual</option><option value="auto">Automatic</option></select></div><div class="field"><label>Next automatic number</label><input id="bnext" type="number" value="${b.nextNumber}"></div></div>
+ <div class="row2"><div class="field"><label>Numbering Mode ${hb("Manual: you type each invoice number yourself. Automatic: the app assigns the next number in sequence for you, with a prefix taken from your business name (e.g. \"Moborex Service Hub\" → MSH-0001).")}</label><select id="bm" onchange="updateInvoiceNumberPreview()"><option value="manual">Manual</option><option value="auto">Automatic</option></select></div><div class="field"><label>Next automatic number</label><input id="bnext" type="number" value="${b.nextNumber}" oninput="updateInvoiceNumberPreview()"></div></div>
+ <div id="invoiceNumberPreviewRow" style="display:none;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
+  <small style="color:var(--muted)">If switched to Automatic, next number would be</small>
+  <span id="invoiceNumberPreview" class="stamp due" style="cursor:default;font-family:var(--font-mono);pointer-events:none"></span>
+ </div>
  <button class="btn primary full" onclick="saveSettings()">Save Settings</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- bm.value=b.invoiceMode; btype.value=b.type||'business'; blegal.value=b.legalForm||'businessName'; toggleSalaryFields(); toggleFixedAssets();
+ bm.value=b.invoiceMode; btype.value=b.type||'business'; blegal.value=b.legalForm||'businessName'; toggleSalaryFields(); toggleFixedAssets(); updateInvoiceNumberPreview();
+}
+function updateInvoiceNumberPreview(){
+ if(!document.getElementById('invoiceNumberPreviewRow')) return;
+ const isManual = bm.value==='manual';
+ invoiceNumberPreviewRow.style.display = isManual ? 'flex' : 'none';
+ if(isManual){
+  const prefix = deriveInvoicePrefix(bn.value);
+  const n = Number(bnext.value)||1;
+  invoiceNumberPreview.textContent = prefix+'-'+String(n).padStart(4,'0');
+ }
 }
 function toggleSalaryFields(){
  const isSalary=btype.value==='salary';
@@ -987,7 +1031,7 @@ function invoiceStatusStamp(i){
   if(i.dueDate){const days=Math.ceil((new Date(i.dueDate)-new Date(today))/86400000);if(days>=0&&days<=3)return {cls:'duesoon',label:'Due in '+days+'d'};}
   return {cls:'due',label:'Balance '+money(i.total-paid)};
 }
-async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextNumber||1;b.nextNumber=n+1;await put('business',b);return String(n).padStart(4,'0')}
+async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextNumber||1;b.nextNumber=n+1;await put('business',b);return deriveInvoicePrefix(b.name)+'-'+String(n).padStart(4,'0')}
 async function openInvoice(id){
  let b=await getBusiness(),allInv=await bizInvoices(),inv=id?allInv.find(x=>x.id===id):null,customers=await bizCustomers();
  inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
@@ -2187,12 +2231,85 @@ async function exportCommissionCSV(){
 }
 
 /* ---------------- Preview / PDF ---------------- */
-async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div></div><div class="pdfActions"><button class="btn secondary" onclick="printInvoice('${esc(i.number)}')">Print Only</button><button class="btn accent" onclick="downloadInvoicePDF('${esc(i.number)}')">Save PDF</button></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);}
+async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div></div>
+<div class="notice" style="margin-top:14px">Choose the layout that matches your printer — A4 for a regular office/home printer, Receipt for an 80mm POS/thermal printer.</div>
+<div class="pdfActions"><button class="btn secondary" onclick="printInvoice('${esc(i.number)}')">Print (A4)</button><button class="btn accent" onclick="downloadInvoicePDF('${esc(i.number)}')">Save PDF (A4)</button></div>
+<div class="pdfActions receiptActions"><button class="btn secondary" onclick="printReceipt('${id}')">Print (Receipt / POS)</button><button class="btn accent" onclick="downloadReceiptPDF('${id}')">Save PDF (Receipt)</button></div>
+<button class="btn secondary full" onclick="closeModal()">Close</button>`);}
+function buildReceiptHTML(i,b){
+ const lineRow=x=>{const lineTotal=(Number(x.qty)||0)*(Number(x.price)||0);return `<div class="receiptRow"><span class="desc">${esc(x.description)} x${x.qty}</span><span class="amt">${money(lineTotal)}</span></div>`;};
+ return `<div class="receiptHead"><h1>${esc(b.name)}</h1>${b.address?`<div>${esc(b.address)}</div>`:''}${b.phone?`<div>${esc(b.phone)}</div>`:''}${b.taxId?`<div>Tax ID: ${esc(b.taxId)}</div>`:''}</div>
+ <div class="receiptRow"><span>Invoice #</span><span>${esc(i.number)}</span></div>
+ <div class="receiptRow"><span>Date</span><span>${esc(i.date)}</span></div>
+ ${i.dueDate?`<div class="receiptRow"><span>Due</span><span>${esc(i.dueDate)}</span></div>`:''}
+ <div class="receiptRule"></div>
+ <div class="receiptRow"><span>Bill To</span><span>${esc(i.customer||'')}</span></div>
+ ${i.phone?`<div class="receiptRow"><span>Phone</span><span>${esc(i.phone)}</span></div>`:''}
+ ${i.vehicleDetails?`<div class="receiptRow"><span>Job</span><span>${esc(i.vehicleDetails)}</span></div>`:''}
+ <div class="receiptRule"></div>
+ <div class="receiptItems">${i.items.map(lineRow).join('')}</div>
+ <div class="receiptRule"></div>
+ ${i.discount?`<div class="receiptRow"><span>Discount</span><span>-${money(i.discount)}</span></div>`:''}
+ <div class="receiptRow receiptTotal"><span>TOTAL</span><span>${money(i.total)}</span></div>
+ <div class="receiptRule"></div>
+ ${(b.bankName||b.bankAccount)?`<div class="receiptRow"><span>Bank</span><span>${esc(b.bankName||'')}</span></div><div class="receiptRow"><span>Acct</span><span>${esc(b.bankAccount||'')}</span></div><div class="receiptRule"></div>`:''}
+ <div class="receiptFoot">${esc(b.footerComment||'Thank you for your business.')}</div>`;
+}
+async function printReceipt(id){
+ const i=(await all('invoices')).find(x=>x.id===id), b=await getBusiness();
+ const target=document.getElementById('pdfTarget'); if(!target) return;
+ const origHTML=target.innerHTML, origClass=target.className;
+ target.className='invoicePreview receiptMode';
+ target.innerHTML=buildReceiptHTML(i,b);
+ const pageStyle=document.createElement('style');
+ pageStyle.id='dynamicPageSize';
+ pageStyle.textContent='@page{size:80mm auto;margin:4mm 3mm}';
+ document.head.appendChild(pageStyle);
+ const prevTitle=document.title;
+ const safeName=(i.number||'Receipt').toString().trim().replace(/[\\/:*?"<>|]+/g,'-')||'Receipt';
+ document.title=safeName;
+ const restore=()=>{ document.title=prevTitle; target.innerHTML=origHTML; target.className=origClass; pageStyle.remove(); window.removeEventListener('afterprint',restore); };
+ window.addEventListener('afterprint',restore);
+ window.print();
+ setTimeout(restore,4000);
+}
+async function downloadReceiptPDF(id){
+ const i=(await all('invoices')).find(x=>x.id===id), b=await getBusiness();
+ if(!window.jspdf || !window.html2canvas){
+  alert('The PDF file writer needs to load from the internet the first time — no connection right now, so this will fall back to the Print dialog. Choose "Save as PDF" there and pick your receipt/POS printer.');
+  return printReceipt(id);
+ }
+ const target=document.getElementById('pdfTarget'); if(!target) return;
+ const origHTML=target.innerHTML, origClass=target.className;
+ target.className='invoicePreview receiptMode';
+ target.innerHTML=buildReceiptHTML(i,b);
+ const safeName=(i.number||'Receipt').toString().trim().replace(/[\\/:*?"<>|]+/g,'-')||'Receipt';
+ try{
+  const { jsPDF } = window.jspdf;
+  // 80mm wide, dynamic length based on actual rendered content — receipts
+  // don't have a fixed page length the way A4 does.
+  const heightMm=Math.max(60, (target.scrollHeight/target.clientWidth)*80 + 10);
+  const doc=new jsPDF({ unit:'mm', format:[80, heightMm] });
+  await doc.html(target, { x:2, y:2, width:76, windowWidth:target.clientWidth||302 });
+  doc.save(safeName+'-receipt.pdf');
+  target.innerHTML=origHTML; target.className=origClass;
+  setTimeout(()=>{ if(confirm('Saved. Print this receipt on your POS printer now?')) printReceipt(id); }, 300);
+  return;
+ }catch(e){
+  alert('Could not generate the receipt PDF ('+(e&&e.message?e.message:'unknown error')+'). Falling back to Print — choose "Save as PDF" there.');
+  target.innerHTML=origHTML; target.className=origClass;
+  return printReceipt(id);
+ }
+}
 function printInvoice(number){
   const prevTitle=document.title;
   const safeName=(number||'Invoice').toString().trim().replace(/[\\/:*?"<>|]+/g,'-')||'Invoice';
   document.title=safeName;
-  const restore=()=>{document.title=prevTitle;window.removeEventListener('afterprint',restore)};
+  const pageStyle=document.createElement('style');
+  pageStyle.id='dynamicPageSize';
+  pageStyle.textContent='@page{size:A4;margin:14mm}';
+  document.head.appendChild(pageStyle);
+  const restore=()=>{document.title=prevTitle;pageStyle.remove();window.removeEventListener('afterprint',restore)};
   window.addEventListener('afterprint',restore);
   window.print();
   setTimeout(restore,4000); // fallback in case afterprint doesn't fire (some mobile browsers)
@@ -2209,7 +2326,7 @@ async function downloadInvoicePDF(number){
   try{
     await doc.html(target, { x:24, y:24, width:547, windowWidth:800 });
     doc.save(safeName+'.pdf');
-    setTimeout(()=>{ if(confirm('Saved. Print it now on your POS printer?')) printInvoice(number); }, 300);
+    setTimeout(()=>{ if(confirm('Saved. Print this A4 copy now?')) printInvoice(number); }, 300);
   }catch(e){
     console.error(e);
     alert('Could not build the PDF file directly — opening the Print dialog instead. Choose "Save as PDF" there.');
