@@ -149,6 +149,7 @@ button{font-family:var(--font-body);cursor:pointer}
 .invoicePreview .totalPill{background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;text-align:right}
 .invoicePreview .totalPill span{display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700}
 .invoicePreview .totalPill b{color:#fff;font-family:var(--font-mono);font-size:19px;margin-top:2px;font-weight:700}
+.invoicePreview .poweredBy{text-align:right;font-size:9px;color:#999;margin-top:14px;letter-spacing:.02em}
 
 /* ---- Receipt (POS/thermal) layout — a completely different, narrow
    single-column presentation reusing the same #pdfTarget node. Toggled by
@@ -208,6 +209,8 @@ button{font-family:var(--font-body);cursor:pointer}
 
 .lockScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:200;align-items:center;justify-content:center;padding:24px}
 .helpBtn{width:18px;height:18px;border-radius:50%;border:1.4px solid var(--brass);background:var(--brassSoft);color:var(--brass);font-size:10.5px;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:6px;vertical-align:middle;padding:0}
+.brandStrip{font-size:10px;letter-spacing:.03em;color:var(--brass);font-weight:700;text-transform:uppercase;margin:-8px 0 14px}
+.brandStrip span{color:var(--muted);margin:0 4px;font-weight:400;text-transform:none}
 .helpBubble{display:none;position:fixed;z-index:300;max-width:260px;background:var(--ink);color:#fff;padding:10px 12px;border-radius:10px;font-size:12.5px;line-height:1.5;box-shadow:var(--shadow-lg)}
 .helpBubble.show{display:block}
 .lockScreen.show{display:flex}
@@ -267,6 +270,7 @@ async function nextInternalRef(){
  return deriveInvoicePrefix(b.name)+'-'+String(n).padStart(6,'0');
 }/* ---------------- Help balloons ---------------- */
 function hb(text){return `<button type="button" class="helpBtn" onclick="showHelpBalloon(this)" data-help="${esc(text)}">?</button>`}
+function brandStrip(){return `<div class="brandStrip">Moborex Ledger Vault <span>·</span> Beyond Invoicing — to Reports &amp; Tax.</div>`}
 function showHelpBalloon(el){
  const bubble=document.getElementById('helpBubble');
  bubble.textContent=el.dataset.help;
@@ -644,7 +648,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 
 <header class="topbar">
 <div class="topbar-row">
-<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Moborex Ledger Vault</div><button class="bizname bizSwitch" onclick="showBusinessSwitcher()"><span id="brandName">Business</span> <span class="chev">▾</span></button></div></div>
+<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Moborex Ledger Vault</div><div class="tagline">Beyond Invoicing — to Reports &amp; Tax.</div><button class="bizname bizSwitch" onclick="showBusinessSwitcher()"><span id="brandName">Business</span> <span class="chev">▾</span></button></div></div>
 <button class="iconbtn drawerToggle" onclick="openDrawer()">☰</button>
 </div>
 <div class="hello">Business dashboard</div><div class="pagehead">Good day 👋</div>
@@ -1053,7 +1057,7 @@ async function openInvoice(id){
  const isSalary=b.type==='salary';
  const custLabel=isSalary?'Employer':'Customer';
  const custOpts=`<option value="">Select saved ${custLabel.toLowerCase()}</option>`+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
- openModal(`<h2>${id?(isSalary?'Edit Salary Payment':'Edit Invoice'):(isSalary?'Log Salary Payment':'New Invoice')}</h2>
+ openModal(`<h2>${id?(isSalary?'Edit Salary Payment':'Edit Invoice'):(isSalary?'Log Salary Payment':'New Invoice')}</h2>${brandStrip()}
  ${isSalary?'<div class="notice">This entry is treated like an invoice under the hood, so it shows up in Reports, Tax Report, and your bank balance the same way regular sales do.</div>':''}
  ${isVoid?`<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)"><b>This ${isSalary?'entry':'invoice'} is void.</b> It's kept for your records and numbering, but excluded from sales, profit, and reports.</div>`:''}
  <div class="row2"><div class="field"><label>${isSalary?'Reference':'Invoice'} number</label><input id="fNo" value="${esc(inv.number)}" ${isVoid?'disabled':''}></div><div class="field"><label>${isSalary?'Pay':'Invoice'} date</label><input id="fDate" type="date" value="${inv.date}" ${isVoid?'disabled':''}></div></div>
@@ -1452,7 +1456,7 @@ async function showTaxReport(){
  const curYear=new Date().getFullYear();
  let yearOpts='';
  for(let y=2026;y<=curYear;y++) yearOpts+=`<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`;
- openModal(`<h2>Tax Report ${hb("Combines every business, personal spending, and all other income into one picture, with an estimated tax position for each business based on how it's classified.")}</h2>
+ openModal(`<h2>Tax Report ${hb("Combines every business, personal spending, and all other income into one picture, with an estimated tax position for each business based on how it's classified.")}</h2>${brandStrip()}
  <div class="notice">Combines every business, your personal expenses, and all other income into one analytic breakdown — plus an estimated tax position for each business, based on how you've classified it. <b>Estimates only</b> — confirm current rates and thresholds with FIRS, LIRS, or a tax professional before filing.</div>
  <div id="taxCurrencyWarning"></div>
  <div class="row2"><div class="field"><label>Tax year</label><select id="taxYear" onchange="loadTaxReport()">${yearOpts}</select></div><div class="field" style="display:flex;align-items:flex-end"><button class="btn secondary full" onclick="showTaxProfile()">Edit Tax Profile (Rent/Pension)</button></div></div>
@@ -1871,7 +1875,7 @@ async function showAudit(){
  const findings=await runAudit();
  window.auditFindings=findings;
  const highCount=findings.filter(f=>f.severity==='high').length, medCount=findings.filter(f=>f.severity==='medium').length, lowCount=findings.filter(f=>f.severity==='low').length;
- openModal(`<h2>Audit of Me ${hb("A rules-based scan across every business: numbering gaps, unusual expenses and commission, receivables risk, margin trends, cash-vs-profit consistency, investment losses, and tax compliance gaps.")}</h2>
+ openModal(`<h2>Audit of Me ${hb("A rules-based scan across every business: numbering gaps, unusual expenses and commission, receivables risk, margin trends, cash-vs-profit consistency, investment losses, and tax compliance gaps.")}</h2>${brandStrip()}
  <div class="notice">Scanned invoices, expenses, commission, investments, and tax records across all businesses. ${findings.length} item(s) found — ${highCount} high, ${medCount} medium, ${lowCount} low. Add a short explanation for each before generating the final report.</div>
  <div>${findings.map((f,n)=>`
   <div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
@@ -1928,7 +1932,7 @@ async function showAuditReportPreview(id){
  const totalExp=rec.snapshot.perBusiness.reduce((a,p)=>a+p.expenses,0);
  const totalComm=rec.snapshot.perBusiness.reduce((a,p)=>a+(p.commissionPaid||0),0);
  const totalProfit=rec.snapshot.perBusiness.reduce((a,p)=>a+p.profit,0);
- openModal(`<h2>Audit Report — ${new Date(rec.createdAt).toLocaleDateString()}</h2>
+ openModal(`<h2>Audit Report — ${new Date(rec.createdAt).toLocaleDateString()}</h2>${brandStrip()}
  <div class="invoicePreview" id="auditPdfTarget">
   <h1 style="font-size:20px">Internal Audit &amp; Analytical Report</h1>
   <div style="font-size:12px;color:#555">Generated ${new Date(rec.createdAt).toLocaleString()} · Scope: all businesses, lifetime records to date · Prepared by: Ledger Vault Analytical Engine (self-audit)</div>
@@ -1992,7 +1996,7 @@ async function showAuditHistory(){
 
 async function showReports(){
  const biz=await getBusiness();
- openModal(`<h2>Reports ${hb("Revenue, expense, personal, and commission reports cover every business by default, so nothing is hidden by whichever business you're currently viewing. Business P&L is the one exception — it's scoped to your active business, for a day-to-day read on just that one.")}</h2>
+ openModal(`<h2>Reports ${hb("Revenue, expense, personal, and commission reports cover every business by default, so nothing is hidden by whichever business you're currently viewing. Business P&L is the one exception — it's scoped to your active business, for a day-to-day read on just that one.")}</h2>${brandStrip()}
  <div class="list">
   <div class="row-item"><div><b>Business P&amp;L</b><small>Sales vs expenses for ${esc(biz.name)}, any date range</small></div><button class="btn secondary" onclick="showBusinessPL()">Open</button></div>
   <div class="row-item"><div><b>All Revenue</b><small>Every business, every sale</small></div><button class="btn secondary" onclick="showRevenueReport()">Open</button></div>
@@ -2005,7 +2009,7 @@ async function showReports(){
 }
 async function showBusinessPL(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>Business P&amp;L</h2><div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div><button class="btn primary full" onclick="calculateReport()">Calculate Report</button><div id="reportResult"></div>
+ openModal(`<h2>Business P&amp;L</h2>${brandStrip()}<div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div><button class="btn primary full" onclick="calculateReport()">Calculate Report</button><div id="reportResult"></div>
  <h3 style="font-size:14px;margin-top:18px">Export</h3>
  <div class="row2"><button class="btn secondary full" onclick="exportInvoicesCSV()">Invoices CSV</button><button class="btn secondary full" onclick="exportExpensesCSV()">Expenses CSV</button></div>
  <button class="btn secondary full" onclick="showReports()">Back</button>`);
@@ -2053,7 +2057,7 @@ async function exportExpensesCSV(){
 /* ---------------- Reports: All Revenue ---------------- */
 async function showRevenueReport(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>All Revenue ${hb("Every sale across every business, voided invoices excluded. Grouped by business and by month, using each invoice's own date.")}</h2>
+ openModal(`<h2>All Revenue ${hb("Every sale across every business, voided invoices excluded. Grouped by business and by month, using each invoice's own date.")}</h2>${brandStrip()}
  <div class="row2"><div class="field"><label>From</label><input id="revFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="revTo" type="date" value="${today}"></div></div>
  <button class="btn primary full" onclick="calculateRevenueReport()">Calculate</button>
  <div id="revenueResult"></div>
@@ -2096,7 +2100,7 @@ async function exportRevenueCSV(){
 /* ---------------- Reports: Revenue vs Expenses vs Commission ---------------- */
 async function showRevExpCommReport(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>Revenue vs Expenses vs Commission ${hb("Net profit after every real cost: business expenses plus commission actually paid out. Pending commission — invoices not yet fully paid — isn't included, matching how it hits your Cash & Bank Balance.")}</h2>
+ openModal(`<h2>Revenue vs Expenses vs Commission ${hb("Net profit after every real cost: business expenses plus commission actually paid out. Pending commission — invoices not yet fully paid — isn't included, matching how it hits your Cash & Bank Balance.")}</h2>${brandStrip()}
  <div class="row2"><div class="field"><label>From</label><input id="recFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="recTo" type="date" value="${today}"></div></div>
  <button class="btn primary full" onclick="calculateRevExpCommReport()">Calculate</button>
  <div id="recResult"></div>
@@ -2136,7 +2140,7 @@ async function calculateRevExpCommReport(){
 /* ---------------- Reports: All Expenses ---------------- */
 async function showExpensesReport(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>All Expenses ${hb("Every recorded business and personal expense, grouped by category and by business.")}</h2>
+ openModal(`<h2>All Expenses ${hb("Every recorded business and personal expense, grouped by category and by business.")}</h2>${brandStrip()}
  <div class="row2"><div class="field"><label>From</label><input id="expFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="expTo" type="date" value="${today}"></div></div>
  <button class="btn primary full" onclick="calculateExpensesReport()">Calculate</button>
  <div id="expResult"></div>
@@ -2174,7 +2178,7 @@ async function exportAllExpensesCSV(){
 /* ---------------- Reports: Personal ---------------- */
 async function showPersonalReport(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>Personal ${hb("Your own spending, income, and investment balances — shared across all businesses rather than tied to any one of them.")}</h2>
+ openModal(`<h2>Personal ${hb("Your own spending, income, and investment balances — shared across all businesses rather than tied to any one of them.")}</h2>${brandStrip()}
  <div class="row2"><div class="field"><label>From</label><input id="persFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="persTo" type="date" value="${today}"></div></div>
  <button class="btn primary full" onclick="calculatePersonalReport()">Calculate</button>
  <div id="persResult"></div>
@@ -2209,7 +2213,7 @@ async function calculatePersonalReport(){
 /* ---------------- Reports: All Commission Paid ---------------- */
 async function showCommissionReport(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>All Commission Paid ${hb("Every commission across every business, grouped by recipient — who's owed what, and who's already been paid. Filters by the linked invoice's date.")}</h2>
+ openModal(`<h2>All Commission Paid ${hb("Every commission across every business, grouped by recipient — who's owed what, and who's already been paid. Filters by the linked invoice's date.")}</h2>${brandStrip()}
  <div class="row2"><div class="field"><label>From</label><input id="commFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="commTo" type="date" value="${today}"></div></div>
  <button class="btn primary full" onclick="calculateCommissionReport()">Calculate</button>
  <div id="commResult"></div>
@@ -2254,7 +2258,7 @@ async function exportCommissionCSV(){
 }
 
 /* ---------------- Preview / PDF ---------------- */
-async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div>${b.invoiceMode==='manual'&&i.internalRef?`<div style="text-align:right;font-size:9px;color:#999;margin-top:14px;letter-spacing:.02em">Ref: ${esc(i.internalRef)}</div>`:''}</div>
+async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2>${brandStrip()}<div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div><div class="poweredBy">Powered by Moborex Ledger Vault${b.invoiceMode==='manual'&&i.internalRef?` · Ref: ${esc(i.internalRef)}`:''}</div></div>
 <div class="notice" style="margin-top:14px">Choose the layout that matches your printer — A4 for a regular office/home printer, Receipt for an 80mm POS/thermal printer.</div>
 <div class="pdfActions"><button class="btn secondary" onclick="printInvoice('${esc(i.number)}')">Print (A4)</button><button class="btn accent" onclick="downloadInvoicePDF('${esc(i.number)}')">Save PDF (A4)</button></div>
 <div class="pdfActions receiptActions"><button class="btn secondary" onclick="printReceipt('${id}')">Print (Receipt / POS)</button><button class="btn accent" onclick="downloadReceiptPDF('${id}')">Save PDF (Receipt)</button></div>
@@ -2277,7 +2281,7 @@ function buildReceiptHTML(i,b){
  <div class="receiptRule"></div>
  ${(b.bankName||b.bankAccount)?`<div class="receiptRow"><span>Bank</span><span>${esc(b.bankName||'')}</span></div><div class="receiptRow"><span>Acct</span><span>${esc(b.bankAccount||'')}</span></div><div class="receiptRule"></div>`:''}
  <div class="receiptFoot">${esc(b.footerComment||'Thank you for your business.')}</div>
- ${b.invoiceMode==='manual'&&i.internalRef?`<div style="text-align:right;font-size:8px;color:#999;margin-top:8px">Ref: ${esc(i.internalRef)}</div>`:''}`;
+ <div style="text-align:center;font-size:8px;color:#999;margin-top:8px">Powered by Moborex Ledger Vault${b.invoiceMode==='manual'&&i.internalRef?` · Ref: ${esc(i.internalRef)}`:''}</div>`;
 }
 async function printReceipt(id){
  const i=(await all('invoices')).find(x=>x.id===id), b=await getBusiness();
