@@ -1635,37 +1635,94 @@ async function runAudit(){
  const businesses=await all('business');
  const allInvoices=await all('invoices');
  const allExpenses=await all('expenses');
+ const allCommissions=await all('commissions');
+ const allInvestAccounts=await all('investmentAccounts');
+ const allInvestMoves=await all('investmentMovements');
+ const today=new Date().toISOString().slice(0,10);
+ const push=(category,severity,business,description)=>findings.push({id:crypto.randomUUID(),category,severity,business,description});
  for(const b of businesses){
   const invs=allInvoices.filter(i=>i.businessId===b.id);
   const activeInvs=invs.filter(i=>i.status!=='void');
   const exps=allExpenses.filter(e=>e.kind!=='personal'&&e.businessId===b.id);
   const nums=activeInvs.map(i=>i.number).filter(n=>/^\d+$/.test(n)).map(Number).sort((a,c)=>a-c);
   for(let k=1;k<nums.length;k++){
-   if(nums[k]-nums[k-1]>1) findings.push({id:crypto.randomUUID(),category:'Invoice Numbering',severity:'medium',business:b.name,description:`Gap in invoice numbers for ${b.name}: jumps from ${nums[k-1]} to ${nums[k]} — ${nums[k]-nums[k-1]-1} number(s) missing.`});
+   if(nums[k]-nums[k-1]>1) push('Invoice Numbering','medium',b.name,`Gap in invoice numbers for ${b.name}: jumps from ${nums[k-1]} to ${nums[k]} — ${nums[k]-nums[k-1]-1} number(s) missing.`);
   }
   const amounts=exps.map(e=>e.amount).sort((a,c)=>a-c);
   const median=amounts.length?amounts[Math.floor(amounts.length/2)]:0;
   for(const e of exps){
-   if(median>0 && e.amount>median*3 && (!e.description||!e.description.trim())) findings.push({id:crypto.randomUUID(),category:'Large Expense',severity:'high',business:b.name,description:`${b.name}: expense of ${money(e.amount)} on ${e.date} (${e.category||'uncategorized'}) has no description, and is unusually large relative to your typical expenses.`});
+   if(median>0 && e.amount>median*3 && (!e.description||!e.description.trim())) push('Large Expense','high',b.name,`${b.name}: expense of ${money(e.amount)} on ${e.date} (${e.category||'uncategorized'}) has no description, and is unusually large relative to your typical expenses.`);
   }
   for(const i of activeInvs){
    const subtotal=(i.items||[]).reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0);
-   if(subtotal>0 && (i.discount||0)>subtotal*0.3) findings.push({id:crypto.randomUUID(),category:'Large Discount',severity:'medium',business:b.name,description:`${b.name}: invoice ${i.number} for ${esc(i.customer)} has a discount of ${money(i.discount)}, over 30% of the ${money(subtotal)} subtotal.`});
+   if(subtotal>0 && (i.discount||0)>subtotal*0.3) push('Large Discount','medium',b.name,`${b.name}: invoice ${i.number} for ${esc(i.customer)} has a discount of ${money(i.discount)}, over 30% of the ${money(subtotal)} subtotal.`);
   }
-  const today=new Date().toISOString().slice(0,10);
   for(const i of activeInvs){
    const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0);
    if(paid<i.total && i.dueDate && i.dueDate<today){
     const daysLate=Math.floor((new Date(today)-new Date(i.dueDate))/86400000);
-    if(daysLate>60) findings.push({id:crypto.randomUUID(),category:'Receivables Risk',severity:'medium',business:b.name,description:`${b.name}: invoice ${i.number} for ${esc(i.customer)} is ${daysLate} days overdue with ${money(i.total-paid)} outstanding.`});
+    if(daysLate>60) push('Receivables Risk','medium',b.name,`${b.name}: invoice ${i.number} for ${esc(i.customer)} is ${daysLate} days overdue with ${money(i.total-paid)} outstanding.`);
    }
   }
   for(const i of invs.filter(x=>x.status==='void')){
-   if(i.total>0) findings.push({id:crypto.randomUUID(),category:'Void Invoice',severity:'low',business:b.name,description:`${b.name}: invoice ${i.number} (${money(i.total)}) was voided. Confirm this wasn't a completed sale.`});
+   if(i.total>0) push('Void Invoice','low',b.name,`${b.name}: invoice ${i.number} (${money(i.total)}) was voided. Confirm this wasn't a completed sale.`);
   }
   const uncategorized=exps.filter(e=>!e.category||!e.category.trim());
-  if(uncategorized.length) findings.push({id:crypto.randomUUID(),category:'Record Keeping',severity:'low',business:b.name,description:`${b.name}: ${uncategorized.length} expense(s) have no category assigned.`});
+  if(uncategorized.length) push('Record Keeping','low',b.name,`${b.name}: ${uncategorized.length} expense(s) have no category assigned.`);
+
+  // Commission intelligence: an unusually large cut, and commission stuck
+  // pending because the invoice behind it still hasn't been paid.
+  const commissionsForBiz=allCommissions.filter(c=>c.businessId===b.id && c.status!=='void');
+  for(const c of commissionsForBiz){
+   const inv=invs.find(i=>i.id===c.invoiceId); if(!inv) continue;
+   if(inv.total>0 && c.amount>inv.total*0.3) push('Commission','high',b.name,`${b.name}: commission of ${money(c.amount)} to ${esc(c.recipientName)} on invoice ${inv.number} is over 30% of the ${money(inv.total)} invoice total.`);
+   const paid=(inv.payments||[]).reduce((a,p)=>a+p.amount,0);
+   if(paid<inv.total){
+    const daysOpen=Math.floor((new Date(today)-new Date(inv.date))/86400000);
+    if(daysOpen>60) push('Commission','low',b.name,`${b.name}: commission of ${money(c.amount)} to ${esc(c.recipientName)} is still pending — invoice ${inv.number} has been unpaid for ${daysOpen} days.`);
+   }
+  }
+
+  // Tax-status gaps: opening balances (cash or investment) with no answer
+  // on whether they were already taxed feed directly into Tax Report
+  // uncertainty, so they're worth surfacing here too.
+  if((Number(b.openingBalance)||0)!==0 && !b.openingBalanceTaxStatus) push('Tax Compliance','high',b.name,`${b.name}: ${money(b.openingBalance)} cash balance brought forward has no tax status answered — see Opening Balances.`);
+  for(const acc of allInvestAccounts.filter(a=>a.kind==='business'&&a.businessId===b.id)){
+   if((Number(acc.openingBalance)||0)!==0 && !acc.openingBalanceTaxStatus) push('Tax Compliance','medium',b.name,`${b.name}: investment account "${esc(acc.name)}" has a ${money(acc.openingBalance)} opening balance with no tax status answered.`);
+  }
+
+  // Year-over-year margin trend, commission-adjusted, same basis as the Tax Report.
+  const curYear=new Date().getFullYear();
+  const marginForYear=(y)=>{
+   const from=y+'-01-01', to=y+'-12-31';
+   const yInvs=invs.filter(i=>i.status!=='void'&&i.date>=from&&i.date<=to);
+   const yExps=exps.filter(e=>e.date>=from&&e.date<=to);
+   const rev=yInvs.reduce((a,i)=>a+i.total,0), exp=yExps.reduce((a,e)=>a+e.amount,0);
+   const fullyPaidIds=new Set(activeInvs.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
+   const yInvIds=new Set(yInvs.map(i=>i.id));
+   const comm=commissionsForBiz.filter(c=>fullyPaidIds.has(c.invoiceId)&&yInvIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
+   return rev>0?((rev-exp-comm)/rev)*100:null;
+  };
+  const thisMargin=marginForYear(curYear), lastMargin=marginForYear(curYear-1);
+  if(thisMargin!==null && lastMargin!==null && lastMargin-thisMargin>15) push('Margin Decline','medium',b.name,`${b.name}: profit margin fell from ${lastMargin.toFixed(1)}% in ${curYear-1} to ${thisMargin.toFixed(1)}% in ${curYear} — a drop of ${(lastMargin-thisMargin).toFixed(1)} points.`);
+
+  // Cash vs. accrual profit consistency — a classic audit red flag: profit
+  // that only exists on paper because it's sitting in unpaid invoices.
+  const bf=await businessFinancials(b.id);
+  if(bf && bf.lifetimeProfit>0 && bf.outstanding>bf.lifetimeProfit*0.5 && bf.bankBalance<bf.lifetimeProfit*0.3){
+   push('Cash Flow','medium',b.name,`${b.name}: reported lifetime profit of ${money(bf.lifetimeProfit)} is far higher than the ${money(bf.bankBalance)} actually in cash — largely tied up in ${money(bf.outstanding)} of unpaid invoices.`);
+  }
  }
+
+ // Investment: realized losses worth a second look, regardless of business.
+ for(const m of (await all('investmentMovements')).filter(x=>x.type==='return')){
+  const yieldAmt=Number(m.yieldAmount)||0;
+  if(yieldAmt<0 && Math.abs(yieldAmt)>Number(m.amount||0)*0.2){
+   const acc=allInvestAccounts.find(a=>a.id===m.accountId);
+   push('Investment Loss','medium',acc?(acc.kind==='personal'?'Personal':(businesses.find(b=>b.id===acc.businessId)||{}).name||'—'):'—',`${acc?esc(acc.name):'Investment account'}: a loss of ${money(-yieldAmt)} on the ${esc(m.date)} return is over 20% of the amount returned — worth understanding why.`);
+  }
+ }
+
  const personalExp=allExpenses.filter(e=>e.kind==='personal');
  const byMonth={};
  for(const e of personalExp){const m=e.date.slice(0,7);byMonth[m]=(byMonth[m]||0)+e.amount;}
@@ -1673,21 +1730,71 @@ async function runAudit(){
  if(monthVals.length>=3){
   const avg=monthVals.reduce((a,v)=>a+v,0)/monthVals.length;
   for(const [m,v] of Object.entries(byMonth)){
-   if(avg>0 && v>avg*2.5) findings.push({id:crypto.randomUUID(),category:'Personal Spend',severity:'low',business:'Personal',description:`Personal spending in ${m} (${money(v)}) is well above your typical monthly average of ${money(avg)}.`});
+   if(avg>0 && v>avg*2.5) push('Personal Spend','low','Personal',`Personal spending in ${m} (${money(v)}) is well above your typical monthly average of ${money(avg)}.`);
   }
  }
+ // Owner draw sustainability: personal spending eating most or all of business profit.
+ const totalLifetimeProfit=(await allBusinessFinancials()).reduce((a,f)=>a+f.lifetimeProfit,0);
+ const totalPersonalExp=personalExp.reduce((a,e)=>a+e.amount,0);
+ if(totalLifetimeProfit>0 && totalPersonalExp>totalLifetimeProfit*0.8) push('Owner Draw','medium','Personal',`Personal spending (${money(totalPersonalExp)}) is ${((totalPersonalExp/totalLifetimeProfit)*100).toFixed(0)}% of combined lifetime business profit (${money(totalLifetimeProfit)}) — little margin left to reinvest or absorb a bad month.`);
+
  const curYear=new Date().getFullYear();
  const subs=await all('taxSubmissions');
  for(let y=2026;y<curYear;y++){
-  if(!subs.some(s=>s.year===y)) findings.push({id:crypto.randomUUID(),category:'Tax Compliance',severity:'high',business:'All',description:`No government submission has been recorded for ${y}.`});
+  if(!subs.some(s=>s.year===y)) push('Tax Compliance','high','All',`No government submission has been recorded for ${y}.`);
  }
  return findings;
+}
+async function computeAuditRatios(){
+ const perBiz=await allBusinessFinancials();
+ const globalBalance=await getGlobalBankBalance();
+ const totalRevenue=perBiz.reduce((a,f)=>a+f.sales,0);
+ const totalExpenses=perBiz.reduce((a,f)=>a+f.expenses,0);
+ const totalProfit=perBiz.reduce((a,f)=>a+f.lifetimeProfit,0);
+ const totalCommissionPaid=perBiz.reduce((a,f)=>a+(f.commissionPaidTotal||0),0);
+ const totalCommissionPending=perBiz.reduce((a,f)=>a+(f.commissionPendingTotal||0),0);
+ const totalOutstanding=perBiz.reduce((a,f)=>a+Math.max(0,f.outstanding),0);
+ const grossMargin=totalRevenue>0?(totalProfit/totalRevenue)*100:null;
+ const expenseRatio=totalRevenue>0?(totalExpenses/totalRevenue)*100:null;
+ const commissionRatio=totalRevenue>0?(totalCommissionPaid/totalRevenue)*100:null;
+ const collectionRatio=totalRevenue>0?((totalRevenue-totalOutstanding)/totalRevenue)*100:null;
+ const allEx=(await all('expenses')).filter(e=>e.kind!=='personal');
+ const byMonth={};
+ for(const e of allEx){const m=e.date.slice(0,7);byMonth[m]=(byMonth[m]||0)+e.amount;}
+ const months=Object.keys(byMonth).sort().slice(-6);
+ const avgMonthlyExpense=months.length?months.reduce((a,m)=>a+byMonth[m],0)/months.length:0;
+ const cashRunwayMonths=avgMonthlyExpense>0?(globalBalance/avgMonthlyExpense):null;
+ const personalExpTotal=(await all('expenses')).filter(e=>e.kind==='personal').reduce((a,e)=>a+e.amount,0);
+ const personalDrawRatio=totalProfit>0?(personalExpTotal/totalProfit)*100:null;
+ return {totalRevenue,totalExpenses,totalProfit,totalCommissionPaid,totalCommissionPending,totalOutstanding,globalBalance,grossMargin,expenseRatio,commissionRatio,collectionRatio,avgMonthlyExpense,cashRunwayMonths,personalExpTotal,personalDrawRatio};
+}
+function fmtPct(v){return v===null||v===undefined||isNaN(v)?'—':v.toFixed(1)+'%'}
+function fmtMonths(v){return v===null||v===undefined||isNaN(v)?'—':v.toFixed(1)+' mo'}
+function generateExecutiveSummary(findings,ratios){
+ const high=findings.filter(f=>f.severity==='high').length, med=findings.filter(f=>f.severity==='medium').length, low=findings.filter(f=>f.severity==='low').length;
+ const riskLevel=high>0?'Elevated':med>2?'Moderate':'Low';
+ let s=`This self-audit reviewed ${money(ratios.totalRevenue)} in lifetime revenue across all businesses against ${money(ratios.totalExpenses)} in business expenses and ${money(ratios.totalCommissionPaid)} in commission paid out, for a combined lifetime profit of ${money(ratios.totalProfit)} (a gross margin of ${fmtPct(ratios.grossMargin)}). `;
+ s+=`Cash on hand across all businesses stands at ${money(ratios.globalBalance)}${ratios.cashRunwayMonths!==null?`, roughly ${fmtMonths(ratios.cashRunwayMonths)} of average monthly business expenses`:''}. `;
+ s+=`The scan surfaced ${findings.length} finding(s): ${high} high-severity, ${med} medium-severity, and ${low} low-severity — an overall risk assessment of <b>${riskLevel}</b>.`;
+ return s;
+}
+function generateConclusion(findings,ratios){
+ const high=findings.filter(f=>f.severity==='high');
+ const unexplained=findings.filter(f=>!f.explanation||!f.explanation.trim());
+ if(high.length===0 && findings.length===0) return 'No findings were raised in this review. Records appear internally consistent, invoice numbering is unbroken, and no tax compliance gaps were detected. Continue current record-keeping practices.';
+ let s='';
+ if(high.length>0) s+=`${high.length} high-severity item(s) warrant prompt attention, particularly around ${[...new Set(high.map(f=>f.category))].join(', ')}. `;
+ else s+='No high-severity items were found. ';
+ if(unexplained.length>0) s+=`${unexplained.length} finding(s) still have no management explanation recorded — add one before treating this audit as complete. `;
+ s+='This remains a rules-based self-review, not a substitute for a licensed external auditor, but every figure in it is drawn directly from your own transaction records rather than summarized or estimated after the fact.';
+ return s;
 }
 async function showAudit(){
  const findings=await runAudit();
  window.auditFindings=findings;
- openModal(`<h2>Audit of Me ${hb("A rules-based scan of your records for the kinds of things a real audit checks: numbering gaps, unexplained large expenses, overdue receivables, and missing tax submissions.")}</h2>
- <div class="notice">A rules-based scan of your invoices, expenses, and tax records — not a substitute for a professional auditor, but a first pass flagging the kinds of things a real audit would ask about. ${findings.length} item(s) found. Add a short explanation for each before generating the final report.</div>
+ const highCount=findings.filter(f=>f.severity==='high').length, medCount=findings.filter(f=>f.severity==='medium').length, lowCount=findings.filter(f=>f.severity==='low').length;
+ openModal(`<h2>Audit of Me ${hb("A rules-based scan across every business: numbering gaps, unusual expenses and commission, receivables risk, margin trends, cash-vs-profit consistency, investment losses, and tax compliance gaps.")}</h2>
+ <div class="notice">Scanned invoices, expenses, commission, investments, and tax records across all businesses. ${findings.length} item(s) found — ${highCount} high, ${medCount} medium, ${lowCount} low. Add a short explanation for each before generating the final report.</div>
  <div>${findings.map((f,n)=>`
   <div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
    <div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(f.category)}</b><span class="stamp ${f.severity==='high'?'overdue':f.severity==='medium'?'duesoon':'paid'}">${esc(f.severity)}</span></div>
@@ -1703,30 +1810,81 @@ async function generateAuditReport(){
  const findings=window.auditFindings||[];
  const perBiz=await allBusinessFinancials();
  const globalBalance=await getGlobalBankBalance();
+ const globalInvestment=await getGlobalInvestmentBalance();
+ const ratios=await computeAuditRatios();
  const record={
   id:crypto.randomUUID(), createdAt:new Date().toISOString(), status:'draft',
   findings:findings.map(f=>({category:f.category,severity:f.severity,business:f.business,description:f.description,explanation:f.explanation||''})),
-  snapshot:{perBusiness:perBiz.map(f=>({name:f.business.name,currency:f.business.currency,sales:f.sales,expenses:f.expenses,profit:f.lifetimeProfit,bankBalance:f.bankBalance})),globalBankBalance:globalBalance}
+  snapshot:{perBusiness:perBiz.map(f=>({name:f.business.name,currency:f.business.currency,sales:f.sales,expenses:f.expenses,commissionPaid:f.commissionPaidTotal||0,profit:f.lifetimeProfit,bankBalance:f.bankBalance,outstanding:f.outstanding})),globalBankBalance:globalBalance,globalInvestmentBalance:globalInvestment,ratios}
  };
  await put('auditRecords',record);
  closeModal();
  await showAuditReportPreview(record.id);
 }
+function auditRecommendation(category){
+ const map={
+  'Invoice Numbering':'Investigate the missing number(s) — confirm whether an invoice was deleted, misnumbered, or simply skipped, and document the reason.',
+  'Large Expense':'Add a description to this expense and confirm the amount and category are correct.',
+  'Large Discount':'Confirm the discount was authorized and reflects the agreed terms with the customer.',
+  'Receivables Risk':'Follow up with the customer on payment, or consider a formal collection step if it remains unpaid.',
+  'Void Invoice':'Confirm the void was intentional and not a completed sale that should still be collected.',
+  'Record Keeping':'Assign a category to keep expense reporting and tax figures accurate.',
+  'Commission':'Confirm the commission amount and recipient are correct, and that it reflects the actual agreement for this job.',
+  'Tax Compliance':'Resolve the tax status or submission gap before your next filing to avoid over- or under-declaring income.',
+  'Margin Decline':'Review pricing, costs, and commission on recent jobs to identify what is driving the lower margin.',
+  'Cash Flow':'Prioritize collecting outstanding invoices — reported profit is not usable until it is actually in the bank.',
+  'Investment Loss':'Confirm the loss and its cause, and decide with a tax adviser whether any part of it is deductible.',
+  'Personal Spend':'Review what drove the higher spending that month and confirm it was intentional.',
+  'Owner Draw':'Consider whether current personal spending leaves enough profit reinvested in the business.'
+ };
+ return map[category]||'Review and confirm this item.';
+}
 async function showAuditReportPreview(id){
  const rec=(await all('auditRecords')).find(x=>x.id===id);
  const highCount=rec.findings.filter(f=>f.severity==='high').length;
  const unexplained=rec.findings.filter(f=>!f.explanation||!f.explanation.trim()).length;
+ const r=rec.snapshot.ratios||{};
+ const severityOrder={high:0,medium:1,low:2};
+ const sortedFindings=[...rec.findings].sort((a,b)=>severityOrder[a.severity]-severityOrder[b.severity]);
+ const totalSales=rec.snapshot.perBusiness.reduce((a,p)=>a+p.sales,0);
+ const totalExp=rec.snapshot.perBusiness.reduce((a,p)=>a+p.expenses,0);
+ const totalComm=rec.snapshot.perBusiness.reduce((a,p)=>a+(p.commissionPaid||0),0);
+ const totalProfit=rec.snapshot.perBusiness.reduce((a,p)=>a+p.profit,0);
  openModal(`<h2>Audit Report — ${new Date(rec.createdAt).toLocaleDateString()}</h2>
  <div class="invoicePreview" id="auditPdfTarget">
-  <h1 style="font-size:20px">Internal Audit Report</h1>
-  <div style="font-size:12px;color:#555">Generated ${new Date(rec.createdAt).toLocaleString()}</div>
-  <b>Summary</b>
-  <table><tr><th>Business</th><th>Currency</th><th>Sales</th><th>Expenses</th><th>Profit</th></tr>
-  ${rec.snapshot.perBusiness.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.currency)}</td><td class="r">${money(p.sales)}</td><td class="r">${money(p.expenses)}</td><td class="r">${money(p.profit)}</td></tr>`).join('')}
+  <h1 style="font-size:20px">Internal Audit &amp; Analytical Report</h1>
+  <div style="font-size:12px;color:#555">Generated ${new Date(rec.createdAt).toLocaleString()} · Scope: all businesses, lifetime records to date · Prepared by: Ledger Vault Analytical Engine (self-audit)</div>
+
+  <b style="margin-top:16px;display:block">Executive Summary</b>
+  <div style="font-size:12.5px;line-height:1.6;margin-top:4px">${generateExecutiveSummary(rec.findings,r)}</div>
+
+  <b style="margin-top:16px;display:block">Scope &amp; Methodology</b>
+  <div style="font-size:12px;line-height:1.5;margin-top:4px;color:#444">This review covers every business, personal record, investment account, and commission entry in Ledger Vault. It applies rule-based checks used in real audit practice — sequence testing on invoice numbers, materiality thresholds on expenses and commission relative to their base amount, receivables aging, period-over-period margin comparison, cash-versus-accrual consistency, and tax-submission coverage — directly against the underlying transaction records, not a manually prepared summary.</div>
+
+  <b style="margin-top:16px;display:block">Financial Position</b>
+  <table><tr><th>Business</th><th>Sales</th><th>Expenses</th><th>Commission</th><th>Profit</th><th>Cash</th></tr>
+  ${rec.snapshot.perBusiness.map(p=>`<tr><td>${esc(p.name)}</td><td class="r">${money(p.sales)}</td><td class="r">${money(p.expenses)}</td><td class="r">${money(p.commissionPaid||0)}</td><td class="r">${money(p.profit)}</td><td class="r">${money(p.bankBalance)}</td></tr>`).join('')}
+  <tr style="font-weight:bold"><td>Combined</td><td class="r">${money(totalSales)}</td><td class="r">${money(totalExp)}</td><td class="r">${money(totalComm)}</td><td class="r">${money(totalProfit)}</td><td class="r">${money(rec.snapshot.globalBankBalance)}</td></tr>
   </table>
   <div class="totalRow grand" style="margin-top:10px"><span>Combined Bank Balance (all businesses)</span><b>${money(rec.snapshot.globalBankBalance)}</b></div>
-  <b style="margin-top:16px;display:block">Findings (${rec.findings.length})</b>
-  ${rec.findings.map(f=>`<div style="margin-top:8px;padding:8px;background:#f7f7f5;border-radius:6px"><b>${esc(f.category)} (${esc(f.severity)})</b> — ${esc(f.business)}<div style="font-size:12px;margin-top:2px">${esc(f.description)}</div><div style="font-size:12px;margin-top:4px;font-style:italic;color:#555">Explanation: ${f.explanation?esc(f.explanation):'— not provided —'}</div></div>`).join('') || '<div>No findings — clean scan.</div>'}
+  ${rec.snapshot.globalInvestmentBalance?`<div class="totalRow" style="margin-top:4px"><span>Combined Investment Balance</span><b>${money(rec.snapshot.globalInvestmentBalance)}</b></div>`:''}
+
+  <b style="margin-top:16px;display:block">Ratio Analysis</b>
+  <table><tr><th>Metric</th><th>Value</th><th>Reads as</th></tr>
+  <tr><td>Gross Margin</td><td class="r">${fmtPct(r.grossMargin)}</td><td style="font-size:11px">Profit as a share of revenue</td></tr>
+  <tr><td>Expense Ratio</td><td class="r">${fmtPct(r.expenseRatio)}</td><td style="font-size:11px">Business expenses as a share of revenue</td></tr>
+  <tr><td>Commission Ratio</td><td class="r">${fmtPct(r.commissionRatio)}</td><td style="font-size:11px">Commission paid as a share of revenue</td></tr>
+  <tr><td>Collection Ratio</td><td class="r">${fmtPct(r.collectionRatio)}</td><td style="font-size:11px">Revenue actually collected vs. invoiced</td></tr>
+  <tr><td>Cash Runway</td><td class="r">${fmtMonths(r.cashRunwayMonths)}</td><td style="font-size:11px">Months of average expenses covered by cash on hand</td></tr>
+  <tr><td>Personal Draw Ratio</td><td class="r">${fmtPct(r.personalDrawRatio)}</td><td style="font-size:11px">Personal spending as a share of lifetime profit</td></tr>
+  </table>
+
+  <b style="margin-top:16px;display:block">Findings &amp; Recommendations (${rec.findings.length})</b>
+  ${sortedFindings.map(f=>`<div style="margin-top:8px;padding:8px;background:#f7f7f5;border-radius:6px"><b>${esc(f.category)} (${esc(f.severity)})</b> — ${esc(f.business)}<div style="font-size:12px;margin-top:2px">${esc(f.description)}</div><div style="font-size:12px;margin-top:4px;color:#2F7A5D">Recommendation: ${esc(auditRecommendation(f.category))}</div><div style="font-size:12px;margin-top:4px;font-style:italic;color:#555">Management response: ${f.explanation?esc(f.explanation):'— not provided —'}</div></div>`).join('') || '<div>No findings — clean scan.</div>'}
+
+  <b style="margin-top:16px;display:block">Conclusion</b>
+  <div style="font-size:12.5px;line-height:1.6;margin-top:4px">${generateConclusion(rec.findings,r)}</div>
+
   ${rec.status==='stamped' ? `<div style="margin-top:20px;text-align:center"><div class="stamp paid" style="font-size:16px;padding:10px 24px;transform:rotate(-6deg);display:inline-block">AUDITED &amp; SUBMITTED — ${new Date(rec.stampedAt).toLocaleDateString()}</div></div>` : ''}
  </div>
  ${rec.status!=='stamped' ? `<div class="notice">${unexplained>0?unexplained+' finding(s) still have no explanation. ':''}${highCount>0?highCount+' high-severity finding(s).':'No high-severity findings.'}</div><button class="btn accent full" onclick="stampAudit('${id}')">Stamp Done &amp; Submitted</button>` : ''}
@@ -1755,11 +1913,24 @@ async function showAuditHistory(){
 /* ---------------- Reports ---------------- */
 
 async function showReports(){
+ const biz=await getBusiness();
+ openModal(`<h2>Reports ${hb("Revenue, expense, personal, and commission reports cover every business by default, so nothing is hidden by whichever business you're currently viewing. Business P&L is the one exception — it's scoped to your active business, for a day-to-day read on just that one.")}</h2>
+ <div class="list">
+  <div class="row-item"><div><b>Business P&amp;L</b><small>Sales vs expenses for ${esc(biz.name)}, any date range</small></div><button class="btn secondary" onclick="showBusinessPL()">Open</button></div>
+  <div class="row-item"><div><b>All Revenue</b><small>Every business, every sale</small></div><button class="btn secondary" onclick="showRevenueReport()">Open</button></div>
+  <div class="row-item"><div><b>Revenue vs Expenses vs Commission</b><small>Net profit after every real cost</small></div><button class="btn secondary" onclick="showRevExpCommReport()">Open</button></div>
+  <div class="row-item"><div><b>All Expenses</b><small>By category, business vs personal</small></div><button class="btn secondary" onclick="showExpensesReport()">Open</button></div>
+  <div class="row-item"><div><b>Personal</b><small>Your own spending, income &amp; investments</small></div><button class="btn secondary" onclick="showPersonalReport()">Open</button></div>
+  <div class="row-item"><div><b>All Commission Paid</b><small>By recipient, business &amp; status</small></div><button class="btn secondary" onclick="showCommissionReport()">Open</button></div>
+ </div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function showBusinessPL(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>Sales & Profit Report</h2><div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div><button class="btn primary full" onclick="calculateReport()">Calculate Report</button><div id="reportResult"></div>
+ openModal(`<h2>Business P&amp;L</h2><div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div><button class="btn primary full" onclick="calculateReport()">Calculate Report</button><div id="reportResult"></div>
  <h3 style="font-size:14px;margin-top:18px">Export</h3>
  <div class="row2"><button class="btn secondary full" onclick="exportInvoicesCSV()">Invoices CSV</button><button class="btn secondary full" onclick="exportExpensesCSV()">Expenses CSV</button></div>
- <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ <button class="btn secondary full" onclick="showReports()">Back</button>`);
  await calculateReport();
 }
 async function calculateReport(){
@@ -1777,7 +1948,16 @@ async function calculateReport(){
  reportResult.innerHTML=`<div class="stats" style="grid-template-columns:1fr 1fr;margin-top:14px"><div class="stat"><div class="lbl">Sales</div><div class="val">${money(sales)}</div></div><div class="stat"><div class="lbl">Received</div><div class="val">${money(received)}</div></div><div class="stat"><div class="lbl">Outstanding</div><div class="val">${money(sales-received)}</div></div><div class="stat accent"><div class="lbl">Job Expenses</div><div class="val">${money(linked)}</div></div></div><div class="totalBox"><div class="totalRow"><span>Sales</span><b>${money(sales)}</b></div><div class="totalRow"><span>Invoice-linked expenses</span><b>${money(linked)}</b></div><div class="totalRow"><span>Other business expenses</span><b>${money(other)}</b></div><div class="totalRow grand"><span>Estimated Profit (this period)</span><b>${money(sales-linked-other)}</b></div></div><div class="notice">Neither type of expense is printed on the customer invoice. Personal and voided items are excluded from this report.</div>
  ${(openRev||openExp)?`<h3 style="font-size:14px;margin-top:18px">Lifetime Profit &amp; Loss</h3><div class="totalBox"><div class="totalRow"><span>Revenue brought forward (as of ${esc(b.openingAsOfDate||'—')})</span><b>${money(openRev)}</b></div><div class="totalRow"><span>Expenses brought forward</span><b>${money(openExp)}</b></div><div class="totalRow"><span>All-time sales since (this app)</span><b>${money(allTimeSales)}</b></div><div class="totalRow"><span>All-time business expenses (this app)</span><b>${money(allTimeExp)}</b></div><div class="totalRow grand"><span>Lifetime Profit</span><b>${money(lifetimeProfit)}</b></div></div>`:''}`;
 }
-function csvEscape(v){v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+function csvEscape(v){
+ v=String(v??'');
+ // Guard against CSV/Excel "formula injection": a cell that starts with
+ // =, +, -, or @ can be interpreted as a formula by Excel/Sheets when the
+ // file is opened, which is a known risk for any export containing
+ // user-typed text (recipient names, categories, descriptions, etc.).
+ // Prefixing with a straight quote neutralizes it while keeping the value readable.
+ if(/^[=+\-@\t\r]/.test(v)) v="'"+v;
+ return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
+}
 function downloadCSV(rows,filename){const text=rows.map(r=>r.map(csvEscape).join(',')).join('\r\n');const blob=new Blob([text],{type:'text/csv'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click()}
 async function exportInvoicesCSV(){
  const inv=await bizInvoices();
@@ -1790,6 +1970,209 @@ async function exportExpensesCSV(){
  const rows=[['Date','Category','Description','Amount']];
  for(const e of ex)rows.push([e.date,e.category||'',e.description||'',e.amount]);
  downloadCSV(rows,'expenses.csv');
+}
+
+/* ---------------- Reports: All Revenue ---------------- */
+async function showRevenueReport(){
+ const today=new Date().toISOString().slice(0,10);
+ openModal(`<h2>All Revenue ${hb("Every sale across every business, voided invoices excluded. Grouped by business and by month, using each invoice's own date.")}</h2>
+ <div class="row2"><div class="field"><label>From</label><input id="revFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="revTo" type="date" value="${today}"></div></div>
+ <button class="btn primary full" onclick="calculateRevenueReport()">Calculate</button>
+ <div id="revenueResult"></div>
+ <button class="btn secondary full" onclick="exportRevenueCSV()">Export CSV</button>
+ <button class="btn secondary full" onclick="showReports()">Back</button>`);
+ await calculateRevenueReport();
+}
+async function calculateRevenueReport(){
+ const from=revFrom.value, to=revTo.value;
+ const businesses=await all('business');
+ const allInvoices=(await all('invoices')).filter(i=>i.status!=='void' && i.date>=from && i.date<=to);
+ let bizRows='', totalSales=0, totalReceived=0;
+ const monthly={};
+ for(const b of businesses){
+  const invs=allInvoices.filter(i=>i.businessId===b.id);
+  const sales=invs.reduce((a,i)=>a+i.total,0);
+  const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
+  totalSales+=sales; totalReceived+=received;
+  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')} · ${invs.length} invoice(s)</small></div><div class="row-right"><strong class="money">${money(sales)}</strong><small>Received ${money(received)}</small></div></div>`;
+  for(const i of invs){ const m=i.date.slice(0,7); monthly[m]=(monthly[m]||0)+i.total; }
+ }
+ const monthRows=Object.entries(monthly).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>`<div class="totalRow"><span>${m}</span><b>${money(v)}</b></div>`).join('');
+ const currencies=new Set(businesses.map(b=>b.currency||'NGN'));
+ revenueResult.innerHTML=`
+ ${currencies.size>1?`<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">Businesses use different currencies (${[...currencies].join(', ')}) — combined totals below add these directly. Treat per-business figures as the accurate ones.</div>`:''}
+ <h3 style="font-size:14px;margin-top:14px">By Business</h3>
+ <div class="list">${bizRows||'<div class="empty">No sales in this period.</div>'}</div>
+ <h3 style="font-size:14px;margin-top:16px">By Month</h3>
+ <div class="totalBox">${monthRows||'<div class="empty" style="padding:8px 0">No sales in this period.</div>'}</div>
+ <div class="totalBox" style="margin-top:12px"><div class="totalRow"><span>Total Sales</span><b>${money(totalSales)}</b></div><div class="totalRow grand"><span>Total Received</span><b>${money(totalReceived)}</b></div></div>`;
+ window.revenueReportData={from,to,businesses,invoices:allInvoices};
+}
+async function exportRevenueCSV(){
+ const d=window.revenueReportData; if(!d)return;
+ const rows=[['Business','Invoice','Date','Customer','Total','Received']];
+ for(const i of d.invoices){const b=d.businesses.find(x=>x.id===i.businessId);const received=(i.payments||[]).reduce((a,p)=>a+p.amount,0);rows.push([b?b.name:'',i.number,i.date,i.customer||'',i.total,received]);}
+ downloadCSV(rows,`revenue-${d.from}-to-${d.to}.csv`);
+}
+
+/* ---------------- Reports: Revenue vs Expenses vs Commission ---------------- */
+async function showRevExpCommReport(){
+ const today=new Date().toISOString().slice(0,10);
+ openModal(`<h2>Revenue vs Expenses vs Commission ${hb("Net profit after every real cost: business expenses plus commission actually paid out. Pending commission — invoices not yet fully paid — isn't included, matching how it hits your Cash & Bank Balance.")}</h2>
+ <div class="row2"><div class="field"><label>From</label><input id="recFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="recTo" type="date" value="${today}"></div></div>
+ <button class="btn primary full" onclick="calculateRevExpCommReport()">Calculate</button>
+ <div id="recResult"></div>
+ <button class="btn secondary full" onclick="showReports()">Back</button>`);
+ await calculateRevExpCommReport();
+}
+async function calculateRevExpCommReport(){
+ const from=recFrom.value, to=recTo.value;
+ const businesses=await all('business');
+ let rows='', totalRev=0, totalExp=0, totalComm=0, totalProfit=0;
+ for(const b of businesses){
+  const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
+  const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
+  const rev=invs.reduce((a,i)=>a+i.total,0), exp=exps.reduce((a,e)=>a+e.amount,0);
+  const allBizInvs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void');
+  const fullyPaidIds=new Set(allBizInvs.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
+  const invIdsThisRange=new Set(invs.map(i=>i.id));
+  const comm=(await all('commissions')).filter(c=>c.businessId===b.id && c.status!=='void' && fullyPaidIds.has(c.invoiceId) && invIdsThisRange.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
+  const profit=rev-exp-comm;
+  if(!rev && !exp && !comm) continue;
+  totalRev+=rev; totalExp+=exp; totalComm+=comm; totalProfit+=profit;
+  const margin=rev>0?((profit/rev)*100).toFixed(1)+'%':'—';
+  rows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>Margin: ${margin}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} − Exp ${money(exp)} − Comm ${money(comm)}</small></div></div>`;
+ }
+ const overallMargin=totalRev>0?((totalProfit/totalRev)*100).toFixed(1)+'%':'—';
+ recResult.innerHTML=`
+ <div class="list" style="margin-top:14px">${rows||'<div class="empty">No activity in this period.</div>'}</div>
+ <div class="totalBox" style="margin-top:14px">
+  <div class="totalRow"><span>Revenue</span><b>${money(totalRev)}</b></div>
+  <div class="totalRow"><span>Business Expenses</span><b>-${money(totalExp)}</b></div>
+  <div class="totalRow"><span>Commission Paid</span><b>-${money(totalComm)}</b></div>
+  <div class="totalRow grand"><span>Net Profit</span><b>${money(totalProfit)}</b></div>
+ </div>
+ <div class="notice">Overall margin: ${overallMargin} of revenue.</div>`;
+}
+
+/* ---------------- Reports: All Expenses ---------------- */
+async function showExpensesReport(){
+ const today=new Date().toISOString().slice(0,10);
+ openModal(`<h2>All Expenses ${hb("Every recorded business and personal expense, grouped by category and by business.")}</h2>
+ <div class="row2"><div class="field"><label>From</label><input id="expFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="expTo" type="date" value="${today}"></div></div>
+ <button class="btn primary full" onclick="calculateExpensesReport()">Calculate</button>
+ <div id="expResult"></div>
+ <button class="btn secondary full" onclick="exportAllExpensesCSV()">Export CSV</button>
+ <button class="btn secondary full" onclick="showReports()">Back</button>`);
+ await calculateExpensesReport();
+}
+async function calculateExpensesReport(){
+ const from=expFrom.value, to=expTo.value;
+ const allEx=(await all('expenses')).filter(e=>e.date>=from && e.date<=to);
+ const bizEx=allEx.filter(e=>e.kind!=='personal'), persEx=allEx.filter(e=>e.kind==='personal');
+ const businesses=await all('business');
+ const byBizCat=groupByCategory(bizEx);
+ const byPersCat=groupByCategory(persEx);
+ const byBusiness={};
+ for(const e of bizEx){const b=businesses.find(x=>x.id===e.businessId);const name=b?b.name:'Unknown';byBusiness[name]=(byBusiness[name]||0)+e.amount;}
+ const bizTotal=bizEx.reduce((a,e)=>a+e.amount,0), persTotal=persEx.reduce((a,e)=>a+e.amount,0);
+ expResult.innerHTML=`
+ <div class="totalBox" style="margin-top:14px"><div class="totalRow"><span>Business Expenses</span><b>${money(bizTotal)}</b></div><div class="totalRow grand"><span>Personal Expenses</span><b>${money(persTotal)}</b></div></div>
+ <h3 style="font-size:14px;margin-top:16px">Business — By Category</h3>
+ <div class="totalBox">${byBizCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}</div>
+ <h3 style="font-size:14px;margin-top:16px">Business — By Business</h3>
+ <div class="totalBox">${Object.entries(byBusiness).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="totalRow"><span>${esc(n)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}</div>
+ <h3 style="font-size:14px;margin-top:16px">Personal — By Category</h3>
+ <div class="totalBox">${byPersCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}</div>`;
+ window.expensesReportData={from,to,allEx,businesses};
+}
+async function exportAllExpensesCSV(){
+ const d=window.expensesReportData; if(!d)return;
+ const rows=[['Type','Business','Date','Category','Description','Amount']];
+ for(const e of d.allEx){const b=d.businesses.find(x=>x.id===e.businessId);rows.push([e.kind==='personal'?'Personal':'Business',b?b.name:'',e.date,e.category||'',e.description||'',e.amount]);}
+ downloadCSV(rows,`expenses-${d.from}-to-${d.to}.csv`);
+}
+
+/* ---------------- Reports: Personal ---------------- */
+async function showPersonalReport(){
+ const today=new Date().toISOString().slice(0,10);
+ openModal(`<h2>Personal ${hb("Your own spending, income, and investment balances — shared across all businesses rather than tied to any one of them.")}</h2>
+ <div class="row2"><div class="field"><label>From</label><input id="persFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="persTo" type="date" value="${today}"></div></div>
+ <button class="btn primary full" onclick="calculatePersonalReport()">Calculate</button>
+ <div id="persResult"></div>
+ <button class="btn secondary full" onclick="showReports()">Back</button>`);
+ await calculatePersonalReport();
+}
+async function calculatePersonalReport(){
+ const from=persFrom.value, to=persTo.value;
+ const persEx=(await all('expenses')).filter(e=>e.kind==='personal' && e.date>=from && e.date<=to);
+ const persExTotal=persEx.reduce((a,e)=>a+e.amount,0);
+ const byCat=groupByCategory(persEx);
+ const otherInc=(await all('otherIncome')).filter(e=>e.date>=from && e.date<=to);
+ const otherIncTotal=otherInc.reduce((a,e)=>a+e.amount,0);
+ const otherIncTaxable=otherInc.filter(e=>e.taxable).reduce((a,e)=>a+e.amount,0);
+ const personalInvestAccs=(await all('investmentAccounts')).filter(a=>a.kind==='personal');
+ const allMoves=await all('investmentMovements');
+ const investBalance=personalInvestAccs.reduce((a,acc)=>a+investmentAccountBalance(acc,allMoves),0);
+ const netPersonal=otherIncTotal-persExTotal;
+ persResult.innerHTML=`
+ <div class="totalBox" style="margin-top:14px">
+  <div class="totalRow"><span>Other Income (this period)</span><b>${money(otherIncTotal)}</b></div>
+  <div class="totalRow"><span>&nbsp;&nbsp;— of which taxable</span><b>${money(otherIncTaxable)}</b></div>
+  <div class="totalRow"><span>Personal Expenses (this period)</span><b>-${money(persExTotal)}</b></div>
+  <div class="totalRow grand"><span>Net Personal Cash Flow</span><b>${money(netPersonal)}</b></div>
+ </div>
+ <h3 style="font-size:14px;margin-top:16px">Personal Expenses — By Category</h3>
+ <div class="totalBox">${byCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}</div>
+ <h3 style="font-size:14px;margin-top:16px">Personal Investment Accounts</h3>
+ <div class="totalBox">${personalInvestAccs.map(acc=>`<div class="totalRow"><span>${esc(acc.name)}</span><b>${money(investmentAccountBalance(acc,allMoves))}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}${personalInvestAccs.length?`<div class="totalRow grand"><span>Total Personal Investment Balance</span><b>${money(investBalance)}</b></div>`:''}</div>`;
+}
+
+/* ---------------- Reports: All Commission Paid ---------------- */
+async function showCommissionReport(){
+ const today=new Date().toISOString().slice(0,10);
+ openModal(`<h2>All Commission Paid ${hb("Every commission across every business, grouped by recipient — who's owed what, and who's already been paid. Filters by the linked invoice's date.")}</h2>
+ <div class="row2"><div class="field"><label>From</label><input id="commFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="commTo" type="date" value="${today}"></div></div>
+ <button class="btn primary full" onclick="calculateCommissionReport()">Calculate</button>
+ <div id="commResult"></div>
+ <button class="btn secondary full" onclick="exportCommissionCSV()">Export CSV</button>
+ <button class="btn secondary full" onclick="showReports()">Back</button>`);
+ await calculateCommissionReport();
+}
+async function calculateCommissionReport(){
+ const from=commFrom.value, to=commTo.value;
+ const businesses=await all('business');
+ const allInvoices=await all('invoices');
+ const allCommissions=await all('commissions');
+ const rows=[];
+ for(const c of allCommissions){
+  const inv=allInvoices.find(i=>i.id===c.invoiceId);
+  if(!inv || inv.date<from || inv.date>to) continue;
+  const b=businesses.find(x=>x.id===c.businessId);
+  const paid=(inv.payments||[]).reduce((a,p)=>a+p.amount,0);
+  const isFullyPaid=paid>=inv.total&&inv.total>0;
+  const status=c.status==='void'?'void':(isFullyPaid?'paid':'pending');
+  rows.push({...c, businessName:b?b.name:'Unknown', invoiceNumber:inv.number, customer:inv.customer, status});
+ }
+ const active=rows.filter(r=>r.status!=='void');
+ const byRecipient={};
+ for(const r of active) byRecipient[r.recipientName]=byRecipient[r.recipientName]||{paid:0,pending:0};
+ for(const r of active) byRecipient[r.recipientName][r.status]+=Number(r.amount)||0;
+ const totalPaid=active.filter(r=>r.status==='paid').reduce((a,r)=>a+r.amount,0);
+ const totalPending=active.filter(r=>r.status==='pending').reduce((a,r)=>a+r.amount,0);
+ commResult.innerHTML=`
+ <div class="totalBox" style="margin-top:14px"><div class="totalRow"><span>Paid Out</span><b>${money(totalPaid)}</b></div><div class="totalRow grand"><span>Pending</span><b>${money(totalPending)}</b></div></div>
+ <h3 style="font-size:14px;margin-top:16px">By Recipient</h3>
+ <div class="list">${Object.entries(byRecipient).sort((a,b)=>(b[1].paid+b[1].pending)-(a[1].paid+a[1].pending)).map(([name,v])=>`<div class="row-item"><div><b>${esc(name)}</b><small>Paid ${money(v.paid)} · Pending ${money(v.pending)}</small></div><strong class="money">${money(v.paid+v.pending)}</strong></div>`).join('')||'<div class="empty">No commission in this period.</div>'}</div>
+ <h3 style="font-size:14px;margin-top:16px">All Records</h3>
+ <div class="list">${rows.map(r=>`<div class="row-item"><div><b>${esc(r.recipientName)}</b><small>${esc(r.businessName)} · ${esc(r.invoiceNumber)} · ${esc(r.customer||'')}</small></div><div class="row-right"><strong class="money">${money(r.amount)}</strong><span class="stamp ${r.status==='paid'?'paid':r.status==='void'?'void':'due'}">${r.status==='paid'?'Paid':r.status==='void'?'Void':'Pending'}</span></div></div>`).join('')||'<div class="empty">No commission in this period.</div>'}</div>`;
+ window.commissionReportData=rows;
+}
+async function exportCommissionCSV(){
+ const rows=window.commissionReportData||[];
+ const out=[['Recipient','Business','Invoice','Customer','Amount','Status']];
+ for(const r of rows) out.push([r.recipientName,r.businessName,r.invoiceNumber,r.customer||'',r.amount,r.status]);
+ downloadCSV(out,'commission-report.csv');
 }
 
 /* ---------------- Preview / PDF ---------------- */
@@ -1982,7 +2365,11 @@ if('serviceWorker' in navigator){
   };
 
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('./sw.js').then(reg=>{
+    // updateViaCache:'none' is the key fix for installed/standalone apps —
+    // without it, the browser can keep serving sw.js (and this update-check
+    // logic) from HTTP cache even when we explicitly call reg.update(), so
+    // an installed app can silently never see it noticed a new version.
+    navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>{
       swRegistration=reg;
       // A worker already sitting in "waiting" (e.g. from an earlier session that didn't update).
       if(reg.waiting && reg.active) armUpdatePrompt();
@@ -1996,9 +2383,11 @@ if('serviceWorker' in navigator){
       });
       // Standalone/installed PWAs don't always get a fresh update check on
       // launch, so actively ask the browser to check — on load, whenever the
-      // app regains focus, and every 30 minutes while it's open.
+      // app regains focus or resumes from background, and every 30 minutes
+      // while it's open.
       reg.update().catch(()=>{});
       document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') reg.update().catch(()=>{}); });
+      window.addEventListener('pageshow', ()=>{ reg.update().catch(()=>{}); }); // covers standalone apps resuming from the background/app switcher
       setInterval(()=>reg.update().catch(()=>{}), 30*60*1000);
     }).catch(()=>{});
   });
