@@ -253,7 +253,19 @@ function deriveInvoicePrefix(name){
  return words.map(w=>w[0]).join('').replace(/[^a-zA-Z0-9]/g,'').slice(0,5).toUpperCase()||'INV';
 }
 function nextInvoicePreview(b){ return deriveInvoicePrefix(b.name)+'-'+String(b.nextNumber||1).padStart(4,'0'); }
-/* ---------------- Help balloons ---------------- */
+async function nextInternalRef(){
+ // A separate, always-on tracking number — assigned to EVERY invoice
+ // regardless of whether numbering mode is manual or automatic, and never
+ // shown as "the" invoice number. Its purpose is audit/record-keeping: if
+ // the visible invoice number is typed by hand and isn't strictly
+ // sequential, this still gives a true, gapless count of every document
+ // actually issued by this business.
+ let b=await getBusiness();
+ let n=b.internalCounter||1;
+ b.internalCounter=n+1;
+ await put('business',b);
+ return deriveInvoicePrefix(b.name)+'-'+String(n).padStart(6,'0');
+}/* ---------------- Help balloons ---------------- */
 function hb(text){return `<button type="button" class="helpBtn" onclick="showHelpBalloon(this)" data-help="${esc(text)}">?</button>`}
 function showHelpBalloon(el){
  const bubble=document.getElementById('helpBubble');
@@ -277,7 +289,7 @@ document.addEventListener('click',e=>{
 /* ---------------- IndexedDB core ---------------- */
 const DB_NAME='MoborexInvoiceDB', DB_VERSION=7;
 let idb;
-const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,openingBalanceTaxStatus:'',type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,internalCounter:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,openingBalanceTaxStatus:'',type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
 function openDB(){
  return new Promise((resolve,reject)=>{
   const r=indexedDB.open(DB_NAME,DB_VERSION);
@@ -418,10 +430,11 @@ async function autoGenerateSalaryIfDue(){
       const monthName = new Date().toLocaleString('default',{month:'long',year:'numeric'});
       let number='';
       if(b.invoiceMode==='auto'){ number=deriveInvoicePrefix(b.name)+'-'+String(b.nextNumber||1).padStart(4,'0'); b.nextNumber=(b.nextNumber||1)+1; }
+      const internalRefN=b.internalCounter||1; const internalRef=deriveInvoicePrefix(b.name)+'-'+String(internalRefN).padStart(6,'0'); b.internalCounter=internalRefN+1;
       const employers = (await all('customers')).filter(c=>c.businessId===b.id);
       const employerName = employers.length ? employers[employers.length-1].name : (b.salaryEmployer||'Employer');
       const rec = {
-        id:crypto.randomUUID(), businessId:b.id, status:'active', number,
+        id:crypto.randomUUID(), businessId:b.id, status:'active', number, internalRef,
         date:new Date().toISOString().slice(0,10), dueDate:'',
         customerId:employers.length?employers[employers.length-1].id:'', customer:employerName, phone:'', address:'',
         vehicleDetails:'Auto-generated monthly salary', discount:0,
@@ -1034,7 +1047,7 @@ function invoiceStatusStamp(i){
 async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextNumber||1;b.nextNumber=n+1;await put('business',b);return deriveInvoicePrefix(b.name)+'-'+String(n).padStart(4,'0')}
 async function openInvoice(id){
  let b=await getBusiness(),allInv=await bizInvoices(),inv=id?allInv.find(x=>x.id===id):null,customers=await bizCustomers();
- inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
+ inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),internalRef:await nextInternalRef(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
  window.editing=inv;window.items=(inv.items||[]).map(x=>({...x}));window.invoiceExpenses=(await all('expenses')).filter(x=>x.invoiceId===inv.id);window.invoiceCommissions=(await all('commissions')).filter(x=>x.invoiceId===inv.id);
  const isVoid=inv.status==='void';
  const isSalary=b.type==='salary';
@@ -1127,7 +1140,8 @@ async function showCommissions(){
 async function duplicateInvoice(id){
  const src=(await all('invoices')).find(x=>x.id===id); if(!src) return;
  const newNumber=await nextNo();
- const dup={...src,id:crypto.randomUUID(),status:'active',number:newNumber||(src.number+'-copy'),date:new Date().toISOString().slice(0,10),dueDate:'',payments:[],items:src.items.map(x=>({...x}))};
+ const newInternalRef=await nextInternalRef();
+ const dup={...src,id:crypto.randomUUID(),status:'active',number:newNumber||(src.number+'-copy'),internalRef:newInternalRef,date:new Date().toISOString().slice(0,10),dueDate:'',payments:[],items:src.items.map(x=>({...x}))};
  await put('invoices',dup); closeModal(); await openInvoice(dup.id);
 }
 async function showInvoices(){
@@ -1703,6 +1717,14 @@ async function runAudit(){
   for(let k=1;k<nums.length;k++){
    if(nums[k]-nums[k-1]>1) push('Invoice Numbering','medium',b.name,`Gap in invoice numbers for ${b.name}: jumps from ${nums[k-1]} to ${nums[k]} — ${nums[k]-nums[k-1]-1} number(s) missing.`);
   }
+  // Internal tracking reference: assigned to every invoice regardless of
+  // numbering mode, so it catches gaps a non-serial manual numbering scheme
+  // would otherwise hide entirely (the check above only works when the
+  // visible number happens to be plain digits).
+  const refNums=activeInvs.map(i=>i.internalRef).filter(Boolean).map(r=>{const m=String(r).match(/-(\d+)$/);return m?Number(m[1]):null;}).filter(n=>n!==null).sort((a,c)=>a-c);
+  for(let k=1;k<refNums.length;k++){
+   if(refNums[k]-refNums[k-1]>1) push('Document Sequence','medium',b.name,`${b.name}: internal document tracking shows a gap of ${refNums[k]-refNums[k-1]-1} record(s) between sequence ${refNums[k-1]} and ${refNums[k]} — worth confirming nothing was deleted or lost, especially since this tracks true document count independent of the visible invoice number.`);
+  }
   const amounts=exps.map(e=>e.amount).sort((a,c)=>a-c);
   const median=amounts.length?amounts[Math.floor(amounts.length/2)]:0;
   for(const e of exps){
@@ -2016,8 +2038,8 @@ function csvEscape(v){
 function downloadCSV(rows,filename){const text=rows.map(r=>r.map(csvEscape).join(',')).join('\r\n');const blob=new Blob([text],{type:'text/csv'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click()}
 async function exportInvoicesCSV(){
  const inv=await bizInvoices();
- const rows=[['Invoice Number','Date','Due Date','Customer','Status','Total','Paid','Balance']];
- for(const i of inv){const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0);rows.push([i.number,i.date,i.dueDate||'',i.customer||'',i.status==='void'?'Void':(paid>=i.total?'Paid':'Unpaid'),i.total,paid,i.total-paid]);}
+ const rows=[['Invoice Number','Internal Ref','Date','Due Date','Customer','Status','Total','Paid','Balance']];
+ for(const i of inv){const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0);rows.push([i.number,i.internalRef||'',i.date,i.dueDate||'',i.customer||'',i.status==='void'?'Void':(paid>=i.total?'Paid':'Unpaid'),i.total,paid,i.total-paid]);}
  downloadCSV(rows,'invoices.csv');
 }
 async function exportExpensesCSV(){
@@ -2231,7 +2253,7 @@ async function exportCommissionCSV(){
 }
 
 /* ---------------- Preview / PDF ---------------- */
-async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div></div>
+async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div>${b.invoiceMode==='manual'&&i.internalRef?`<div style="text-align:right;font-size:9px;color:#999;margin-top:14px;letter-spacing:.02em">Ref: ${esc(i.internalRef)}</div>`:''}</div>
 <div class="notice" style="margin-top:14px">Choose the layout that matches your printer — A4 for a regular office/home printer, Receipt for an 80mm POS/thermal printer.</div>
 <div class="pdfActions"><button class="btn secondary" onclick="printInvoice('${esc(i.number)}')">Print (A4)</button><button class="btn accent" onclick="downloadInvoicePDF('${esc(i.number)}')">Save PDF (A4)</button></div>
 <div class="pdfActions receiptActions"><button class="btn secondary" onclick="printReceipt('${id}')">Print (Receipt / POS)</button><button class="btn accent" onclick="downloadReceiptPDF('${id}')">Save PDF (Receipt)</button></div>
@@ -2253,7 +2275,8 @@ function buildReceiptHTML(i,b){
  <div class="receiptRow receiptTotal"><span>TOTAL</span><span>${money(i.total)}</span></div>
  <div class="receiptRule"></div>
  ${(b.bankName||b.bankAccount)?`<div class="receiptRow"><span>Bank</span><span>${esc(b.bankName||'')}</span></div><div class="receiptRow"><span>Acct</span><span>${esc(b.bankAccount||'')}</span></div><div class="receiptRule"></div>`:''}
- <div class="receiptFoot">${esc(b.footerComment||'Thank you for your business.')}</div>`;
+ <div class="receiptFoot">${esc(b.footerComment||'Thank you for your business.')}</div>
+ ${b.invoiceMode==='manual'&&i.internalRef?`<div style="text-align:right;font-size:8px;color:#999;margin-top:8px">Ref: ${esc(i.internalRef)}</div>`:''}`;
 }
 async function printReceipt(id){
  const i=(await all('invoices')).find(x=>x.id===id), b=await getBusiness();
