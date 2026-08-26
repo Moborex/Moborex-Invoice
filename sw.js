@@ -1,4 +1,4 @@
-const CACHE = 'moborex-invoice-v17';
+const CACHE = 'moborex-invoice-v18';
 const ASSETS = ['./index.html','./manifest.json','./icon-192.png','./icon-512.png'];
 const OPTIONAL_ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',

@@ -245,7 +245,7 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=5;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=6;
 let idb;
 const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,openingBalanceTaxStatus:'',type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
 function openDB(){
@@ -263,6 +263,8 @@ function openDB(){
    if(!d.objectStoreNames.contains('taxProfile'))d.createObjectStore('taxProfile',{keyPath:'id'});
    if(!d.objectStoreNames.contains('quotations')){let s=d.createObjectStore('quotations',{keyPath:'id'});s.createIndex('number','number');s.createIndex('customer','customer');s.createIndex('date','date')}
    if(!d.objectStoreNames.contains('otherIncome')){let s=d.createObjectStore('otherIncome',{keyPath:'id'});s.createIndex('date','date')}
+   if(!d.objectStoreNames.contains('investmentAccounts')){let s=d.createObjectStore('investmentAccounts',{keyPath:'id'});s.createIndex('businessId','businessId')}
+   if(!d.objectStoreNames.contains('investmentMovements')){let s=d.createObjectStore('investmentMovements',{keyPath:'id'});s.createIndex('accountId','accountId');s.createIndex('date','date')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};r.onerror=()=>reject(r.error);
  })
@@ -297,9 +299,35 @@ async function bizQuotations(){const id=await getActiveBusinessId();return (awai
 async function businessExpenseTypes(){const id=await getActiveBusinessId();return (await all('expenseTypes')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 async function businessExpenses(){const id=await getActiveBusinessId();return (await all('expenses')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 
-/* ---- Cross-business figures: bank balance and tax reporting look at every
-   business at once (plus shared personal expenses and recorded tax payments),
-   so the same combined balance shows no matter which business is active. ---- */
+/* ---- Investment accounts: money moved out of cash into a Money Market /
+   Treasury Bills / etc account is a transfer, not an expense — it must never
+   touch P&L or the Tax Report on its own. Only the yield/interest earned on
+   a return movement is (optionally) taxable income; the principal moving in
+   and back out is just cash changing form. ---- */
+function investmentAccountBalance(acc,moves){
+  let bal=Number(acc.openingBalance)||0;
+  for(const m of moves){
+    if(m.accountId!==acc.id) continue;
+    if(m.type==='deposit') bal+=Number(m.amount)||0;
+    else if(m.type==='return') bal-=(Number(m.amount)||0)-(Number(m.yieldAmount)||0);
+  }
+  return bal;
+}
+async function investmentCashEffect(accountIds,allMoves){
+  // Net effect on Cash & Bank Balance: deposits pull cash out, returns (the
+  // full amount that lands back in the bank, principal + yield) bring it in.
+  let deposits=0, returns=0;
+  for(const m of allMoves){
+    if(!accountIds.includes(m.accountId)) continue;
+    if(m.type==='deposit') deposits+=Number(m.amount)||0;
+    else if(m.type==='return') returns+=Number(m.amount)||0;
+  }
+  return {deposits,returns,net:returns-deposits};
+}
+async function getGlobalInvestmentBalance(){
+  const accs=await all('investmentAccounts'), moves=await all('investmentMovements');
+  return accs.reduce((a,acc)=>a+investmentAccountBalance(acc,moves),0);
+}
 async function businessFinancials(bizId){
   const b=(await all('business')).find(x=>x.id===bizId);
   if(!b) return null;
@@ -310,8 +338,13 @@ async function businessFinancials(bizId){
   const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
   const expTotal=exps.reduce((a,e)=>a+e.amount,0);
   const lifetimeProfit=(openRev+sales)-(openExp+expTotal);
-  const bankBalance=openBal+received-expTotal;
-  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal};
+  const investAccs=(await all('investmentAccounts')).filter(a=>a.kind==='business'&&a.businessId===bizId);
+  const investAccIds=investAccs.map(a=>a.id);
+  const allInvestMoves=await all('investmentMovements');
+  const investCash=await investmentCashEffect(investAccIds,allInvestMoves);
+  const investmentBalance=investAccs.reduce((a,acc)=>a+investmentAccountBalance(acc,allInvestMoves),0);
+  const bankBalance=openBal+received-expTotal+investCash.net;
+  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,investmentBalance,investDeposits:investCash.deposits,investReturns:investCash.returns};
 }
 async function allBusinessFinancials(){const list=await all('business');const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
 async function getGlobalBankBalance(){
@@ -320,7 +353,9 @@ async function getGlobalBankBalance(){
   const personalExpenses=(await all('expenses')).filter(e=>e.kind==='personal').reduce((a,e)=>a+e.amount,0);
   const otherIncomeTotal=(await all('otherIncome')).reduce((a,e)=>a+(Number(e.amount)||0),0);
   const taxPaid=(await all('taxSubmissions')).reduce((a,t)=>a+(Number(t.amountPaid)||0),0);
-  return businessTotal + otherIncomeTotal - personalExpenses - taxPaid;
+  const personalInvestAccIds=(await all('investmentAccounts')).filter(a=>a.kind==='personal').map(a=>a.id);
+  const personalInvestCash=await investmentCashEffect(personalInvestAccIds,await all('investmentMovements'));
+  return businessTotal + otherIncomeTotal - personalExpenses - taxPaid + personalInvestCash.net;
 }
 async function getGlobalOutstanding(){
   const perBiz=await allBusinessFinancials();
@@ -421,8 +456,8 @@ const Sync={
   async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
   async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
 
-  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations'];const out={version:6,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
-  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
+  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','investmentAccounts','investmentMovements'];const out={version:6,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','investmentAccounts','investmentMovements'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
 
   markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),4000)}},
 
@@ -541,6 +576,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
   <button class="navbtn" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
   <button class="navbtn" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
   <button class="navbtn" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
+  <button class="navbtn" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
   <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
   <button class="navbtn" onclick="showReports()"><span class="ic">▥</span> Reports</button>
@@ -576,6 +612,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 <div class="stat"><div class="lbl">Outstanding</div><div class="val" id="outstanding">—</div></div>
 <div class="stat accent"><div class="lbl">Profit (lifetime)</div><div class="val" id="profit">—</div></div>
 <div class="stat"><div class="lbl">Personal Spend</div><div class="val" id="personalSpend">—</div></div>
+<div class="stat"><div class="lbl">Investment Balance</div><div class="val" id="investBalance">—</div></div>
 </div>
 
 <div class="sectionhead"><h3>Quick actions</h3></div>
@@ -601,6 +638,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 <button class="navbtn" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
 <button class="navbtn" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
 <button class="navbtn" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
+<button class="navbtn" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
 <button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
 <button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
 <button class="navbtn" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
@@ -648,8 +686,10 @@ async function refresh(){
  let lifetimeProfit=(openRev+sales)-(openExp+bizExpensesTotal);
  let bankBalance=await getGlobalBankBalance();
  let globalOutstanding=await getGlobalOutstanding();
+ let investBalance=await getGlobalInvestmentBalance();
  document.getElementById('sales').textContent=money(openRev+sales);document.getElementById('received').textContent=money(paid);document.getElementById('outstanding').textContent=money(sales-paid);document.getElementById('profit').textContent=money(lifetimeProfit);document.getElementById('personalSpend').textContent=money(personalExpenses);
  document.getElementById('bankBalance').textContent=money(bankBalance);
+ document.getElementById('investBalance').textContent=money(investBalance);
  document.getElementById('heroOutstanding').textContent=money(globalOutstanding);
  inv.sort((a,b)=>b.date.localeCompare(a.date));
  recent.innerHTML=inv.slice(0,5).map(i=>{const st=invoiceStatusStamp(i);
@@ -1069,6 +1109,155 @@ async function addOtherIncome(){
 }
 async function deleteOtherIncome(id){if(!confirm('Delete this income record?'))return;await del('otherIncome',id);oiCache=oiCache.filter(x=>x.id!==id);drawOtherIncome();refresh()}
 
+/* ---------------- Investment Accounts (Money Market, Treasury Bills, etc.) ----------------
+   A deposit moves cash OUT to an account; a return moves it back IN, along with
+   whatever it yielded (or lost) while invested. Neither touches P&L on its own —
+   only a return's yield (if flagged taxable) becomes income; the principal
+   itself is just cash changing form. Accounts already held before using this
+   app just need one "Return" movement — set an opening balance instead of a
+   deposit, since the deposit itself happened before the app existed. */
+async function showInvestments(){
+ const activeId=await getActiveBusinessId(), biz=await getBusiness();
+ const accs=await all('investmentAccounts'), moves=await all('investmentMovements');
+ const bizAccs=accs.filter(a=>a.kind==='business'&&a.businessId===activeId);
+ const personalAccs=accs.filter(a=>a.kind==='personal');
+ const rowFor=a=>{
+  const bal=investmentAccountBalance(a,moves);
+  return `<div class="row-item"><div><b>${esc(a.name)}</b>${a.openingBalance?`<small>Opening: ${money(a.openingBalance)} as of ${esc(a.openingAsOfDate||'—')}</small>`:''}</div><div class="row-right"><strong class="money">${money(bal)}</strong><button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="showInvestmentAccount('${a.id}')">Open</button></div></div>`;
+ };
+ openModal(`<h2>Investments ${hb("Money market accounts, treasury bills, fixed deposits, portfolios — anything cash gets moved into and eventually returns from, kept separate from business and personal expenses. Only interest/yield you flag as taxable ever touches your Tax Report; the principal moving in and out never does.")}</h2>
+ <h3 style="font-size:13.5px">${esc(biz.name)}</h3>
+ <div class="list">${bizAccs.map(rowFor).join('')||'<div class="empty">No investment accounts for this business yet.</div>'}</div>
+ <h3 style="font-size:13.5px;margin-top:16px">Personal</h3>
+ <div class="list">${personalAccs.map(rowFor).join('')||'<div class="empty">No personal investment accounts yet.</div>'}</div>
+ <button class="btn accent full" style="margin-top:14px" onclick="showAddInvestmentAccount()">+ New Investment Account</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function showAddInvestmentAccount(){
+ const biz=await getBusiness();
+ openModal(`<h2>New Investment Account</h2>
+ <div class="field"><label>Account name</label><input id="iaName" placeholder="e.g. Money Market, Treasury Bills"></div>
+ <div class="field"><label>Belongs to</label><select id="iaScope">
+  <option value="business">${esc(biz.name)} (this business)</option>
+  <option value="personal">Personal</option>
+ </select></div>
+ <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:12px 0"><input type="checkbox" id="iaHasOpening" onchange="toggleInvestOpeningFields()"> Already had money in this before using Ledger Vault</label>
+ <div id="iaOpeningFields" style="display:none">
+  <div class="field"><label>Amount already invested</label><input id="iaOpenAmt" type="number" min="0" value="0"></div>
+  <div class="field"><label>As of date</label><input id="iaOpenDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+  <div class="field"><label>Has tax already been paid on this? ${hb("Same idea as the cash balance brought forward — tells the Tax Report whether this principal was already taxed, so a future return isn't taxed twice or missed.")}</label><select id="iaOpenTax">
+   <option value="">Not answered yet</option>
+   <option value="taxed">Already taxed</option>
+   <option value="untaxed">Not yet taxed</option>
+  </select></div>
+ </div>
+ <button class="btn primary full" onclick="saveNewInvestmentAccount()">Save Account</button><button class="btn secondary full" onclick="showInvestments()">Cancel</button>`);
+}
+function toggleInvestOpeningFields(){iaOpeningFields.style.display=iaHasOpening.checked?'block':'none'}
+async function saveNewInvestmentAccount(){
+ const name=iaName.value.trim(); if(!name)return alert('Enter an account name.');
+ const scope=iaScope.value, activeId=await getActiveBusinessId();
+ const hasOpening=iaHasOpening.checked;
+ const acc={id:crypto.randomUUID(), kind:scope, businessId:scope==='business'?activeId:null, name,
+  openingBalance:hasOpening?(Number(iaOpenAmt.value)||0):0,
+  openingAsOfDate:hasOpening?iaOpenDate.value:'',
+  openingBalanceTaxStatus:hasOpening?(iaOpenTax.value||''):'',
+  createdAt:new Date().toISOString()};
+ await put('investmentAccounts',acc);
+ await showInvestments(); await refresh();
+}
+async function showInvestmentAccount(id){
+ const acc=(await all('investmentAccounts')).find(a=>a.id===id);
+ if(!acc) return showInvestments();
+ const moves=(await all('investmentMovements')).filter(m=>m.accountId===id).sort((a,b)=>b.date.localeCompare(a.date));
+ const bal=investmentAccountBalance(acc,moves);
+ const moveRow=m=>{
+  if(m.type==='deposit') return `<div class="row-item"><div><b>Deposit</b><small>${esc(m.date)}${m.note?' · '+esc(m.note):''}</small></div><div class="row-right"><strong class="money">${money(m.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteInvestmentMovement('${m.id}','${id}')">Delete</button></div></div>`;
+  const yieldAmt=Number(m.yieldAmount)||0;
+  const yieldLabel=yieldAmt>0?`Yield ${money(yieldAmt)}${m.taxable?' (taxable)':' (not taxable)'}`:yieldAmt<0?`Loss ${money(-yieldAmt)}${m.deductible?' (deductible)':' (not deductible)'}`:'';
+  return `<div class="row-item"><div><b>Return to Bank</b><small>${esc(m.date)}${yieldLabel?' · '+yieldLabel:''}${m.note?' · '+esc(m.note):''}</small></div><div class="row-right"><strong class="money">${money(m.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteInvestmentMovement('${m.id}','${id}')">Delete</button></div></div>`;
+ };
+ openModal(`<h2>${esc(acc.name)}</h2>
+ <div class="totalBox"><div class="totalRow grand"><span>Current Balance</span><b>${money(bal)}</b></div></div>
+ ${acc.openingBalance?`<div class="notice">Opening: ${money(acc.openingBalance)} as of ${esc(acc.openingAsOfDate||'—')} — ${acc.openingBalanceTaxStatus==='taxed'?'already taxed':acc.openingBalanceTaxStatus==='untaxed'?'not yet taxed':'tax status not answered'}. <button class="btn secondary" style="padding:4px 10px;font-size:11px;margin-top:6px" onclick="showEditInvestmentOpening('${id}')">Edit</button></div>`:`<button class="btn secondary full" onclick="showEditInvestmentOpening('${id}')">Had money in this before the app? Add opening balance</button>`}
+ <div class="row2" style="margin-top:12px">
+  <button class="btn primary full" onclick="showInvestDeposit('${id}')">Deposit (Bank → Investment)</button>
+  <button class="btn accent full" onclick="showInvestReturn('${id}')">Return to Bank</button>
+ </div>
+ <h3 style="font-size:14px;margin-top:18px">Movement History</h3>
+ <div class="list">${moves.map(moveRow).join('')||'<div class="empty">No movements recorded yet.</div>'}</div>
+ <button class="btn danger full" style="margin-top:14px" onclick="deleteInvestmentAccountConfirm('${id}')">Delete Account</button>
+ <button class="btn secondary full" onclick="showInvestments()">Back</button>`);
+}
+async function showEditInvestmentOpening(id){
+ const acc=(await all('investmentAccounts')).find(a=>a.id===id);
+ openModal(`<h2>Opening Balance — ${esc(acc.name)}</h2>
+ <div class="field"><label>Amount already invested before using Ledger Vault</label><input id="ieOpenAmt" type="number" min="0" value="${acc.openingBalance||0}"></div>
+ <div class="field"><label>As of date</label><input id="ieOpenDate" type="date" value="${acc.openingAsOfDate||new Date().toISOString().slice(0,10)}"></div>
+ <div class="field"><label>Has tax already been paid on this?</label><select id="ieOpenTax">
+  <option value="" ${!acc.openingBalanceTaxStatus?'selected':''}>Not answered yet</option>
+  <option value="taxed" ${acc.openingBalanceTaxStatus==='taxed'?'selected':''}>Already taxed</option>
+  <option value="untaxed" ${acc.openingBalanceTaxStatus==='untaxed'?'selected':''}>Not yet taxed</option>
+ </select></div>
+ <button class="btn primary full" onclick="saveInvestmentOpening('${id}')">Save</button><button class="btn secondary full" onclick="showInvestmentAccount('${id}')">Cancel</button>`);
+}
+async function saveInvestmentOpening(id){
+ const acc=(await all('investmentAccounts')).find(a=>a.id===id);
+ acc.openingBalance=Number(ieOpenAmt.value)||0; acc.openingAsOfDate=ieOpenDate.value; acc.openingBalanceTaxStatus=ieOpenTax.value||'';
+ await put('investmentAccounts',acc);
+ await showInvestmentAccount(id); await refresh();
+}
+async function showInvestDeposit(id){
+ openModal(`<h2>Deposit — Bank → Investment</h2>
+ <div class="field"><label>Date</label><input id="idDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+ <div class="field"><label>Amount</label><input id="idAmt" type="number" min="0"></div>
+ <div class="field"><label>Note (optional)</label><input id="idNote"></div>
+ <button class="btn primary full" onclick="saveInvestDeposit('${id}')">Save Deposit</button><button class="btn secondary full" onclick="showInvestmentAccount('${id}')">Cancel</button>`);
+}
+async function saveInvestDeposit(accountId){
+ const amount=Number(idAmt.value)||0; if(amount<=0)return alert('Enter an amount.');
+ const m={id:crypto.randomUUID(), accountId, type:'deposit', date:idDate.value, amount, note:idNote.value.trim()};
+ await put('investmentMovements',m);
+ await showInvestmentAccount(accountId); await refresh();
+}
+async function showInvestReturn(id){
+ openModal(`<h2>Return to Bank ${hb("The total cash landing back in your bank account, plus how much of that was yield/interest earned (or a loss, entered as a negative number). Only the yield/loss matters for tax — the rest is just your principal coming back.")}</h2>
+ <div class="field"><label>Date</label><input id="irDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+ <div class="field"><label>Amount returned to bank</label><input id="irAmt" type="number" min="0"></div>
+ <div class="field"><label>Amount yielded (profit — enter negative if this was a loss)</label><input id="irYield" type="number" value="0" oninput="toggleInvestYieldFields()"></div>
+ <div id="irTaxableField" style="display:none"><label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:10px 0"><input type="checkbox" id="irTaxable"> This yield is taxable income</label></div>
+ <div id="irDeductibleField" style="display:none"><label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:10px 0"><input type="checkbox" id="irDeductible"> This loss is tax-deductible (confirm with a tax adviser)</label></div>
+ <div class="field"><label>Note (optional)</label><input id="irNote"></div>
+ <button class="btn accent full" onclick="saveInvestReturn('${id}')">Save Return</button><button class="btn secondary full" onclick="showInvestmentAccount('${id}')">Cancel</button>`);
+ toggleInvestYieldFields();
+}
+function toggleInvestYieldFields(){
+ const y=Number(irYield.value)||0;
+ irTaxableField.style.display = y>0 ? 'block' : 'none';
+ irDeductibleField.style.display = y<0 ? 'block' : 'none';
+}
+async function saveInvestReturn(accountId){
+ const amount=Number(irAmt.value)||0; if(amount<=0)return alert('Enter the amount returned to bank.');
+ const yieldAmount=Number(irYield.value)||0;
+ const taxable=yieldAmount>0 && irTaxable.checked;
+ const deductible=yieldAmount<0 && irDeductible.checked;
+ const m={id:crypto.randomUUID(), accountId, type:'return', date:irDate.value, amount, yieldAmount, taxable, deductible, note:irNote.value.trim()};
+ await put('investmentMovements',m);
+ await showInvestmentAccount(accountId); await refresh();
+}
+async function deleteInvestmentMovement(id,accountId){
+ if(!confirm('Delete this movement? This will change the account balance.'))return;
+ await del('investmentMovements',id);
+ await showInvestmentAccount(accountId); await refresh();
+}
+async function deleteInvestmentAccountConfirm(id){
+ const moves=(await all('investmentMovements')).filter(m=>m.accountId===id);
+ if(!confirm(moves.length? `Delete this account and its ${moves.length} recorded movement(s)? This cannot be undone.` : 'Delete this investment account?'))return;
+ for(const m of moves) await del('investmentMovements',m.id);
+ await del('investmentAccounts',id);
+ await showInvestments(); await refresh();
+}
+
 /* ---------------- Opening Balances (migrating pre-app history) ---------------- */
 
 async function showOpeningBalances(){
@@ -1217,9 +1406,28 @@ async function loadTaxReport(){
  const nonTaxableOtherIncome=yearIncome.filter(e=>!e.taxable).reduce((a,e)=>a+e.amount,0);
  personalIncomeBase+=taxableOtherIncome;
 
+ // Investment yield/interest: only the gain earned counts as income (and only
+ // if flagged taxable) — the principal moving out to and back from an
+ // investment account is a transfer, never income or an expense.
+ const yearReturns=(await all('investmentMovements')).filter(m=>m.type==='return' && m.date>=from && m.date<=to);
+ const investAccountsAll=await all('investmentAccounts');
+ let investmentYieldTaxable=0, investmentYieldNonTaxable=0, investmentLossDeductible=0, investmentLossNonDeductible=0, investmentSection='';
+ for(const m of yearReturns){
+  const acc=investAccountsAll.find(a=>a.id===m.accountId);
+  const yieldAmt=Number(m.yieldAmount)||0;
+  if(yieldAmt>0){
+   if(m.taxable){ investmentYieldTaxable+=yieldAmt; investmentSection+=`<div class="notice">${esc(acc?acc.name:'Investment')}: ${money(yieldAmt)} yield on ${esc(m.date)} — included as taxable income for ${year} below.</div>`; }
+   else { investmentYieldNonTaxable+=yieldAmt; investmentSection+=`<div class="notice">${esc(acc?acc.name:'Investment')}: ${money(yieldAmt)} yield on ${esc(m.date)} — marked not taxable, excluded from income.</div>`; }
+  } else if(yieldAmt<0){
+   if(m.deductible){ investmentLossDeductible+=(-yieldAmt); investmentSection+=`<div class="notice">${esc(acc?acc.name:'Investment')}: ${money(-yieldAmt)} loss on ${esc(m.date)} — marked tax-deductible, subtracted from income for ${year} below.</div>`; }
+   else { investmentLossNonDeductible+=(-yieldAmt); investmentSection+=`<div class="notice">${esc(acc?acc.name:'Investment')}: ${money(-yieldAmt)} loss on ${esc(m.date)} — investment losses generally aren't deductible against ordinary income; excluded from this estimate. Confirm with a tax adviser if you believe this one qualifies.</div>`; }
+  }
+ }
+ personalIncomeBase += investmentYieldTaxable - investmentLossDeductible;
+
  const pit=calculateNigeriaPIT(personalIncomeBase, taxProfile.annualRentPaid, taxProfile.pensionContribution);
 
- const fullProfitLoss = totalRevenue + openingBalanceIncomeTotal + nonTaxableOtherIncome + taxableOtherIncome - totalExpenses - personalExp;
+ const fullProfitLoss = totalRevenue + openingBalanceIncomeTotal + nonTaxableOtherIncome + taxableOtherIncome + investmentYieldTaxable + investmentYieldNonTaxable - investmentLossDeductible - investmentLossNonDeductible - totalExpenses - personalExp;
  const globalBalance=await getGlobalBankBalance();
  const submission=(await all('taxSubmissions')).find(t=>t.year===year);
 
@@ -1233,6 +1441,8 @@ async function loadTaxReport(){
 
  ${openingBalanceSection?`<h3 style="font-size:14px;margin-top:18px">Balance Brought Forward ${hb("Cash/bank balances entered under Opening Balances, before you started using Ledger Vault. Whether each counts as income for a given tax year depends on the answer you gave for that business: already taxed, or to be declared now.")}</h3>${openingBalanceSection}`:''}
 
+ ${investmentSection?`<h3 style="font-size:14px;margin-top:18px">Investment Yield &amp; Losses ${hb("Only the interest/yield an account actually earned counts here — never the principal you moved in or out, since that's just a transfer. Losses are excluded from your tax estimate by default since they generally aren't deductible against ordinary income; you can flag one as deductible per return movement if that's confirmed with a tax adviser.")}</h3>${investmentSection}`:''}
+
  <h3 style="font-size:14px;margin-top:18px">Full Profit &amp; Loss — Business + Personal (${year})</h3>
  <div class="notice">Everything in one place: business revenue and expenses, personal spending, and all other income — the complete picture, not just the business-only view in Reports.</div>
  <div class="totalBox">
@@ -1240,6 +1450,10 @@ async function loadTaxReport(){
   ${openingBalanceIncomeTotal?`<div class="totalRow"><span>Balance brought forward (declared as income this year)</span><b>${money(openingBalanceIncomeTotal)}</b></div>`:''}
   <div class="totalRow"><span>Other income — taxable</span><b>${money(taxableOtherIncome)}</b></div>
   <div class="totalRow"><span>Other income — not taxable (gifts, inheritance)</span><b>${money(nonTaxableOtherIncome)}</b></div>
+  ${investmentYieldTaxable?`<div class="totalRow"><span>Investment yield — taxable</span><b>${money(investmentYieldTaxable)}</b></div>`:''}
+  ${investmentYieldNonTaxable?`<div class="totalRow"><span>Investment yield — not taxable</span><b>${money(investmentYieldNonTaxable)}</b></div>`:''}
+  ${investmentLossDeductible?`<div class="totalRow"><span>Investment losses — deductible</span><b>-${money(investmentLossDeductible)}</b></div>`:''}
+  ${investmentLossNonDeductible?`<div class="totalRow"><span>Investment losses — not deductible</span><b>-${money(investmentLossNonDeductible)}</b></div>`:''}
   <div class="totalRow"><span>Business expenses (all businesses)</span><b>${money(totalExpenses)}</b></div>
   <div class="totalRow"><span>Personal expenses</span><b>${money(personalExp)}</b></div>
   <div class="totalRow grand"><span>Net Position for ${year}</span><b>${money(fullProfitLoss)}</b></div>
@@ -1332,6 +1546,15 @@ async function exportTaxReportCSV(){
  rows.push(['Personal Expenses','','','','',(await all('expenses')).filter(e=>e.kind==='personal'&&e.date>=from&&e.date<=to).reduce((a,e)=>a+e.amount,0)]);
  rows.push(['Other Income (taxable)','','','','',(await all('otherIncome')).filter(e=>e.date>=from&&e.date<=to&&e.taxable).reduce((a,e)=>a+e.amount,0)]);
  rows.push(['Other Income (not taxable)','','','','',(await all('otherIncome')).filter(e=>e.date>=from&&e.date<=to&&!e.taxable).reduce((a,e)=>a+e.amount,0)]);
+ const yearReturnsCSV=(await all('investmentMovements')).filter(m=>m.type==='return' && m.date>=from && m.date<=to);
+ const investAccountsCSV=await all('investmentAccounts');
+ for(const m of yearReturnsCSV){
+  const yieldAmt=Number(m.yieldAmount)||0; if(yieldAmt===0) continue;
+  const acc=investAccountsCSV.find(a=>a.id===m.accountId);
+  const label=yieldAmt>0 ? `${acc?acc.name:'Investment'} — Yield` : `${acc?acc.name:'Investment'} — Loss`;
+  const status=yieldAmt>0 ? (m.taxable?'Included (taxable)':'Excluded (not taxable)') : (m.deductible?'Deducted (marked deductible)':'Excluded (not deductible)');
+  rows.push([label,'','',Math.abs(yieldAmt),'',status]);
+ }
  downloadCSV(rows,'tax-report-'+year+'.csv');
 }
 async function downloadTaxReportPDF(){
