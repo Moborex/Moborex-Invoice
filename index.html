@@ -245,7 +245,7 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=6;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=7;
 let idb;
 const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,openingBalanceTaxStatus:'',type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
 function openDB(){
@@ -265,6 +265,7 @@ function openDB(){
    if(!d.objectStoreNames.contains('otherIncome')){let s=d.createObjectStore('otherIncome',{keyPath:'id'});s.createIndex('date','date')}
    if(!d.objectStoreNames.contains('investmentAccounts')){let s=d.createObjectStore('investmentAccounts',{keyPath:'id'});s.createIndex('businessId','businessId')}
    if(!d.objectStoreNames.contains('investmentMovements')){let s=d.createObjectStore('investmentMovements',{keyPath:'id'});s.createIndex('accountId','accountId');s.createIndex('date','date')}
+   if(!d.objectStoreNames.contains('commissions')){let s=d.createObjectStore('commissions',{keyPath:'id'});s.createIndex('invoiceId','invoiceId');s.createIndex('businessId','businessId')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};r.onerror=()=>reject(r.error);
  })
@@ -337,14 +338,22 @@ async function businessFinancials(bizId){
   const sales=invs.reduce((a,i)=>a+i.total,0);
   const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
   const expTotal=exps.reduce((a,e)=>a+e.amount,0);
-  const lifetimeProfit=(openRev+sales)-(openExp+expTotal);
+  // Commission owed to an in-house facilitator: only counted once its invoice
+  // is fully paid, since it's only actually paid out at that point — not an
+  // "Expense" the way the app usually tracks costs, and never shown on the
+  // invoice itself.
+  const fullyPaidInvIds=new Set(invs.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
+  const commissions=(await all('commissions')).filter(c=>c.businessId===bizId && c.status!=='void');
+  const commissionPaidTotal=commissions.filter(c=>fullyPaidInvIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
+  const commissionPendingTotal=commissions.filter(c=>!fullyPaidInvIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
+  const lifetimeProfit=(openRev+sales)-(openExp+expTotal)-commissionPaidTotal;
   const investAccs=(await all('investmentAccounts')).filter(a=>a.kind==='business'&&a.businessId===bizId);
   const investAccIds=investAccs.map(a=>a.id);
   const allInvestMoves=await all('investmentMovements');
   const investCash=await investmentCashEffect(investAccIds,allInvestMoves);
   const investmentBalance=investAccs.reduce((a,acc)=>a+investmentAccountBalance(acc,allInvestMoves),0);
-  const bankBalance=openBal+received-expTotal+investCash.net;
-  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,investmentBalance,investDeposits:investCash.deposits,investReturns:investCash.returns};
+  const bankBalance=openBal+received-expTotal-commissionPaidTotal+investCash.net;
+  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,investmentBalance,investDeposits:investCash.deposits,investReturns:investCash.returns,commissionPaidTotal,commissionPendingTotal};
 }
 async function allBusinessFinancials(){const list=await all('business');const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
 async function getGlobalBankBalance(){
@@ -456,8 +465,8 @@ const Sync={
   async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
   async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
 
-  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','investmentAccounts','investmentMovements'];const out={version:6,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
-  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','investmentAccounts','investmentMovements'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
+  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','investmentAccounts','investmentMovements','commissions'];const out={version:7,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','investmentAccounts','investmentMovements','commissions'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
 
   markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),4000)}},
 
@@ -577,6 +586,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
   <button class="navbtn" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
   <button class="navbtn" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
   <button class="navbtn" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
+  <button class="navbtn" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
   <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
   <button class="navbtn" onclick="showReports()"><span class="ic">▥</span> Reports</button>
@@ -639,6 +649,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 <button class="navbtn" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
 <button class="navbtn" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
 <button class="navbtn" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
+<button class="navbtn" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
 <button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
 <button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
 <button class="navbtn" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
@@ -683,7 +694,8 @@ async function refresh(){
  let sales=inv.reduce((a,i)=>a+i.total,0),paid=inv.reduce((a,i)=>a+i.payments.reduce((x,p)=>x+p.amount,0),0);
  let bizExpensesTotal=ex.reduce((a,e)=>a+e.amount,0);
  let personalExpenses=personalEx.reduce((a,e)=>a+e.amount,0);
- let lifetimeProfit=(openRev+sales)-(openExp+bizExpensesTotal);
+ const activeBf=await businessFinancials(b.id);
+ let lifetimeProfit=activeBf?activeBf.lifetimeProfit:(openRev+sales)-(openExp+bizExpensesTotal);
  let bankBalance=await getGlobalBankBalance();
  let globalOutstanding=await getGlobalOutstanding();
  let investBalance=await getGlobalInvestmentBalance();
@@ -968,7 +980,7 @@ async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')retu
 async function openInvoice(id){
  let b=await getBusiness(),allInv=await bizInvoices(),inv=id?allInv.find(x=>x.id===id):null,customers=await bizCustomers();
  inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
- window.editing=inv;window.items=(inv.items||[]).map(x=>({...x}));window.invoiceExpenses=(await all('expenses')).filter(x=>x.invoiceId===inv.id);
+ window.editing=inv;window.items=(inv.items||[]).map(x=>({...x}));window.invoiceExpenses=(await all('expenses')).filter(x=>x.invoiceId===inv.id);window.invoiceCommissions=(await all('commissions')).filter(x=>x.invoiceId===inv.id);
  const isVoid=inv.status==='void';
  const isSalary=b.type==='salary';
  const custLabel=isSalary?'Employer':'Customer';
@@ -986,14 +998,22 @@ async function openInvoice(id){
  <div class="field"><label>Discount ${hb("A flat amount subtracted from this invoice's total. Doesn't affect the product's catalogue price for future invoices.")}</label><input id="fDiscount" type="number" min="0" value="${inv.discount||0}" oninput="updateInvoiceTotal()" ${isVoid?'disabled':''}></div>
  <div class="sectionhead"><h3>Job expenses</h3>${isVoid?'':'<button class="btn secondary" onclick="addInvoiceExpense()">＋ Add</button>'}</div>
  <div class="notice">Expenses here are for your profit reporting only — they never appear on the customer's invoice.</div><div id="invoiceExpenseLines"></div>
+ <div class="sectionhead"><h3>Commission</h3>${isVoid?'':'<button class="btn secondary" onclick="addInvoiceCommission()">＋ Add</button>'}</div>
+ <div class="notice">Paid to whoever facilitated this job — never appears on the customer's invoice, and never counted as a Business Expense. It only comes out of your Cash &amp; Bank Balance once this invoice is fully paid, and is voided automatically along with this invoice (restored if you un-void it).</div><div id="invoiceCommissionLines"></div>
  <div class="totalBox"><div class="totalRow"><span>Sales</span><b id="lineTotal">—</b></div><div class="totalRow"><span>Discount</span><b id="discTotal">—</b></div><div class="totalRow"><span>Job expenses</span><b id="invExpTotal">—</b></div><div class="totalRow grand"><span>Customer total</span><b id="grandTotal">—</b></div></div>
  ${isVoid?'':'<button class="btn primary full" onclick="saveInvoice()">Save Invoice</button>'}${id?`<button class="btn secondary full" onclick="payments('${id}')">Payments</button><button class="btn secondary full" onclick="previewInvoice('${id}')">Preview & PDF</button><button class="btn secondary full" onclick="duplicateInvoice('${id}')">Duplicate</button>${isVoid?`<button class="btn secondary full" onclick="restoreInvoice('${id}')">Restore (Un-void)</button>`:`<button class="btn danger full" onclick="voidInvoiceConfirm('${id}')">Void Invoice</button>`}`:''}<button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- window.selectedCustomerId=inv.customerId||'';if(fCustomerSelect)fCustomerSelect.value=window.selectedCustomerId;if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();updateInvoiceTotal();
+ window.selectedCustomerId=inv.customerId||'';if(fCustomerSelect)fCustomerSelect.value=window.selectedCustomerId;if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();await drawInvoiceCommissions();updateInvoiceTotal();
 }
 async function selectCustomer(id){window.selectedCustomerId=id;const cs=await bizCustomers(),c=cs.find(x=>x.id===id);fPhone.value=c?.phone||'';fAddress.value=c?.address||'';}
 async function drawInvoiceExpenses(){const types=await businessExpenseTypes(),opts='<option value="">Select expense type</option>'+types.sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');invoiceExpenseLines.innerHTML=invoiceExpenses.map((x,n)=>`<div class="line"><select onchange="invoiceExpenses[${n}].typeId=this.value">${opts}</select><input type="number" min="0" placeholder="Amount" value="${x.amount||0}" oninput="invoiceExpenses[${n}].amount=Number(this.value);updateInvoiceTotal()"><input placeholder="Note" value="${esc(x.description||'')}" oninput="invoiceExpenses[${n}].description=this.value"><button class="btn danger" onclick="invoiceExpenses.splice(${n},1);drawInvoiceExpenses();updateInvoiceTotal()">×</button></div>`).join('');invoiceExpenses.forEach((x,n)=>{let q=invoiceExpenseLines.querySelectorAll('select')[n];if(q)q.value=x.typeId||'';});}
 async function addInvoiceExpense(){invoiceExpenses.push({id:crypto.randomUUID(),invoiceId:editing.id,typeId:'',amount:0,description:''});await drawInvoiceExpenses();updateInvoiceTotal();}
 function invoiceExpenseAmount(){return invoiceExpenses.reduce((a,x)=>a+(Number(x.amount)||0),0);}
+async function drawInvoiceCommissions(){
+ const paidSoFar=(editing.payments||[]).reduce((a,p)=>a+p.amount,0), isFullyPaid=paidSoFar>=editing.total&&editing.total>0;
+ const statusTag=isFullyPaid?'<span class="stamp paid" style="margin-left:6px">Paid out</span>':'<span class="stamp due" style="margin-left:6px">Pending — pays out once invoice is fully paid</span>';
+ invoiceCommissionLines.innerHTML=invoiceCommissions.map((x,n)=>`<div class="line"><input placeholder="Recipient name" value="${esc(x.recipientName||'')}" oninput="invoiceCommissions[${n}].recipientName=this.value"><input type="number" min="0" placeholder="Amount" value="${x.amount||0}" oninput="invoiceCommissions[${n}].amount=Number(this.value)"><button class="btn danger" onclick="invoiceCommissions.splice(${n},1);drawInvoiceCommissions()">×</button></div>${x.amount?statusTag:''}`).join('');
+}
+async function addInvoiceCommission(){invoiceCommissions.push({id:crypto.randomUUID(),invoiceId:editing.id,recipientName:'',amount:0});await drawInvoiceCommissions();}
 async function drawLines(){
  const products=await bizProducts();
  const opts='<option value="">Select product / service</option>'+products.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
@@ -1015,10 +1035,40 @@ async function saveInvoice(){
  for(const x of (await all('expenses')).filter(x=>x.invoiceId===i.id))await del('expenses',x.id);
  const types=await businessExpenseTypes();
  for(const x of invoiceExpenses.filter(x=>(Number(x.amount)||0)>0)){const t=types.find(q=>q.id===x.typeId);await put('expenses',{id:x.id,invoiceId:i.id,date:i.date,category:t?.name||'Invoice Expense',amount:Number(x.amount)||0,description:x.description||'',typeId:x.typeId||'',kind:'business',businessId:bizId});}
+ for(const x of (await all('commissions')).filter(x=>x.invoiceId===i.id))await del('commissions',x.id);
+ for(const x of invoiceCommissions.filter(x=>(Number(x.amount)||0)>0 && x.recipientName.trim())){await put('commissions',{id:x.id,invoiceId:i.id,businessId:bizId,recipientName:x.recipientName.trim(),amount:Number(x.amount)||0,status:'active'});}
  closeModal();await refresh();
 }
-async function voidInvoiceConfirm(id){if(!confirm('Void this invoice? It will stay in your records for numbering and history, but be removed from sales, profit, and reports.'))return;const inv=(await all('invoices')).find(x=>x.id===id);inv.status='void';await put('invoices',inv);closeModal();await refresh();}
-async function restoreInvoice(id){const inv=(await all('invoices')).find(x=>x.id===id);inv.status='active';await put('invoices',inv);closeModal();await openInvoice(id);}
+async function voidInvoiceConfirm(id){if(!confirm('Void this invoice? It will stay in your records for numbering and history, but be removed from sales, profit, and reports. Any commission on this invoice is voided along with it — automatically un-voided if you restore the invoice.'))return;const inv=(await all('invoices')).find(x=>x.id===id);inv.status='void';await put('invoices',inv);for(const c of (await all('commissions')).filter(x=>x.invoiceId===id)){c.status='void';await put('commissions',c);}closeModal();await refresh();}
+async function restoreInvoice(id){const inv=(await all('invoices')).find(x=>x.id===id);inv.status='active';await put('invoices',inv);for(const c of (await all('commissions')).filter(x=>x.invoiceId===id)){c.status='active';await put('commissions',c);}closeModal();await openInvoice(id);}
+async function showCommissions(){
+ const activeId=await getActiveBusinessId(), biz=await getBusiness();
+ const allCommissions=(await all('commissions')).filter(c=>c.businessId===activeId);
+ const commissions=allCommissions.filter(c=>c.status!=='void');
+ const voided=allCommissions.filter(c=>c.status==='void');
+ const invs=(await all('invoices')).filter(i=>i.businessId===activeId);
+ const rowFor=c=>{
+  const inv=invs.find(i=>i.id===c.invoiceId);
+  const paid=inv?(inv.payments||[]).reduce((a,p)=>a+p.amount,0):0;
+  const isFullyPaid=inv && paid>=inv.total && inv.total>0;
+  return `<div class="row-item"><div><b>${esc(c.recipientName)}</b><small>${inv?esc(inv.number)+' · '+esc(inv.customer||''):'Invoice not found'}</small></div><div class="row-right"><strong class="money">${money(c.amount)}</strong><span class="stamp ${isFullyPaid?'paid':'due'}">${isFullyPaid?'Paid out':'Pending'}</span>${inv?`<button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="openInvoice('${inv.id}')">Open Invoice</button>`:''}</div></div>`;
+ };
+ const voidRowFor=c=>{
+  const inv=invs.find(i=>i.id===c.invoiceId);
+  return `<div class="row-item"><div><b>${esc(c.recipientName)}</b><small>${inv?esc(inv.number)+' · '+esc(inv.customer||''):'Invoice not found'} · voided with its invoice</small></div><div class="row-right"><strong class="money">${money(c.amount)}</strong><span class="stamp void">Void</span>${inv?`<button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="openInvoice('${inv.id}')">Open Invoice</button>`:''}</div></div>`;
+ };
+ const pending=commissions.filter(c=>{const inv=invs.find(i=>i.id===c.invoiceId);const paid=inv?(inv.payments||[]).reduce((a,p)=>a+p.amount,0):0;return !(inv && paid>=inv.total && inv.total>0)});
+ const paidOut=commissions.filter(c=>!pending.includes(c));
+ openModal(`<h2>Commissions — ${esc(biz.name)} ${hb("Money owed to whoever facilitated a job. Never shown on the customer's invoice, never counted as a Business Expense — only leaves your Cash & Bank Balance once the linked invoice is fully paid. Voiding the invoice voids its commission too (restoring the invoice restores it); to remove just the commission and keep the invoice, edit it from the invoice itself.")}</h2>
+ <div class="totalBox"><div class="totalRow"><span>Pending</span><b>${money(pending.reduce((a,c)=>a+c.amount,0))}</b></div><div class="totalRow grand"><span>Paid out</span><b>${money(paidOut.reduce((a,c)=>a+c.amount,0))}</b></div></div>
+ <h3 style="font-size:14px;margin-top:14px">Pending</h3>
+ <div class="list">${pending.map(rowFor).join('')||'<div class="empty">Nothing pending.</div>'}</div>
+ <h3 style="font-size:14px;margin-top:16px">Paid Out</h3>
+ <div class="list">${paidOut.map(rowFor).join('')||'<div class="empty">None paid out yet.</div>'}</div>
+ ${voided.length?`<h3 style="font-size:14px;margin-top:16px">Void</h3><div class="list">${voided.map(voidRowFor).join('')}</div>`:''}
+ <div class="notice">To add or edit a commission, open the relevant invoice — commission is set per job, not from a standalone form.</div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
 async function duplicateInvoice(id){
  const src=(await all('invoices')).find(x=>x.id===id); if(!src) return;
  const newNumber=await nextNo();
@@ -1355,15 +1405,23 @@ async function loadTaxReport(){
  taxCurrencyWarning.innerHTML = currencies.size>1 ? `<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">Your businesses use different currencies (${[...currencies].join(', ')}) — the combined totals below add these together directly, which isn't meaningful across currencies. Treat the per-business figures as the accurate ones.</div>` : '';
  const taxProfile=await getTaxProfile();
 
- let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0;
+ let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0, totalCommissionPaid=0;
  let personalIncomeBase=0; // salary + business-name profit + taxable other income, feeds PIT
  let bizTaxSections='', openingBalanceSection='', openingBalanceIncomeTotal=0;
  for(const b of businesses){
   const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
-  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal;
-  totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit;
-  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}</small></div></div>`;
+  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0);
+  // Commission to an in-house facilitator only counts once its invoice is
+  // fully paid (that's when it's actually paid out), dated to the invoice's
+  // own date — same as the revenue it's tied to.
+  const allBizInvs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void');
+  const fullyPaidIds=new Set(allBizInvs.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
+  const bizInvIdsThisYear=new Set(invs.map(i=>i.id));
+  const commissionPaid=(await all('commissions')).filter(c=>c.businessId===b.id && c.status!=='void' && fullyPaidIds.has(c.invoiceId) && bizInvIdsThisYear.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
+  const profit=rev-expTotal-commissionPaid;
+  totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit; totalCommissionPaid+=commissionPaid;
+  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}${commissionPaid?' · Comm '+money(commissionPaid):''}</small></div></div>`;
 
   // Balance brought forward: a one-time pre-app figure, only relevant to the tax
   // year matching its "as of" date. Whether it counts as income depends on
@@ -1427,7 +1485,7 @@ async function loadTaxReport(){
 
  const pit=calculateNigeriaPIT(personalIncomeBase, taxProfile.annualRentPaid, taxProfile.pensionContribution);
 
- const fullProfitLoss = totalRevenue + openingBalanceIncomeTotal + nonTaxableOtherIncome + taxableOtherIncome + investmentYieldTaxable + investmentYieldNonTaxable - investmentLossDeductible - investmentLossNonDeductible - totalExpenses - personalExp;
+ const fullProfitLoss = totalRevenue + openingBalanceIncomeTotal + nonTaxableOtherIncome + taxableOtherIncome + investmentYieldTaxable + investmentYieldNonTaxable - investmentLossDeductible - investmentLossNonDeductible - totalExpenses - totalCommissionPaid - personalExp;
  const globalBalance=await getGlobalBankBalance();
  const submission=(await all('taxSubmissions')).find(t=>t.year===year);
 
@@ -1455,6 +1513,7 @@ async function loadTaxReport(){
   ${investmentLossDeductible?`<div class="totalRow"><span>Investment losses — deductible</span><b>-${money(investmentLossDeductible)}</b></div>`:''}
   ${investmentLossNonDeductible?`<div class="totalRow"><span>Investment losses — not deductible</span><b>-${money(investmentLossNonDeductible)}</b></div>`:''}
   <div class="totalRow"><span>Business expenses (all businesses)</span><b>${money(totalExpenses)}</b></div>
+  ${totalCommissionPaid?`<div class="totalRow"><span>Commission paid out (all businesses)</span><b>${money(totalCommissionPaid)}</b></div>`:''}
   <div class="totalRow"><span>Personal expenses</span><b>${money(personalExp)}</b></div>
   <div class="totalRow grand"><span>Net Position for ${year}</span><b>${money(fullProfitLoss)}</b></div>
  </div>
@@ -1536,7 +1595,12 @@ async function exportTaxReportCSV(){
   const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
   const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0);
-  rows.push([b.name,b.type==='salary'?'Salary':(b.legalForm==='limited'?'Limited':'Business Name'),b.currency||'NGN',rev,expTotal,rev-expTotal]);
+  const allBizInvsCSV=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void');
+  const fullyPaidIdsCSV=new Set(allBizInvsCSV.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
+  const bizInvIdsThisYearCSV=new Set(invs.map(i=>i.id));
+  const commissionPaidCSV=(await all('commissions')).filter(c=>c.businessId===b.id && c.status!=='void' && fullyPaidIdsCSV.has(c.invoiceId) && bizInvIdsThisYearCSV.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
+  rows.push([b.name,b.type==='salary'?'Salary':(b.legalForm==='limited'?'Limited':'Business Name'),b.currency||'NGN',rev,expTotal+commissionPaidCSV,rev-expTotal-commissionPaidCSV]);
+  if(commissionPaidCSV) rows.push([`${b.name} — Commission paid out`,'','','',commissionPaidCSV,'Included in Expenses column above']);
  }
  rows.push([]);
  for(const b of businesses){
