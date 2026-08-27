@@ -245,7 +245,7 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=26;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=27;
 let idb;
 const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
 function deriveInitials(name){
@@ -270,6 +270,7 @@ function openDB(){
    if(!d.objectStoreNames.contains('otherIncome')){let s=d.createObjectStore('otherIncome',{keyPath:'id'});s.createIndex('date','date')}
    if(!d.objectStoreNames.contains('loans')){let s=d.createObjectStore('loans',{keyPath:'id'});s.createIndex('businessId','businessId')}
    if(!d.objectStoreNames.contains('reconciliations'))d.createObjectStore('reconciliations',{keyPath:'id'});
+   if(!d.objectStoreNames.contains('stockPurchases')){let s=d.createObjectStore('stockPurchases',{keyPath:'id'});s.createIndex('businessId','businessId')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};
   r.onerror=()=>reject(r.error);
@@ -305,6 +306,7 @@ async function bizProducts(){const id=await getActiveBusinessId();return (await 
 async function bizQuotations(){const id=await getActiveBusinessId();return (await all('quotations')).filter(x=>x.businessId===id)}
 async function bizCommissions(){const id=await getActiveBusinessId();return (await all('commissions')).filter(x=>x.businessId===id)}
 async function bizLoans(){const id=await getActiveBusinessId();return (await all('loans')).filter(x=>x.businessId===id)}
+async function bizStockPurchases(){const id=await getActiveBusinessId();return (await all('stockPurchases')).filter(x=>x.businessId===id)}
 async function nextJournalNo(){let b=await getBusiness();let n=b.nextJournalNumber||1;b.nextJournalNumber=n+1;await put('business',b);return 'JNL-'+String(n).padStart(5,'0');}
 async function businessExpenseTypes(){const id=await getActiveBusinessId();return (await all('expenseTypes')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 async function businessExpenses(){const id=await getActiveBusinessId();return (await all('expenses')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
@@ -318,6 +320,7 @@ async function businessFinancials(bizId){
   const invs=(await all('invoices')).filter(i=>i.businessId===bizId && i.status!=='void');
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===bizId);
   const loans=(await all('loans')).filter(l=>l.businessId===bizId);
+  const stockPurchases=(await all('stockPurchases')).filter(sp=>sp.businessId===bizId);
   const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openBal=Number(b.openingBalance)||0;
   const sales=invs.reduce((a,i)=>a+i.total,0);
   const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
@@ -325,9 +328,10 @@ async function businessFinancials(bizId){
   const loanPrincipalTotal=loans.reduce((a,l)=>a+(Number(l.principal)||0),0);
   const loanRepaidTotal=loans.reduce((a,l)=>a+(l.repayments||[]).reduce((x,r)=>x+(Number(r.amount)||0),0),0);
   const loanInterestTotal=loans.reduce((a,l)=>a+(l.repayments||[]).reduce((x,r)=>x+(Number(r.interestPortion)||0),0),0);
-  const lifetimeProfit=(openRev+sales)-(openExp+expTotal+loanInterestTotal);
-  const bankBalance=openBal+received-expTotal+loanPrincipalTotal-loanRepaidTotal;
-  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,loanPrincipalTotal,loanRepaidTotal,loanInterestTotal,loanOutstanding:loanPrincipalTotal-loanRepaidTotal};
+  const stockPurchaseTotal=stockPurchases.reduce((a,sp)=>a+(Number(sp.totalCost)||0),0);
+  const lifetimeProfit=(openRev+sales)-(openExp+expTotal+loanInterestTotal+stockPurchaseTotal);
+  const bankBalance=openBal+received-expTotal+loanPrincipalTotal-loanRepaidTotal-stockPurchaseTotal;
+  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,loanPrincipalTotal,loanRepaidTotal,loanInterestTotal,loanOutstanding:loanPrincipalTotal-loanRepaidTotal,stockPurchaseTotal};
 }
 async function allBusinessFinancials(){const list=await all('business');const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
 async function getGlobalBankBalance(){
@@ -445,8 +449,8 @@ const Sync={
   async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
   async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
 
-  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations'];const out={version:9,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
-  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
+  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations','stockPurchases'];const out={version:10,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations','stockPurchases'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
 
   markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),1500)}},
 
@@ -677,6 +681,7 @@ function logoutServerAccount(){
   <button class="navbtn" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
   <button class="navbtn" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
   <button class="navbtn" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
+  <button class="navbtn" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
   <button class="navbtn" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
   <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
@@ -741,6 +746,7 @@ function logoutServerAccount(){
 <button class="navbtn" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
 <button class="navbtn" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
 <button class="navbtn" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
+<button class="navbtn" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
 <button class="navbtn" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
 <button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
 <button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
@@ -828,7 +834,7 @@ async function deleteBusiness(id){
  const list=await all('business');
  if(list.length<=1){alert('You need at least one business.');return;}
  if(!confirm('Delete this business and ALL its invoices, customers, products, and expenses? This cannot be undone.'))return;
- for(const store of ['invoices','customers','products']){for(const item of (await all(store)).filter(x=>x.businessId===id))await del(store,item.id);}
+ for(const store of ['invoices','customers','products','quotations','commissions','loans','stockPurchases']){for(const item of (await all(store)).filter(x=>x.businessId===id))await del(store,item.id);}
  for(const t of (await all('expenseTypes')).filter(t=>t.kind!=='personal'&&t.businessId===id))await del('expenseTypes',t.id);
  for(const e of (await all('expenses')).filter(e=>e.kind!=='personal'&&e.businessId===id))await del('expenses',e.id);
  await req('business','readwrite',s=>s.delete(id));
@@ -916,15 +922,42 @@ async function saveSalarySetup(){
  closeModal();await refresh();
 }
 
-async function showProducts(){let p=await bizProducts();window.editingProductId=null;openModal(`<h2>Products / Services</h2><div class="row2"><div class="field"><label>Name</label><input id="pName"></div><div class="field"><label>Price</label><input id="pPrice" type="number" min="0"></div></div><button class="btn accent full" id="pSaveBtn" onclick="saveProduct()">＋ Add Product</button><button class="btn secondary full" id="pCancelBtn" style="display:none" onclick="cancelEditProduct()">Cancel Edit</button><div class="sectionhead" style="margin-top:18px"><h3>All products</h3></div><div class="list" id="pList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.pCache=p;drawProducts()}
-function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="row-item"><div><b>${esc(p.name)}</b></div><div class="row-right"><strong class="money">${money(p.price)}</strong><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="editProduct('${p.id}')">Edit</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button></span></div></div>`).join('')||'<div class="empty">No products yet.</div>'}
-function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
-function cancelEditProduct(){window.editingProductId=null;pName.value='';pPrice.value='';pSaveBtn.textContent='＋ Add Product';pCancelBtn.style.display='none'}
+async function showProducts(){let p=await bizProducts();window.editingProductId=null;openModal(`<h2>Products / Services ${hb("Add a cost price and turn on stock tracking for anything you buy and resell — the app will then quietly deduct stock when it's sold on an invoice, and restore it if that invoice is voided.")}</h2>
+<div class="row2"><div class="field"><label>Name</label><input id="pName"></div><div class="field"><label>Selling Price</label><input id="pPrice" type="number" min="0"></div></div>
+<div class="field"><label>Track stock for this item? ${hb("Optional. Leave off for services or anything you don't hold as physical inventory.")}</label><select id="pTrack" onchange="toggleProductStockFields()"><option value="0">No</option><option value="1">Yes</option></select></div>
+<div id="pStockFields" style="display:none">
+ <div class="row2"><div class="field"><label>Cost Price (per unit)</label><input id="pCost" type="number" min="0"></div><div class="field"><label>Current Stock Qty</label><input id="pQty" type="number"></div></div>
+</div>
+<button class="btn accent full" id="pSaveBtn" onclick="saveProduct()">＋ Add Product</button><button class="btn secondary full" id="pCancelBtn" style="display:none" onclick="cancelEditProduct()">Cancel Edit</button>
+<div class="sectionhead" style="margin-top:18px"><h3>All products</h3></div><div class="list" id="pList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
+window.pCache=p;drawProducts();toggleProductStockFields();}
+function toggleProductStockFields(){pStockFields.style.display=pTrack.value==='1'?'block':'none';}
+function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
+ const stockLine = p.trackStock ? `<small>Stock: ${p.stockQty??0}${(Number(p.stockQty)||0)<0?' ⚠ negative':''}${p.costPrice?' · Cost '+money(p.costPrice):''}</small>` : '';
+ return `<div class="row-item"><div><b>${esc(p.name)}</b>${stockLine}</div><div class="row-right"><strong class="money">${money(p.price)}</strong><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="editProduct('${p.id}')">Edit</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button></span></div></div>`;
+}).join('')||'<div class="empty">No products yet.</div>'}
+function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pTrack.value=p.trackStock?'1':'0';pCost.value=p.costPrice||0;pQty.value=p.stockQty||0;toggleProductStockFields();pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
+function cancelEditProduct(){window.editingProductId=null;pName.value='';pPrice.value='';pTrack.value='0';pCost.value='';pQty.value='';toggleProductStockFields();pSaveBtn.textContent='＋ Add Product';pCancelBtn.style.display='none'}
 async function saveProduct(){if(!pName.value.trim())return alert('Enter a product name.');
- if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;await put('products',p);}
- else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId()};await put('products',p);pCache.push(p);}
+ const trackStock=pTrack.value==='1';
+ if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;p.trackStock=trackStock;if(trackStock){p.costPrice=Number(pCost.value)||0;p.stockQty=Number(pQty.value)||0;}await put('products',p);}
+ else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId(),trackStock,costPrice:trackStock?(Number(pCost.value)||0):0,stockQty:trackStock?(Number(pQty.value)||0):0};await put('products',p);pCache.push(p);}
  cancelEditProduct();drawProducts()}
 async function deleteProduct(id){if(!confirm('Delete this product?'))return;await del('products',id);pCache=pCache.filter(x=>x.id!==id);drawProducts()}
+
+/* ---------------- Stock: quiet deduction/restoration hooked into invoice save/void/restore.
+   Never touches the invoice screen itself — just the data underneath it. ---------------- */
+async function applyStockDelta(items, sign){
+ if(!items || !items.length) return;
+ const products=await bizProducts();
+ for(const item of items){
+  if(!item.productId) continue;
+  const p=products.find(x=>x.id===item.productId);
+  if(!p || !p.trackStock) continue;
+  p.stockQty=(Number(p.stockQty)||0) + sign*(Number(item.qty)||0);
+  await put('products',p);
+ }
+}
 
 /* ---------------- Customers ---------------- */
 async function showCustomers(){const biz=await getBusiness();const label=biz.type==='salary'?'Employer':'Customer';let c=await bizCustomers();openModal(`<h2>${label}s</h2><div class="field"><label>Name</label><input id="cName"></div><div class="row2"><div class="field"><label>Phone</label><input id="cPhone"></div><div class="field"><label>Address</label><input id="cAddress"></div></div><button class="btn accent full" onclick="addCustomer()">＋ Add ${label}</button><div class="sectionhead" style="margin-top:18px"><h3>All ${label.toLowerCase()}s</h3></div><div class="list" id="cList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.cCache=c;drawCustomers()}
@@ -1120,7 +1153,10 @@ async function saveInvoice(){
  const siblings=(await bizInvoices()).filter(x=>x.id!==editing.id && x.status!=='void' && x.number===fNo.value.trim());
  if(siblings.length && !confirm(`Invoice number "${fNo.value.trim()}" is already used by another invoice. Save anyway?`)) return;
  let i={...editing,businessId:bizId,status:editing.status||'active',number:fNo.value.trim(),date:fDate.value,dueDate:fDue.value,customerId:selected.id,customer:selected.name,phone:fPhone.value.trim(),address:fAddress.value.trim(),vehicleDetails:fVehicle.value.trim(),headerComment:fHeader.value,salesComment:fSales.value,discount,items:items.map(x=>({...x})),total:Math.max(0,sales-discount)};
+ // Undo whatever stock effect the previous version of this invoice had (no-op for a brand-new invoice), then apply the new line items.
+ if(editing.status!=='void') await applyStockDelta(editing.items||[], +1);
  await put('invoices',i);
+ if(i.status!=='void') await applyStockDelta(i.items, -1);
  for(const x of (await all('expenses')).filter(x=>x.invoiceId===i.id))await del('expenses',x.id);
  const types=await businessExpenseTypes();
  for(const x of invoiceExpenses.filter(x=>(Number(x.amount)||0)>0)){const t=types.find(q=>q.id===x.typeId);await put('expenses',{id:x.id,invoiceId:i.id,date:i.date,category:t?.name||'Invoice Expense',amount:Number(x.amount)||0,description:x.description||'',typeId:x.typeId||'',kind:'business',businessId:bizId});}
@@ -1134,14 +1170,15 @@ async function saveInvoice(){
  closeModal();await refresh();
 }
 async function voidInvoiceConfirm(id){
- if(!confirm('Void this invoice? It will stay in your records for numbering and history, but be removed from sales, profit, and reports. Any linked commission will be removed too.'))return;
+ if(!confirm('Void this invoice? It will stay in your records for numbering and history, but be removed from sales, profit, and reports. Any linked commission will be removed too, and any deducted stock will be restored.'))return;
  const inv=(await all('invoices')).find(x=>x.id===id);
+ if(inv.status!=='void') await applyStockDelta(inv.items||[], +1);
  inv.status='void';await put('invoices',inv);
  const comm=(await all('commissions')).find(c=>c.invoiceId===id);
  if(comm)await del('commissions',comm.id);
  closeModal();await refresh();
 }
-async function restoreInvoice(id){const inv=(await all('invoices')).find(x=>x.id===id);inv.status='active';await put('invoices',inv);closeModal();await openInvoice(id);}
+async function restoreInvoice(id){const inv=(await all('invoices')).find(x=>x.id===id);await applyStockDelta(inv.items||[], -1);inv.status='active';await put('invoices',inv);closeModal();await openInvoice(id);}
 async function duplicateInvoice(id){
  const src=(await all('invoices')).find(x=>x.id===id); if(!src) return;
  const newNumber=await nextNo();
@@ -1365,9 +1402,10 @@ async function loadTaxReport(){
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
   const invIds=new Set(invs.map(i=>i.id));
   const commTotal=(await all('commissions')).filter(c=>c.businessId===b.id && invIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
-  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal-commTotal;
+  const stockTotal=(await all('stockPurchases')).filter(sp=>sp.businessId===b.id && sp.date>=from && sp.date<=to).reduce((a,sp)=>a+(Number(sp.totalCost)||0),0);
+  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal-commTotal-stockTotal;
   totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit; totalCommission+=commTotal;
-  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}${commTotal?' · Comm '+money(commTotal):''}</small></div></div>`;
+  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}${commTotal?' · Comm '+money(commTotal):''}${stockTotal?' · Stock '+money(stockTotal):''}</small></div></div>`;
 
   const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openNet=openRev-openExp;
   if(openRev||openExp){
@@ -1381,7 +1419,7 @@ async function loadTaxReport(){
   } else if(b.legalForm==='limited'){
    const cit=calculateNigeriaCIT(rev, b.fixedAssets, profit);
    bizTaxSections+=`<h3 style="font-size:13.5px;margin-top:14px">${esc(b.name)} — Company Income Tax (${year})</h3>
-   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div><div class="totalRow"><span>Business expenses</span><b>−${money(expTotal)}</b></div>${commTotal?`<div class="totalRow"><span>Commission (deductible)</span><b>−${money(commTotal)}</b></div>`:''}<div class="totalRow"><span>Assessable profit</span><b>${money(profit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
+   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div><div class="totalRow"><span>Business expenses</span><b>−${money(expTotal)}</b></div>${commTotal?`<div class="totalRow"><span>Commission (deductible)</span><b>−${money(commTotal)}</b></div>`:''}${stockTotal?`<div class="totalRow"><span>Stock purchases (deductible)</span><b>−${money(stockTotal)}</b></div>`:''}<div class="totalRow"><span>Assessable profit</span><b>${money(profit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
    <div class="notice">${cit.note} Files with <b>FIRS</b> (Company Income Tax, VAT if turnover exceeds ₦25,000,000); PAYE for any staff salaries remits to <b>LIRS</b> if Lagos-based (or the relevant state IRS elsewhere).${(openRev||openExp)?' This business also has a balance brought forward — since Company Income Tax is assessed per year, discuss with your accountant how to treat pre-software historical profit in your CIT filing; it is not auto-included in this year\'s figure above.':''}</div>`;
   } else {
    personalIncomeBase+=profit;
@@ -2132,7 +2170,54 @@ async function lockReconciliation(recordId){
  await renderReconciliationReport(recordId);
 }
 
+/* ---------------- Stock Purchases (buying inventory) ----------------
+   Adopted from a separate stock-tracking app the user is evaluating —
+   deliberately kept to the basic "buy in, sell out" version. Buying
+   stock increases a product's on-hand quantity and reduces the bank
+   balance as its own category, distinct from generic Business
+   Expenses, the same way Commission and Loan interest already are. ---------------- */
+async function showStockPurchases(){
+ const purchases=await bizStockPurchases(), products=(await bizProducts()).filter(p=>p.trackStock);
+ openModal(`<h2>Stock Purchases ${hb("Buying more of a tracked product. Increases that product's stock quantity and counts as its own cost category — separate from generic Business Expenses — reducing your bank balance and profit.")}</h2>
+ ${products.length ? `
+ <div class="field"><label>Product</label><select id="spProduct" onchange="prefillStockPurchaseCost()">${products.map(p=>`<option value="${p.id}" data-cost="${p.costPrice||0}">${esc(p.name)} (current stock: ${p.stockQty??0})</option>`).join('')}</select></div>
+ <div class="row2"><div class="field"><label>Quantity bought</label><input id="spQty" type="number" min="0"></div><div class="field"><label>Unit cost</label><input id="spCost" type="number" min="0"></div></div>
+ <div class="row2"><div class="field"><label>Vendor</label><input id="spVendor"></div><div class="field"><label>Date</label><input id="spDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div></div>
+ <button class="btn accent full" onclick="saveStockPurchase()">Save Purchase</button>
+ ` : `<div class="notice">No products have stock tracking turned on yet. Turn it on for a product in Products / Services first, then come back here to log a purchase.</div>`}
+ <h3 style="font-size:14px;margin-top:16px">Purchase history</h3><div class="list" id="spList"></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.spCache=purchases.map(pu=>({...pu, productName: products.find(p=>p.id===pu.productId)?.name || pu.productName}));
+ drawStockPurchases();
+}
+function prefillStockPurchaseCost(){const opt=spProduct.selectedOptions[0];if(opt)spCost.value=opt.dataset.cost||0;}
+function drawStockPurchases(){
+ spList.innerHTML=spCache.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(pu=>`<div class="row-item"><div><b>${esc(pu.productName||'—')}</b><small>${pu.journalNumber?esc(pu.journalNumber)+' · ':''}${esc(pu.date)} · Qty ${pu.qty}${pu.vendorName?' · '+esc(pu.vendorName):''}</small></div><div class="row-right"><strong class="money">${money(pu.totalCost)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="deleteStockPurchase('${pu.id}')">Delete</button></div></div>`).join('') || '<div class="empty">No stock purchases recorded.</div>';
+}
+async function saveStockPurchase(){
+ const productId=spProduct.value, qty=Number(spQty.value)||0, unitCost=Number(spCost.value)||0;
+ if(qty<=0)return alert('Enter a quantity.');
+ const products=await bizProducts(), p=products.find(x=>x.id===productId);
+ if(!p)return;
+ const journalNumber=await nextJournalNo();
+ const purchase={id:crypto.randomUUID(), businessId:await getActiveBusinessId(), productId, productName:p.name, qty, unitCost, totalCost:qty*unitCost, vendorName:spVendor.value.trim(), date:spDate.value, journalNumber};
+ await put('stockPurchases',purchase);
+ p.stockQty=(Number(p.stockQty)||0)+qty;
+ if(unitCost>0) p.costPrice=unitCost; // keep the product's cost price current for next time
+ await put('products',p);
+ closeModal(); await showStockPurchases(); await refresh();
+}
+async function deleteStockPurchase(id){
+ if(!confirm('Delete this stock purchase? The quantity it added will be removed from stock again.'))return;
+ const pu=(await all('stockPurchases')).find(x=>x.id===id); if(!pu)return;
+ const products=await bizProducts(), p=products.find(x=>x.id===pu.productId);
+ if(p){ p.stockQty=(Number(p.stockQty)||0)-pu.qty; await put('products',p); }
+ await del('stockPurchases',id);
+ spCache=spCache.filter(x=>x.id!==id); drawStockPurchases(); refresh();
+}
+
 /* ---------------- Reports ---------------- */
+
 
 
 
