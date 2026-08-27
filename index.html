@@ -200,6 +200,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* =====================================================================
    Moborex Ledger Vault — single-file PWA. "Beyond Invoicing — to Reports & Tax."
@@ -244,9 +245,9 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=25;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=26;
 let idb;
-const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
 function deriveInitials(name){
  return (name||'').trim().split(/\s+/).map(w=>w[0]).filter(Boolean).join('').toUpperCase().slice(0,4) || 'INV';
 }
@@ -267,6 +268,8 @@ function openDB(){
    if(!d.objectStoreNames.contains('commissions')){let s=d.createObjectStore('commissions',{keyPath:'id'});s.createIndex('invoiceId','invoiceId')}
    if(!d.objectStoreNames.contains('investments'))d.createObjectStore('investments',{keyPath:'id'});
    if(!d.objectStoreNames.contains('otherIncome')){let s=d.createObjectStore('otherIncome',{keyPath:'id'});s.createIndex('date','date')}
+   if(!d.objectStoreNames.contains('loans')){let s=d.createObjectStore('loans',{keyPath:'id'});s.createIndex('businessId','businessId')}
+   if(!d.objectStoreNames.contains('reconciliations'))d.createObjectStore('reconciliations',{keyPath:'id'});
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};
   r.onerror=()=>reject(r.error);
@@ -301,6 +304,8 @@ async function bizCustomers(){const id=await getActiveBusinessId();return (await
 async function bizProducts(){const id=await getActiveBusinessId();return (await all('products')).filter(x=>x.businessId===id)}
 async function bizQuotations(){const id=await getActiveBusinessId();return (await all('quotations')).filter(x=>x.businessId===id)}
 async function bizCommissions(){const id=await getActiveBusinessId();return (await all('commissions')).filter(x=>x.businessId===id)}
+async function bizLoans(){const id=await getActiveBusinessId();return (await all('loans')).filter(x=>x.businessId===id)}
+async function nextJournalNo(){let b=await getBusiness();let n=b.nextJournalNumber||1;b.nextJournalNumber=n+1;await put('business',b);return 'JNL-'+String(n).padStart(5,'0');}
 async function businessExpenseTypes(){const id=await getActiveBusinessId();return (await all('expenseTypes')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 async function businessExpenses(){const id=await getActiveBusinessId();return (await all('expenses')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 
@@ -312,13 +317,17 @@ async function businessFinancials(bizId){
   if(!b) return null;
   const invs=(await all('invoices')).filter(i=>i.businessId===bizId && i.status!=='void');
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===bizId);
+  const loans=(await all('loans')).filter(l=>l.businessId===bizId);
   const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openBal=Number(b.openingBalance)||0;
   const sales=invs.reduce((a,i)=>a+i.total,0);
   const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
   const expTotal=exps.reduce((a,e)=>a+e.amount,0);
-  const lifetimeProfit=(openRev+sales)-(openExp+expTotal);
-  const bankBalance=openBal+received-expTotal;
-  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal};
+  const loanPrincipalTotal=loans.reduce((a,l)=>a+(Number(l.principal)||0),0);
+  const loanRepaidTotal=loans.reduce((a,l)=>a+(l.repayments||[]).reduce((x,r)=>x+(Number(r.amount)||0),0),0);
+  const loanInterestTotal=loans.reduce((a,l)=>a+(l.repayments||[]).reduce((x,r)=>x+(Number(r.interestPortion)||0),0),0);
+  const lifetimeProfit=(openRev+sales)-(openExp+expTotal+loanInterestTotal);
+  const bankBalance=openBal+received-expTotal+loanPrincipalTotal-loanRepaidTotal;
+  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,loanPrincipalTotal,loanRepaidTotal,loanInterestTotal,loanOutstanding:loanPrincipalTotal-loanRepaidTotal};
 }
 async function allBusinessFinancials(){const list=await all('business');const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
 async function getGlobalBankBalance(){
@@ -436,8 +445,8 @@ const Sync={
   async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
   async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
 
-  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments'];const out={version:7,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
-  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
+  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations'];const out={version:9,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
 
   markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),1500)}},
 
@@ -667,6 +676,8 @@ function logoutServerAccount(){
   <button class="navbtn" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
   <button class="navbtn" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
   <button class="navbtn" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
+  <button class="navbtn" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
+  <button class="navbtn" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
   <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
   <button class="navbtn" onclick="showReports()"><span class="ic">▥</span> Reports</button>
@@ -729,6 +740,8 @@ function logoutServerAccount(){
 <button class="navbtn" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
 <button class="navbtn" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
 <button class="navbtn" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
+<button class="navbtn" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
+<button class="navbtn" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
 <button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
 <button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
 <button class="navbtn" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
@@ -1162,9 +1175,40 @@ async function payments(id){let i=(await all('invoices')).find(x=>x.id===id),pai
 async function addPayment(id){let a=Number(pa.value||0);if(a<=0)return alert('Enter an amount.');let i=(await all('invoices')).find(x=>x.id===id);i.payments.push({id:crypto.randomUUID(),amount:a,date:pd.value,method:pm.value});await put('invoices',i);await payments(id);refresh()}
 
 /* ---------------- Expenses ---------------- */
-async function showExpenses(){let ex=await businessExpenses(),inv=await bizInvoices();openModal(`<h2>Business Expenses</h2><div class="notice">These reduce business profit and count in Reports. For non-business spending, use Personal Expenses instead.</div><div class="field"><label>Date</label><input id="ed" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="row2"><div class="field"><label>Category</label><input id="ec" placeholder="Fuel, transport..."></div><div class="field"><label>Amount</label><input id="ea" type="number"></div></div><div class="field"><label>Description</label><input id="ex"></div><div class="field"><label>Linked invoice (optional)</label><select id="ei"><option value="">None</option>${inv.map(i=>`<option value="${i.id}">${esc(i.number)}</option>`).join('')}</select></div><button class="btn primary full" onclick="addExpense()">Save Expense</button><h3 style="font-size:14px;margin-top:16px">Recorded expenses</h3><div id="elist"></div>`);window.expCache=ex;drawExpenses()}
-function drawExpenses(){elist.innerHTML=expCache.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="row-item"><div><b>${esc(e.category||'Expense')}</b><small>${e.date} · ${esc(e.description)}</small></div><div class="row-right"><strong class="money">${money(e.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteExpense('${e.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No expenses recorded.</div>'}
-async function addExpense(){let a=Number(ea.value||0);if(a<=0)return alert('Enter an amount.');let e={id:crypto.randomUUID(),date:ed.value,category:ec.value,amount:a,description:ex.value,invoiceId:ei.value,kind:'business',businessId:await getActiveBusinessId()};await put('expenses',e);expCache.push(e);drawExpenses();refresh()}
+async function showExpenses(){
+ let ex=await businessExpenses();
+ openModal(`<h2>Business Expenses ${hb("Add several expenses at once — each row becomes its own record with its own journal number, so you don't have to save and reopen this screen for every single entry.")}</h2>
+ <div class="notice">These reduce business profit and count in Reports. For non-business spending, use Personal Expenses instead. Each saved expense gets a sequential journal number for your records.</div>
+ <div id="expBatchRows"></div>
+ <button class="btn secondary full" onclick="addExpenseBatchRow()">＋ Add Another Row</button>
+ <button class="btn primary full" onclick="saveExpenseBatch()">Save All Rows</button>
+ <h3 style="font-size:14px;margin-top:16px">Recorded expenses</h3><div id="elist"></div>`);
+ window.expCache=ex; window.expBatch=[{date:new Date().toISOString().slice(0,10),category:'',amount:0,description:''}];
+ drawExpenseBatchRows(); drawExpenses();
+}
+function drawExpenseBatchRows(){
+ expBatchRows.innerHTML=expBatch.map((r,n)=>`<div class="line" style="grid-template-columns:1fr 1fr .8fr 32px">
+   <input type="date" value="${r.date}" oninput="expBatch[${n}].date=this.value">
+   <input placeholder="Category" value="${esc(r.category)}" oninput="expBatch[${n}].category=this.value">
+   <input type="number" min="0" placeholder="Amount" value="${r.amount||''}" oninput="expBatch[${n}].amount=Number(this.value)">
+   <button class="btn danger" onclick="expBatch.splice(${n},1);drawExpenseBatchRows()">×</button>
+   <input class="comment" placeholder="Description" value="${esc(r.description)}" oninput="expBatch[${n}].description=this.value">
+ </div>`).join('');
+}
+function addExpenseBatchRow(){expBatch.push({date:new Date().toISOString().slice(0,10),category:'',amount:0,description:''});drawExpenseBatchRows()}
+async function saveExpenseBatch(){
+ const rows=expBatch.filter(r=>(Number(r.amount)||0)>0);
+ if(!rows.length)return alert('Enter at least one row with an amount.');
+ const bizId=await getActiveBusinessId();
+ for(const r of rows){
+  const journalNumber=await nextJournalNo();
+  const e={id:crypto.randomUUID(),date:r.date,category:r.category,amount:Number(r.amount)||0,description:r.description,invoiceId:'',kind:'business',businessId:bizId,journalNumber};
+  await put('expenses',e); expCache.push(e);
+ }
+ window.expBatch=[{date:new Date().toISOString().slice(0,10),category:'',amount:0,description:''}];
+ drawExpenseBatchRows(); drawExpenses(); refresh();
+}
+function drawExpenses(){elist.innerHTML=expCache.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="row-item"><div><b>${esc(e.category||'Expense')}</b><small>${e.journalNumber?esc(e.journalNumber)+' · ':''}${e.date} · ${esc(e.description)}</small></div><div class="row-right"><strong class="money">${money(e.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteExpense('${e.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No expenses recorded.</div>'}
 async function deleteExpense(id){if(!confirm('Delete this expense?'))return;await del('expenses',id);expCache=expCache.filter(x=>x.id!==id);drawExpenses();refresh()}
 
 /* ---------------- Personal Expenses (kept separate from business books) ---------------- */
@@ -1742,7 +1786,355 @@ async function deleteInvestment(id){
  await showInvestments(); await refresh();
 }
 
+/* ---------------- Loans ---------------- */
+async function showLoans(){
+ const loans=await bizLoans();
+ openModal(`<h2>Loans ${hb("Money borrowed for this business, tracked separately from income — the amount you receive isn't taxable revenue, and repayments aren't a straight expense (only the interest portion is deductible).")}</h2>
+ <div class="notice">Taking a loan increases your Cash &amp; Bank Balance without counting as sales. Repayments reduce it without counting as a full expense — only the interest portion you note (if any) is treated as a deductible cost.</div>
+ <button class="btn accent full" onclick="addLoan()">＋ New Loan</button>
+ <div class="list" id="loanList" style="margin-top:12px"></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.loanCache=loans;
+ drawLoans();
+}
+function drawLoans(){
+ loanList.innerHTML=loanCache.sort((a,b)=>(b.dateTaken||'').localeCompare(a.dateTaken||'')).map(l=>{
+  const repaid=(l.repayments||[]).reduce((a,r)=>a+r.amount,0);
+  const outstanding=(Number(l.principal)||0)-repaid;
+  const cls=l.status==='closed'?'paid':(outstanding>0?'duesoon':'paid');
+  const label=l.status==='closed'?'Closed':'Outstanding '+money(outstanding);
+  return `<div class="row-item"><div><b>${esc(l.creditorName)}</b><small>${esc(l.interestRatePercent||0)}% · ${esc(l.tenureMonths||0)} months · Principal ${money(l.principal||0)}</small></div><div class="row-right"><span class="stamp ${cls}">${label}</span><button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="openLoan('${l.id}')">Open</button></div></div>`;
+ }).join('') || '<div class="empty">No loans recorded.</div>';
+}
+async function addLoan(){
+ const creditorName=prompt('Who/which institution is this loan from?');
+ if(!creditorName||!creditorName.trim())return;
+ const principal=Number(prompt('Loan amount (principal) received:'))||0;
+ const interestRatePercent=Number(prompt('Interest rate, as a percentage (e.g. 5 for 5%):'))||0;
+ const tenureMonths=Number(prompt('Tenure, in months:'))||0;
+ const dateTaken=prompt('Date the loan was received (YYYY-MM-DD):', new Date().toISOString().slice(0,10))||new Date().toISOString().slice(0,10);
+ const loan={id:crypto.randomUUID(), businessId:await getActiveBusinessId(), creditorName:creditorName.trim(), principal, interestRatePercent, tenureMonths, dateTaken, repayments:[], status:'active'};
+ await put('loans',loan);
+ closeModal(); await showLoans(); await refresh();
+}
+async function openLoan(id){
+ const l=(await all('loans')).find(x=>x.id===id); if(!l)return;
+ const repaid=(l.repayments||[]).reduce((a,r)=>a+r.amount,0);
+ const interestPaid=(l.repayments||[]).reduce((a,r)=>a+(Number(r.interestPortion)||0),0);
+ const outstanding=(Number(l.principal)||0)-repaid;
+ openModal(`<h2>${esc(l.creditorName)}</h2>
+ <div class="totalBox"><div class="totalRow"><span>Principal</span><b>${money(l.principal||0)}</b></div><div class="totalRow"><span>Interest rate</span><b>${esc(l.interestRatePercent||0)}%</b></div><div class="totalRow"><span>Tenure</span><b>${esc(l.tenureMonths||0)} months</b></div><div class="totalRow"><span>Total repaid</span><b>${money(repaid)}</b></div><div class="totalRow"><span>Of which interest</span><b>${money(interestPaid)}</b></div><div class="totalRow grand"><span>${l.status==='closed'?'Fully repaid':'Outstanding balance'}</span><b>${money(outstanding)}</b></div></div>
+ ${l.status==='active'?`<button class="btn accent full" onclick="addLoanRepayment('${id}')">Record a Repayment</button>`:`<div class="notice">This loan is closed.</div>`}
+ <h3 style="font-size:14px;margin-top:16px">Repayment history</h3>
+ <div class="list">${(l.repayments||[]).map(r=>`<div class="row-item"><div><b>${esc(r.date)}</b>${r.note?`<small>${esc(r.note)}</small>`:''}</div><strong class="money">${money(r.amount)}</strong></div>`).join('')||'<div class="empty">No repayments yet.</div>'}</div>
+ <button class="btn danger full" onclick="deleteLoan('${id}')">Delete Loan</button>
+ <button class="btn secondary full" onclick="showLoans()">Back</button>`);
+}
+async function addLoanRepayment(id){
+ const l=(await all('loans')).find(x=>x.id===id); if(!l)return;
+ const amount=Number(prompt('Repayment amount to '+l.creditorName+':'))||0;
+ if(amount<=0)return;
+ const interestPortion=Number(prompt('How much of this repayment is interest (optional, for tax deduction)? Leave blank if unsure:'))||0;
+ const date=prompt('Date (YYYY-MM-DD):', new Date().toISOString().slice(0,10))||new Date().toISOString().slice(0,10);
+ const note=prompt('Optional note:')||'';
+ const closed=confirm('Is this loan now fully repaid — no balance left?\n\nOK = Yes, close it.\nCancel = No, still has a balance.');
+ l.repayments=l.repayments||[];
+ l.repayments.push({id:crypto.randomUUID(), amount, interestPortion, date, note});
+ if(closed){l.status='closed'; l.closedAt=new Date().toISOString();}
+ await put('loans',l);
+ await openLoan(id); await refresh();
+}
+async function deleteLoan(id){
+ if(!confirm('Delete this loan record? This cannot be undone.'))return;
+ await del('loans',id);
+ await showLoans(); await refresh();
+}
+
+/* ---------------- Bank Reconciliation ----------------
+   Uploaded statement data is used only for this session — parsed in memory,
+   never written to storage. Only a short summary of what was found and fixed
+   gets saved afterward, not the spreadsheet itself. ---------------- */
+async function collectAppTransactions(bizId, from, to){
+ const out=[];
+ const invs=(await all('invoices')).filter(i=>i.businessId===bizId && i.status!=='void');
+ for(const i of invs) for(const p of (i.payments||[])) if((!from||p.date>=from)&&(!to||p.date<=to)) out.push({date:p.date, amount:p.amount, direction:'credit', source:'Invoice payment — '+i.number, matched:false});
+ const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===bizId);
+ for(const e of exps) if((!from||e.date>=from)&&(!to||e.date<=to)) out.push({date:e.date, amount:e.amount, direction:'debit', source:(e.category||'Expense')+(e.journalNumber?' ('+e.journalNumber+')':''), matched:false});
+ const comms=(await all('commissions')).filter(c=>c.businessId===bizId && c.paid);
+ for(const c of comms) if(c.paidDate && (!from||c.paidDate>=from)&&(!to||c.paidDate<=to)) out.push({date:c.paidDate, amount:c.amount, direction:'debit', source:'Commission — '+c.personName, matched:false});
+ const loans=(await all('loans')).filter(l=>l.businessId===bizId);
+ for(const l of loans){
+  if((!from||l.dateTaken>=from)&&(!to||l.dateTaken<=to)) out.push({date:l.dateTaken, amount:l.principal, direction:'credit', source:'Loan received — '+l.creditorName, matched:false});
+  for(const r of (l.repayments||[])) if((!from||r.date>=from)&&(!to||r.date<=to)) out.push({date:r.date, amount:r.amount, direction:'debit', source:'Loan repayment — '+l.creditorName, matched:false});
+ }
+ return out;
+}
+async function showReconciliation(){
+ openModal(`<h2>Bank Reconciliation ${hb("Upload a bank statement to compare against what's recorded here. Anything on the statement that doesn't match a record in the app gets flagged so you can explain it — like bank charges that never got entered.")}</h2>
+ <div class="notice">The uploaded file is used only for this session and is never saved — only a short summary of what was found gets kept afterward.</div>
+ <div class="field"><label>Bank statement (.xlsx, .xls, or .csv)</label><input type="file" id="reconFile" accept=".xlsx,.xls,.csv" onchange="parseReconciliationFile(event)"></div>
+ <div id="reconBody"></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function parseReconciliationFile(ev){
+ const file=ev.target.files[0]; if(!file) return;
+ if(!window.XLSX){ alert('The spreadsheet reader needs to load from the internet the first time — try again once connected.'); return; }
+ const buf=await file.arrayBuffer();
+ const wb=XLSX.read(buf, {type:'array', cellDates:true});
+ const sheet=wb.Sheets[wb.SheetNames[0]];
+ const rows=XLSX.utils.sheet_to_json(sheet, {header:1, raw:false, defval:''});
+ if(!rows.length){ alert('That file looks empty.'); return; }
+ window.reconRawRows=rows;
+ const headerRow=rows[0].map(String);
+ const opts=headerRow.map((h,i)=>`<option value="${i}">${esc(h||'(column '+(i+1)+')')}</option>`).join('');
+ reconBody.innerHTML=`
+ <div class="notice">Found ${rows.length-1} row(s). Tell us which column is which — bank statement layouts vary, so this needs a quick check.</div>
+ <div class="field"><label>Date column</label><select id="rcDate">${opts}</select></div>
+ <div class="field"><label>Description column</label><select id="rcDesc">${opts}</select></div>
+ <div class="field"><label>Debit (money out) column</label><select id="rcDebit"><option value="">(none)</option>${opts}</select></div>
+ <div class="field"><label>Credit (money in) column</label><select id="rcCredit"><option value="">(none)</option>${opts}</select></div>
+ <div class="notice">If your statement has a single "Amount" column instead of separate Debit/Credit columns, map it to Credit and we'll treat negative numbers as debits automatically.</div>
+ <button class="btn primary full" onclick="runReconciliationMatch()">Compare Against My Records</button>`;
+}
+function parseReconAmount(v){
+ if(v===''||v==null) return 0;
+ const n=Number(String(v).replace(/[,₦$€£\s]/g,''));
+ return isNaN(n)?0:n;
+}
+function parseReconDate(v){
+ if(v instanceof Date) return v.toISOString().slice(0,10);
+ const s=String(v).trim();
+ const d=new Date(s);
+ if(!isNaN(d)) return d.toISOString().slice(0,10);
+ return s;
+}
+async function runReconciliationMatch(){
+ const dateCol=Number(rcDate.value), descCol=Number(rcDesc.value), debitCol=rcDebit.value===''?null:Number(rcDebit.value), creditCol=rcCredit.value===''?null:Number(rcCredit.value);
+ const rows=window.reconRawRows.slice(1).filter(r=>r.length && r[dateCol]);
+ const statement=rows.map(r=>{
+  let debit=debitCol!=null?parseReconAmount(r[debitCol]):0;
+  let credit=creditCol!=null?parseReconAmount(r[creditCol]):0;
+  if(debitCol==null && credit<0){ debit=Math.abs(credit); credit=0; }
+  return {date:parseReconDate(r[dateCol]), description:String(r[descCol]||''), debit, credit, explained:false, explanation:null};
+ });
+ window.reconStatement=statement;
+ const bizId=await getActiveBusinessId();
+ const dates=statement.map(s=>s.date).filter(Boolean).sort();
+ const from=dates[0], to=dates[dates.length-1];
+ const appTx=await collectAppTransactions(bizId, from, to);
+ window.reconAppTx=appTx;
+ const withinDays=(a,b,days)=>Math.abs((new Date(a)-new Date(b))/86400000)<=days;
+
+ // Pass 1: match against what's already recorded in the app.
+ for(const s of statement){
+  const amt = s.credit>0?s.credit:s.debit;
+  const dir = s.credit>0?'credit':'debit';
+  const match = appTx.find(t=>!t.matched && t.direction===dir && Math.abs(t.amount-amt)<0.01 && withinDays(t.date,s.date,3));
+  if(match){ match.matched=true; s.explained=true; s.explanation={type:'matched', note:match.source}; }
+ }
+
+ // Pass 2: recognizable recurring bank charge narrations — auto-classify without asking.
+ const chargeKeywords=/bank charge|maintenance|\bsma\b|\bcot\b|stamp duty|vat on|card maint|sms alert|ledger fee|account maint|service charge/i;
+ for(const s of statement){
+  if(s.explained || s.debit<=0) continue;
+  if(chargeKeywords.test(s.description)){
+   const journalNumber=await nextJournalNo();
+   await put('expenses',{id:crypto.randomUUID(),date:s.date,category:'Bank Charges',amount:s.debit,description:s.description,invoiceId:'',kind:'business',businessId:bizId,journalNumber});
+   s.explained=true; s.explanation={type:'auto-charge', note:'Recognized from narration, recorded automatically'};
+  }
+ }
+
+ // Pass 3: reversal narrations (RVSC, REVERSAL, RVC, etc.) — find the opposite-direction row they cancel out.
+ const reversalKeywords=/\brvsc\b|\brvc\b|reversal|reversed/i;
+ for(const s of statement){
+  if(s.explained) continue;
+  if(!reversalKeywords.test(s.description)) continue;
+  const amt=s.credit>0?s.credit:s.debit, dir=s.credit>0?'credit':'debit', oppositeDir=dir==='credit'?'debit':'credit';
+  const pair=statement.find(o=>o!==s && !o.explained && (oppositeDir==='credit'?o.credit>0:o.debit>0) && Math.abs((oppositeDir==='credit'?o.credit:o.debit)-amt)<0.01 && withinDays(o.date,s.date,14));
+  if(pair){ s.explained=true; pair.explained=true; s.explanation={type:'reversal-pair', note:'Matched with its reversal on '+pair.date}; pair.explanation={type:'reversal-pair', note:'Reversal of the '+s.date+' entry'}; }
+  else { s.explanation={type:null, flag:'Looks like a reversal, but no matching opposite entry found within 14 days on the statement — will still need an explanation.'}; }
+ }
+
+ // Pass 4: general offsetting pairs — same amount, opposite direction, close together, even with no keyword.
+ for(const s of statement){
+  if(s.explained) continue;
+  const amt=s.credit>0?s.credit:s.debit, dir=s.credit>0?'credit':'debit', oppositeDir=dir==='credit'?'debit':'credit';
+  const pair=statement.find(o=>o!==s && !o.explained && (oppositeDir==='credit'?o.credit>0:o.debit>0) && Math.abs((oppositeDir==='credit'?o.credit:o.debit)-amt)<0.01 && withinDays(o.date,s.date,1));
+  if(pair){ s.explained=true; pair.explained=true; s.explanation={type:'offsetting-pair', note:'Offsetting entry on '+pair.date+' — likely a reversal or internal transfer, net zero effect'}; pair.explanation={type:'offsetting-pair', note:'Offsetting entry on '+s.date}; }
+ }
+
+ const b=await getBusiness();
+ const startDate=b.openingAsOfDate || (appTx.length?appTx.map(t=>t.date).sort()[0]:null);
+ window.reconStartDate=startDate;
+ renderReconciliationResults();
+}
+function renderReconciliationResults(){
+ const statement=window.reconStatement;
+ const matched=statement.filter(s=>s.explained && s.explanation && s.explanation.type==='matched');
+ const autoCharges=statement.filter(s=>s.explained && s.explanation && s.explanation.type==='auto-charge');
+ const reversals=statement.filter(s=>s.explained && s.explanation && (s.explanation.type==='reversal-pair'||s.explanation.type==='offsetting-pair'));
+ const unmatched=statement.filter(s=>!s.explained);
+ const preStart=window.reconStartDate ? unmatched.filter(s=>s.date<window.reconStartDate) : [];
+ const afterStart=unmatched.filter(s=>!window.reconStartDate || s.date>=window.reconStartDate);
+ reconBody.innerHTML=`
+ <div class="stats" style="grid-template-columns:repeat(2,1fr);margin-top:10px">
+   <div class="stat"><div class="lbl">Matched to records</div><div class="val">${matched.length}</div></div>
+   <div class="stat"><div class="lbl">Auto-recognized charges</div><div class="val">${autoCharges.length}</div></div>
+   <div class="stat"><div class="lbl">Reversal/offsetting pairs</div><div class="val">${reversals.length}</div></div>
+   <div class="stat accent"><div class="lbl">Still needs explanation</div><div class="val">${unmatched.length}</div></div>
+ </div>
+ ${autoCharges.length?`<h3 style="font-size:13px;margin-top:14px">Auto-recognized as bank charges</h3><div class="list">${autoCharges.map(s=>`<div class="row-item"><div><b>${esc(s.date)}</b><small>${esc(s.description)}</small></div><strong class="money">${money(s.debit)}</strong></div>`).join('')}</div>`:''}
+ ${reversals.length?`<h3 style="font-size:13px;margin-top:14px">Recognized as reversal/offsetting pairs (net zero)</h3><div class="list">${reversals.map(s=>`<div class="row-item"><div><b>${esc(s.date)}</b><small>${esc(s.description)}</small></div><strong class="money">${money(s.credit>0?s.credit:s.debit)}</strong></div>`).join('')}</div>`:''}
+ ${preStart.length?`<div class="notice">${preStart.length} row(s) on the statement are dated before ${esc(window.reconStartDate)}, your business's tracked start date. These look like pre-app history rather than something missing from your records.</div><button class="btn secondary full" onclick="reviewPreStartRows()">Review &amp; Fold Into Opening Balances</button>`:''}
+ <h3 style="font-size:14px;margin-top:16px">Needs an explanation (${afterStart.length})</h3>
+ <div class="list" id="reconUnmatchedList">${afterStart.map((s,n)=>{
+   const idx=statement.indexOf(s);
+   const amt=s.credit>0?s.credit:s.debit;
+   const dir=s.credit>0?'Credit (in)':'Debit (out)';
+   const hint=(s.explanation && s.explanation.flag) ? `<div class="notice" style="padding:6px 8px;font-size:11px">${esc(s.explanation.flag)}</div>` : '';
+   return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
+     <div style="display:flex;justify-content:space-between"><b>${esc(s.date)}</b><span class="stamp due">${dir}</span></div>
+     <small>${esc(s.description)} — ${money(amt)}</small>
+     ${hint}
+     <div class="row2">
+       <button class="btn secondary" style="font-size:11px;padding:6px" onclick="explainReconRow(${idx},'charge')">Bank Charge</button>
+       <button class="btn secondary" style="font-size:11px;padding:6px" onclick="explainReconRow(${idx},'expense')">Missing Expense</button>
+     </div>
+     <div class="row2">
+       <button class="btn secondary" style="font-size:11px;padding:6px" onclick="explainReconRow(${idx},'income')">Missing Income</button>
+       <button class="btn secondary" style="font-size:11px;padding:6px" onclick="explainReconRow(${idx},'ignore')">Ignore / Already Handled</button>
+     </div>
+   </div>`;
+ }).join('') || '<div class="empty">Nothing left to explain.</div>'}</div>
+ <button class="btn primary full" onclick="finalizeReconciliationReport()">Generate Reconciliation Report</button>`;
+}
+async function explainReconRow(idx, choice){
+ const s=window.reconStatement[idx];
+ const amt=s.credit>0?s.credit:s.debit;
+ const bizId=await getActiveBusinessId();
+ if(choice==='charge'){
+  const journalNumber=await nextJournalNo();
+  await put('expenses',{id:crypto.randomUUID(),date:s.date,category:'Bank Charges',amount:amt,description:s.description||'Bank charge',invoiceId:'',kind:'business',businessId:bizId,journalNumber});
+  s.explanation={type:'charge'};
+ } else if(choice==='expense'){
+  const journalNumber=await nextJournalNo();
+  await put('expenses',{id:crypto.randomUUID(),date:s.date,category:'Uncategorized (from reconciliation)',amount:amt,description:s.description||'',invoiceId:'',kind:'business',businessId:bizId,journalNumber});
+  s.explanation={type:'expense'};
+ } else if(choice==='income'){
+  await ensureIncomeCategorySeed();
+  await put('otherIncome',{id:crypto.randomUUID(),date:s.date,category:'Other',amount:amt,description:(s.description||'')+' (from reconciliation — review category/taxability)',taxable:true});
+  s.explanation={type:'income'};
+ } else {
+  s.explanation={type:'ignored'};
+ }
+ s.explained=true;
+ renderReconciliationResults();
+ refresh();
+}
+async function reviewPreStartRows(){
+ const statement=window.reconStatement;
+ const preStart=statement.filter(s=>!s.explained && s.date<window.reconStartDate);
+ const creditTotal=preStart.reduce((a,s)=>a+(s.credit>0?s.credit:0),0);
+ const debitTotal=preStart.reduce((a,s)=>a+(s.debit>0?s.debit:0),0);
+ openModal(`<h2>Pre-Start Statement History</h2>
+ <div class="notice">${preStart.length} row(s) dated before ${esc(window.reconStartDate)}. Total credits: ${money(creditTotal)} · Total debits: ${money(debitTotal)}. You can fold the net of these into your Opening Balances rather than resolving them individually.</div>
+ <div class="totalBox"><div class="totalRow"><span>Credits (revenue-like)</span><b>${money(creditTotal)}</b></div><div class="totalRow"><span>Debits (expense-like)</span><b>${money(debitTotal)}</b></div><div class="totalRow grand"><span>Net</span><b>${money(creditTotal-debitTotal)}</b></div></div>
+ <button class="btn accent full" onclick="applyPreStartToOpeningBalances(${creditTotal},${debitTotal})">Add to Opening Balances</button>
+ <button class="btn secondary full" onclick="renderReconciliationResults()">Back Without Changes</button>`);
+}
+async function applyPreStartToOpeningBalances(creditTotal, debitTotal){
+ if(!confirm('Add '+money(creditTotal)+' to Revenue brought forward and '+money(debitTotal)+' to Expenses brought forward? This updates Opening Balances for the active business.')) return;
+ const b=await getBusiness();
+ b.openingRevenue=(Number(b.openingRevenue)||0)+creditTotal;
+ b.openingExpenses=(Number(b.openingExpenses)||0)+debitTotal;
+ await put('business',b);
+ for(const s of window.reconStatement) if(s.date<window.reconStartDate && !s.explained) s.explained=true, s.explanation={type:'opening-balance'};
+ alert('Opening Balances updated.');
+ renderReconciliationResults(); refresh();
+}
+async function finalizeReconciliationReport(){
+ const statement=window.reconStatement;
+ const stillOpen=statement.filter(s=>!s.explained);
+ const matched=statement.filter(s=>s.explanation && s.explanation.type==='matched');
+ const autoCharges=statement.filter(s=>s.explanation && s.explanation.type==='auto-charge');
+ const charges=statement.filter(s=>s.explanation && s.explanation.type==='charge');
+ const newExpenses=statement.filter(s=>s.explanation && s.explanation.type==='expense');
+ const newIncome=statement.filter(s=>s.explanation && s.explanation.type==='income');
+ const ignored=statement.filter(s=>s.explanation && s.explanation.type==='ignored');
+ const openingAdj=statement.filter(s=>s.explanation && s.explanation.type==='opening-balance');
+ const reversals=statement.filter(s=>s.explanation && (s.explanation.type==='reversal-pair'||s.explanation.type==='offsetting-pair'));
+ const unexplainedDebits=stillOpen.filter(s=>s.debit>0);
+ const unexplainedCredits=stillOpen.filter(s=>s.credit>0);
+ const record={id:crypto.randomUUID(), businessId:await getActiveBusinessId(), createdAt:new Date().toISOString(), status:'draft',
+  totalRows:statement.length, matched:matched.length, autoCharges:autoCharges.length, charges:charges.length, newExpenses:newExpenses.length, newIncome:newIncome.length, ignored:ignored.length, openingAdj:openingAdj.length, reversals:reversals.length,
+  unexplainedDebitCount:unexplainedDebits.length, unexplainedCreditCount:unexplainedCredits.length,
+  unexplainedDebitTotal:unexplainedDebits.reduce((a,s)=>a+s.debit,0), unexplainedCreditTotal:unexplainedCredits.reduce((a,s)=>a+s.credit,0)};
+ await put('reconciliations',record);
+ window.reconRecordId=record.id;
+ renderReconciliationReport(record.id);
+}
+async function renderReconciliationReport(recordId){
+ const statement=window.reconStatement;
+ const rec=(await all('reconciliations')).find(x=>x.id===recordId);
+ const stillOpen=statement.filter(s=>!s.explained);
+ const unexplainedDebits=stillOpen.filter(s=>s.debit>0);
+ const unexplainedCredits=stillOpen.filter(s=>s.credit>0);
+ const globalBalance=await getGlobalBankBalance();
+ const lineRow=(s,amt)=>`<div class="row-item"><div><b>${esc(s.date)}</b><small>${esc(s.description)}</small></div><strong class="money">${money(amt)}</strong></div>`;
+ const isLocked=rec.status==='locked';
+ openModal(`<h2>Reconciliation Report</h2>
+ ${isLocked?`<div class="notice" style="background:var(--goodSoft);border-color:#bfe0d1;color:var(--good)"><b>Balanced &amp; Locked</b> — ${new Date(rec.lockedAt).toLocaleString()}. Every remaining gap was written into your books so the app and bank now agree.</div>`:''}
+ <div class="totalBox">
+  <div class="totalRow"><span>Statement rows reviewed</span><b>${rec.totalRows}</b></div>
+  <div class="totalRow"><span>Already matched to your records</span><b>${rec.matched}</b></div>
+  <div class="totalRow"><span>Auto-recognized bank charges</span><b>${rec.autoCharges}</b></div>
+  <div class="totalRow"><span>Reversal/offsetting pairs (net zero)</span><b>${rec.reversals}</b></div>
+  <div class="totalRow"><span>Bank charges you confirmed</span><b>${rec.charges}</b></div>
+  <div class="totalRow"><span>Missing expenses added</span><b>${rec.newExpenses}</b></div>
+  <div class="totalRow"><span>Missing income added</span><b>${rec.newIncome}</b></div>
+  <div class="totalRow"><span>Marked ignored/already handled</span><b>${rec.ignored}</b></div>
+  <div class="totalRow"><span>Folded into Opening Balances</span><b>${rec.openingAdj}</b></div>
+  <div class="totalRow grand"><span>${isLocked?'Written off to balance the books':'Still unresolved'}</span><b>${stillOpen.length}</b></div>
+ </div>
+ ${stillOpen.length?`
+ <h3 style="font-size:14px;margin-top:16px">${isLocked?'Written off — Debit side':'Unexplained — Debit side'} (${unexplainedDebits.length}, total ${money(unexplainedDebits.reduce((a,s)=>a+s.debit,0))})</h3>
+ <div class="list">${unexplainedDebits.map(s=>lineRow(s,s.debit)).join('')||'<div class="empty">None.</div>'}</div>
+ <h3 style="font-size:14px;margin-top:16px">${isLocked?'Written off — Credit side':'Unexplained — Credit side'} (${unexplainedCredits.length}, total ${money(unexplainedCredits.reduce((a,s)=>a+s.credit,0))})</h3>
+ <div class="list">${unexplainedCredits.map(s=>lineRow(s,s.credit)).join('')||'<div class="empty">None.</div>'}</div>
+ `:''}
+ <div class="notice">Current Cash &amp; Bank Balance (all businesses)${isLocked?', after balancing':''}: <b>${money(globalBalance)}</b>. Compare this to your statement's own closing balance to confirm they now agree.</div>
+ ${(!isLocked && stillOpen.length) ? `<div class="notice" style="background:var(--brassSoft);border-color:#e6cf9f;color:#7a5a1f">Accepting this will write every remaining unexplained debit into Business Expenses and every unexplained credit into Other Income — category "Unexplained (Reconciliation)" — so your app balance matches the bank statement exactly. This can't be undone from here; delete the individual records afterward if you need to correct one.</div><button class="btn accent full" onclick="acceptAndBalanceReconciliation('${recordId}')">Accept &amp; Balance the Books</button>` : ''}
+ ${(!isLocked && !stillOpen.length) ? `<button class="btn accent full" onclick="lockReconciliation('${recordId}')">Lock This Reconciliation</button>` : ''}
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function acceptAndBalanceReconciliation(recordId){
+ if(!confirm('Write off every remaining unexplained item into your books now? This brings your app balance in line with the bank statement.'))return;
+ const statement=window.reconStatement;
+ const bizId=await getActiveBusinessId();
+ const stillOpen=statement.filter(s=>!s.explained);
+ for(const s of stillOpen){
+  if(s.debit>0){
+   const journalNumber=await nextJournalNo();
+   await put('expenses',{id:crypto.randomUUID(),date:s.date,category:'Unexplained (Reconciliation)',amount:s.debit,description:s.description,invoiceId:'',kind:'business',businessId:bizId,journalNumber});
+  } else if(s.credit>0){
+   await ensureIncomeCategorySeed();
+   await put('otherIncome',{id:crypto.randomUUID(),date:s.date,category:'Unexplained (Reconciliation)',amount:s.credit,description:s.description,taxable:true});
+  }
+  s.explained=true; s.explanation={type:'written-off'};
+ }
+ await lockReconciliation(recordId);
+}
+async function lockReconciliation(recordId){
+ const rec=(await all('reconciliations')).find(x=>x.id===recordId);
+ rec.status='locked'; rec.lockedAt=new Date().toISOString();
+ await put('reconciliations',rec);
+ await refresh();
+ await renderReconciliationReport(recordId);
+}
+
 /* ---------------- Reports ---------------- */
+
+
 
 
 async function showReports(){

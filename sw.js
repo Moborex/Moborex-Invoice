@@ -1,8 +1,9 @@
-const CACHE = 'moborex-invoice-v25';
+const CACHE = 'moborex-invoice-v29';
 const ASSETS = ['./index.html','./manifest.json','./icon-192.png','./icon-512.png'];
 const OPTIONAL_ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
 ];
 self.addEventListener('install', e=>{
   e.waitUntil(
