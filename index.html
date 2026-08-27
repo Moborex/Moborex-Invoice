@@ -216,7 +216,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 32;
+const APP_VERSION = 34;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -341,7 +341,7 @@ async function businessFinancials(bizId){
   const loanInterestTotal=loans.reduce((a,l)=>a+(l.repayments||[]).reduce((x,r)=>x+(Number(r.interestPortion)||0),0),0);
   const stockPurchaseTotal=stockPurchases.reduce((a,sp)=>a+(Number(sp.totalCost)||0),0);
   const returnsTotal=returns.reduce((a,r)=>a+(Number(r.refundAmount)||0),0);
-  const lifetimeProfit=(openRev+sales)-(openExp+expTotal+loanInterestTotal+stockPurchaseTotal+returnsTotal);
+  const lifetimeProfit=(openRev+received)-(openExp+expTotal+loanInterestTotal+stockPurchaseTotal+returnsTotal);
   const bankBalance=openBal+received-expTotal+loanPrincipalTotal-loanRepaidTotal-stockPurchaseTotal-returnsTotal;
   return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,loanPrincipalTotal,loanRepaidTotal,loanInterestTotal,loanOutstanding:loanPrincipalTotal-loanRepaidTotal,stockPurchaseTotal,returnsTotal};
 }
@@ -806,7 +806,7 @@ function openModal(h){sheet.innerHTML='<button class="sheetBack" onclick="closeM
 function closeModal(){modal.classList.remove('show');popNavIfNeeded()}
 
 async function refresh(){
- const b=await getBusiness(), invAll=await bizInvoices(), inv=invAll.filter(i=>i.status!=='void'), ex=await businessExpenses(), personalEx=(await all('expenses')).filter(e=>e.kind==='personal');
+ const b=await getBusiness(), invAll=await bizInvoices(), inv=invAll.filter(i=>i.status!=='void'), personalEx=(await all('expenses')).filter(e=>e.kind==='personal');
  window.CURRENT_CURRENCY=b.currency||'NGN';
  const logoHtml=b.logo?`<img src="${b.logo}">`:'▦';
  document.getElementById('bizNameWide').textContent=b.name;
@@ -817,11 +817,11 @@ async function refresh(){
  if(navProductsLabel)navProductsLabel.textContent=prodLabel; if(navProductsLabelDrawer)navProductsLabelDrawer.textContent=prodLabel;
  if(navCustomersLabel)navCustomersLabel.textContent=custLabel; if(navCustomersLabelDrawer)navCustomersLabelDrawer.textContent=custLabel;
  if(navNewInvoiceLabel){navNewInvoiceLabel.textContent=isSalary?'Log Salary':'New Invoice';navNewInvoiceSub.textContent=isSalary?'Add a salary payment':'Create a customer invoice';}
- let openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0;
+ let openRev=Number(b.openingRevenue)||0;
  let sales=inv.reduce((a,i)=>a+i.total,0),paid=inv.reduce((a,i)=>a+i.payments.reduce((x,p)=>x+p.amount,0),0);
- let bizExpensesTotal=ex.reduce((a,e)=>a+e.amount,0);
  let personalExpenses=personalEx.reduce((a,e)=>a+e.amount,0);
- let lifetimeProfit=(openRev+sales)-(openExp+bizExpensesTotal);
+ const activeFinancials=await businessFinancials(await getActiveBusinessId());
+ let lifetimeProfit=activeFinancials?activeFinancials.lifetimeProfit:0; // cash-basis: only what's actually been received counts as profit, same rule the bank balance already follows
  let bankBalance=await getGlobalBankBalance();
  let globalOutstanding=await getGlobalOutstanding();
  document.getElementById('sales').textContent=money(openRev+sales);document.getElementById('received').textContent=money(paid);document.getElementById('outstanding').textContent=money(sales-paid);document.getElementById('profit').textContent=money(lifetimeProfit);document.getElementById('personalSpend').textContent=money(personalExpenses);
@@ -2264,9 +2264,14 @@ function drawReturnsList(){
  returnsList.innerHTML=returnsCache.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(r=>`<div class="row-item"><div><b>${esc(r.productName)}</b><small>${r.journalNumber?esc(r.journalNumber)+' · ':''}${esc(r.date)} · ${esc(r.invoiceNumber||'—')} · ${esc(r.reason)}</small></div><div class="row-right"><strong class="money">${money(r.refundAmount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="deleteReturn('${r.id}')">Delete</button></div></div>`).join('') || '<div class="empty">No returns recorded.</div>';
 }
 async function startNewReturn(){
- const invoices=(await bizInvoices()).filter(i=>i.status!=='void' && (i.items||[]).some(x=>x.productId));
- if(!invoices.length){ alert('No invoices with product line items to return from yet.'); return; }
+ const trackedIds=new Set((await bizProducts()).filter(p=>p.trackStock).map(p=>p.id));
+ const allInvoices=(await bizInvoices()).filter(i=>i.status!=='void' && (i.items||[]).some(x=>x.productId && trackedIds.has(x.productId)));
+ // Fraud guard: only an invoice paid in full can have a return processed against it — refunding
+ // against unpaid or partially-paid invoices would let money go out that was never actually collected.
+ const invoices=allInvoices.filter(i=>{ const paidAmt=(i.payments||[]).reduce((a,p)=>a+p.amount,0); return i.total>0 && paidAmt>=i.total; });
+ if(!invoices.length){ alert(allInvoices.length ? 'None of the invoices with stock-tracked products have been paid in full yet — returns can only be processed against a fully paid invoice.' : 'No invoices with stock-tracked products to return from yet.'); return; }
  openModal(`<h2>New Return</h2>
+ <div class="notice">Only fully-paid invoices, and only line items for products with stock tracking turned on, can be returned — a return can't exceed what was actually sold and paid for.</div>
  <div class="field"><label>Invoice</label><select id="rtInvoice" onchange="loadReturnInvoiceLines()"><option value="">Select invoice</option>${invoices.sort((a,b)=>b.date.localeCompare(a.date)).map(i=>`<option value="${i.id}">${esc(i.number)} — ${esc(i.customer||'')} (${i.date})</option>`).join('')}</select></div>
  <div id="rtLineFields"></div>
  <button class="btn secondary full" onclick="showReturns()">Cancel</button>`);
@@ -2274,26 +2279,47 @@ async function startNewReturn(){
 async function loadReturnInvoiceLines(){
  const inv=(await all('invoices')).find(x=>x.id===rtInvoice.value);
  if(!inv){ rtLineFields.innerHTML=''; return; }
- const lineOpts=(inv.items||[]).map((x,n)=>x.productId?`<option value="${n}" data-qty="${x.qty}" data-price="${x.price}">${esc(x.description)} (sold ${x.qty} @ ${money(x.price)})</option>`:'').join('');
+ const trackedIds=new Set((await bizProducts()).filter(p=>p.trackStock).map(p=>p.id));
+ const priorReturns=(await all('returns')).filter(r=>r.invoiceId===inv.id);
+ const lineOpts=(inv.items||[]).map((x,n)=>{
+  if(!x.productId || !trackedIds.has(x.productId)) return '';
+  const alreadyReturned=priorReturns.filter(r=>r.productId===x.productId).reduce((a,r)=>a+(Number(r.qty)||0),0);
+  const remaining=(Number(x.qty)||0)-alreadyReturned;
+  if(remaining<=0) return ''; // fully returned already — can't return the same units twice
+  return `<option value="${n}" data-remaining="${remaining}" data-price="${x.price}">${esc(x.description)} (sold ${x.qty}, ${remaining} returnable @ ${money(x.price)})</option>`;
+ }).join('');
  rtLineFields.innerHTML=`
- <div class="field"><label>Line item</label><select id="rtLine" onchange="prefillReturnAmount()">${lineOpts}</select></div>
- <div class="row2"><div class="field"><label>Quantity returned</label><input id="rtQty" type="number" min="0" oninput="prefillReturnAmount()"></div><div class="field"><label>Refund amount</label><input id="rtRefund" type="number" min="0"></div></div>
+ <div class="field"><label>Line item</label><select id="rtLine" onchange="prefillReturnAmount()">${lineOpts||'<option value="">Nothing left to return on this invoice</option>'}</select></div>
+ <div class="row2"><div class="field"><label>Quantity returned</label><input id="rtQty" type="number" min="0" oninput="prefillReturnAmount()"></div><div class="field"><label>Refund amount</label><input id="rtRefund" type="number" min="0" oninput="capReturnRefund()"></div></div>
  <div class="field"><label>Reason</label><select id="rtReason"><option value="Defective">Defective</option><option value="Doesn't match description">Doesn't match description</option><option value="Wrong item">Wrong item</option><option value="Other">Other</option></select></div>
  <div class="field"><label>Date</label><input id="rtDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
  <button class="btn accent full" onclick="saveReturn()">Save Return</button>`;
  prefillReturnAmount();
 }
 function prefillReturnAmount(){
- const opt=rtLine?.selectedOptions[0]; if(!opt) return;
- const qty=Number(rtQty.value)||Number(opt.dataset.qty)||0;
- if(!rtQty.value) rtQty.value=opt.dataset.qty;
+ const opt=rtLine?.selectedOptions[0]; if(!opt || !opt.value){ if(rtQty)rtQty.value=''; if(rtRefund)rtRefund.value=''; return; }
+ const remaining=Number(opt.dataset.remaining)||0;
+ let qty=Number(rtQty.value)||remaining;
+ if(qty>remaining) qty=remaining; // can never exceed what's still returnable on this line
+ rtQty.value=qty;
  rtRefund.value=(qty*Number(opt.dataset.price||0)).toFixed(2);
+}
+function capReturnRefund(){
+ const opt=rtLine?.selectedOptions[0]; if(!opt || !opt.value) return;
+ const qty=Number(rtQty.value)||0, maxRefund=qty*Number(opt.dataset.price||0);
+ // A refund can be less than the sale value (e.g. partial goodwill), but never more — that's the fraud vector this closes.
+ if(Number(rtRefund.value)>maxRefund) rtRefund.value=maxRefund.toFixed(2);
 }
 async function saveReturn(){
  const inv=(await all('invoices')).find(x=>x.id===rtInvoice.value);
+ if(!rtLine.value)return alert('Select a line item to return.');
  const lineIdx=Number(rtLine.value), line=inv.items[lineIdx];
+ const remaining=Number(rtLine.selectedOptions[0].dataset.remaining)||0;
  const qty=Number(rtQty.value)||0, refundAmount=Number(rtRefund.value)||0;
  if(qty<=0)return alert('Enter a quantity.');
+ if(qty>remaining)return alert('That\'s more than what\'s left returnable on this line ('+remaining+').');
+ const maxRefund=qty*Number(rtLine.selectedOptions[0].dataset.price||0);
+ if(refundAmount>maxRefund+0.01)return alert('Refund amount can\'t exceed what was actually charged for this quantity ('+money(maxRefund)+').');
  const bizId=await getActiveBusinessId();
  if(line.productId) await applyStockDelta([{productId:line.productId, qty}], +1);
  const journalNumber=await nextJournalNo();
