@@ -216,7 +216,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 35;
+const APP_VERSION = 36;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -1349,7 +1349,24 @@ async function showOpeningBalances(){
  <button class="btn primary full" onclick="saveOpeningBalances()">Save Opening Balances</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
  oTaxPaid.value = b.openingTaxPaid ? '1' : '0';
 }
-async function saveOpeningBalances(){let b=await getBusiness();b.openingAsOfDate=oDate.value;b.openingRevenue=Number(oRev.value)||0;b.openingExpenses=Number(oExp.value)||0;b.openingBalance=Number(oBal.value)||0;b.openingTaxPaid=oTaxPaid.value==='1';await put('business',b);closeModal();await refresh();}
+async function saveOpeningBalances(){
+ try{
+  let b=await getBusiness();
+  b.openingAsOfDate=oDate.value;
+  b.openingRevenue=Number(oRev.value)||0;
+  b.openingExpenses=Number(oExp.value)||0;
+  b.openingBalance=Number(oBal.value)||0;
+  b.openingTaxPaid=oTaxPaid.value==='1';
+  await put('business',b);
+  const check=await getBusiness();
+  if(Number(check.openingBalance)!==Number(b.openingBalance)) throw new Error('Save appeared to succeed but the stored value doesn\'t match what was entered.');
+  closeModal();
+  await refresh();
+ }catch(e){
+  console.error('Saving Opening Balances failed', e);
+  alert('Could not save Opening Balances.\n\nDetails: '+(e&&e.message?e.message:e));
+ }
+}
 
 /* ---------------- Tax Report & Government Submissions ---------------- */
 /* ---------------- Nigeria Tax Estimators (Nigeria Tax Act 2025, effective 1 Jan 2026) ----------------
