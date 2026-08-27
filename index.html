@@ -245,7 +245,7 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=27;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=28;
 let idb;
 const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
 function deriveInitials(name){
@@ -271,6 +271,7 @@ function openDB(){
    if(!d.objectStoreNames.contains('loans')){let s=d.createObjectStore('loans',{keyPath:'id'});s.createIndex('businessId','businessId')}
    if(!d.objectStoreNames.contains('reconciliations'))d.createObjectStore('reconciliations',{keyPath:'id'});
    if(!d.objectStoreNames.contains('stockPurchases')){let s=d.createObjectStore('stockPurchases',{keyPath:'id'});s.createIndex('businessId','businessId')}
+   if(!d.objectStoreNames.contains('returns')){let s=d.createObjectStore('returns',{keyPath:'id'});s.createIndex('businessId','businessId');s.createIndex('invoiceId','invoiceId')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};
   r.onerror=()=>reject(r.error);
@@ -307,6 +308,7 @@ async function bizQuotations(){const id=await getActiveBusinessId();return (awai
 async function bizCommissions(){const id=await getActiveBusinessId();return (await all('commissions')).filter(x=>x.businessId===id)}
 async function bizLoans(){const id=await getActiveBusinessId();return (await all('loans')).filter(x=>x.businessId===id)}
 async function bizStockPurchases(){const id=await getActiveBusinessId();return (await all('stockPurchases')).filter(x=>x.businessId===id)}
+async function bizReturns(){const id=await getActiveBusinessId();return (await all('returns')).filter(x=>x.businessId===id)}
 async function nextJournalNo(){let b=await getBusiness();let n=b.nextJournalNumber||1;b.nextJournalNumber=n+1;await put('business',b);return 'JNL-'+String(n).padStart(5,'0');}
 async function businessExpenseTypes(){const id=await getActiveBusinessId();return (await all('expenseTypes')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 async function businessExpenses(){const id=await getActiveBusinessId();return (await all('expenses')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
@@ -321,6 +323,7 @@ async function businessFinancials(bizId){
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===bizId);
   const loans=(await all('loans')).filter(l=>l.businessId===bizId);
   const stockPurchases=(await all('stockPurchases')).filter(sp=>sp.businessId===bizId);
+  const returns=(await all('returns')).filter(r=>r.businessId===bizId);
   const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openBal=Number(b.openingBalance)||0;
   const sales=invs.reduce((a,i)=>a+i.total,0);
   const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
@@ -329,9 +332,10 @@ async function businessFinancials(bizId){
   const loanRepaidTotal=loans.reduce((a,l)=>a+(l.repayments||[]).reduce((x,r)=>x+(Number(r.amount)||0),0),0);
   const loanInterestTotal=loans.reduce((a,l)=>a+(l.repayments||[]).reduce((x,r)=>x+(Number(r.interestPortion)||0),0),0);
   const stockPurchaseTotal=stockPurchases.reduce((a,sp)=>a+(Number(sp.totalCost)||0),0);
-  const lifetimeProfit=(openRev+sales)-(openExp+expTotal+loanInterestTotal+stockPurchaseTotal);
-  const bankBalance=openBal+received-expTotal+loanPrincipalTotal-loanRepaidTotal-stockPurchaseTotal;
-  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,loanPrincipalTotal,loanRepaidTotal,loanInterestTotal,loanOutstanding:loanPrincipalTotal-loanRepaidTotal,stockPurchaseTotal};
+  const returnsTotal=returns.reduce((a,r)=>a+(Number(r.refundAmount)||0),0);
+  const lifetimeProfit=(openRev+sales)-(openExp+expTotal+loanInterestTotal+stockPurchaseTotal+returnsTotal);
+  const bankBalance=openBal+received-expTotal+loanPrincipalTotal-loanRepaidTotal-stockPurchaseTotal-returnsTotal;
+  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,loanPrincipalTotal,loanRepaidTotal,loanInterestTotal,loanOutstanding:loanPrincipalTotal-loanRepaidTotal,stockPurchaseTotal,returnsTotal};
 }
 async function allBusinessFinancials(){const list=await all('business');const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
 async function getGlobalBankBalance(){
@@ -449,8 +453,8 @@ const Sync={
   async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
   async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
 
-  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations','stockPurchases'];const out={version:10,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
-  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations','stockPurchases'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
+  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations','stockPurchases','returns'];const out={version:11,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations','stockPurchases','returns'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
 
   markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),1500)}},
 
@@ -682,6 +686,8 @@ function logoutServerAccount(){
   <button class="navbtn" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
   <button class="navbtn" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
   <button class="navbtn" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
+  <button class="navbtn" onclick="showReturns()"><span class="ic">↩</span> Returns</button>
+  <button class="navbtn" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
   <button class="navbtn" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
   <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
@@ -718,6 +724,7 @@ function logoutServerAccount(){
 <div class="stat"><div class="lbl">Outstanding</div><div class="val" id="outstanding">—</div></div>
 <div class="stat accent"><div class="lbl">Profit (lifetime)</div><div class="val" id="profit">—</div></div>
 <div class="stat"><div class="lbl">Personal Spend</div><div class="val" id="personalSpend">—</div></div>
+<div class="stat accent"><div class="lbl">Commission Owed</div><div class="val" id="commissionOwed">—</div></div>
 </div>
 
 <div class="sectionhead"><h3>Quick actions</h3></div>
@@ -747,6 +754,8 @@ function logoutServerAccount(){
 <button class="navbtn" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
 <button class="navbtn" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
 <button class="navbtn" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
+<button class="navbtn" onclick="showReturns();closeDrawer()"><span class="ic">↩</span> Returns</button>
+<button class="navbtn" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
 <button class="navbtn" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
 <button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
 <button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
@@ -796,6 +805,8 @@ async function refresh(){
  let bankBalance=await getGlobalBankBalance();
  let globalOutstanding=await getGlobalOutstanding();
  document.getElementById('sales').textContent=money(openRev+sales);document.getElementById('received').textContent=money(paid);document.getElementById('outstanding').textContent=money(sales-paid);document.getElementById('profit').textContent=money(lifetimeProfit);document.getElementById('personalSpend').textContent=money(personalExpenses);
+ const commissionOwed=(await bizCommissions()).filter(c=>!c.paid).reduce((a,c)=>a+(Number(c.amount)||0),0);
+ document.getElementById('commissionOwed').textContent=money(commissionOwed);
  document.getElementById('bankBalance').textContent=money(bankBalance);
  document.getElementById('heroOutstanding').textContent=money(globalOutstanding);
  inv.sort((a,b)=>b.date.localeCompare(a.date));
@@ -834,7 +845,7 @@ async function deleteBusiness(id){
  const list=await all('business');
  if(list.length<=1){alert('You need at least one business.');return;}
  if(!confirm('Delete this business and ALL its invoices, customers, products, and expenses? This cannot be undone.'))return;
- for(const store of ['invoices','customers','products','quotations','commissions','loans','stockPurchases']){for(const item of (await all(store)).filter(x=>x.businessId===id))await del(store,item.id);}
+ for(const store of ['invoices','customers','products','quotations','commissions','loans','stockPurchases','returns']){for(const item of (await all(store)).filter(x=>x.businessId===id))await del(store,item.id);}
  for(const t of (await all('expenseTypes')).filter(t=>t.kind!=='personal'&&t.businessId===id))await del('expenseTypes',t.id);
  for(const e of (await all('expenses')).filter(e=>e.kind!=='personal'&&e.businessId===id))await del('expenses',e.id);
  await req('business','readwrite',s=>s.delete(id));
@@ -2216,7 +2227,102 @@ async function deleteStockPurchase(id){
  spCache=spCache.filter(x=>x.id!==id); drawStockPurchases(); refresh();
 }
 
+/* ---------------- Returns (goods sold, then returned) ----------------
+   Separate from Void — a Return handles a legitimate sale that a customer
+   later brings back (defective, wrong item, doesn't match), rather than
+   cancelling the invoice itself. Restores stock and issues a refund. ---------------- */
+async function showReturns(){
+ const returns=await bizReturns();
+ openModal(`<h2>Returns ${hb("A customer returning something they bought — defective, wrong item, or doesn't match. Restores stock and records a refund, without touching the original invoice.")}</h2>
+ <button class="btn accent full" onclick="startNewReturn()">＋ New Return</button>
+ <div class="list" id="returnsList" style="margin-top:12px"></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.returnsCache=returns;
+ drawReturnsList();
+}
+function drawReturnsList(){
+ returnsList.innerHTML=returnsCache.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(r=>`<div class="row-item"><div><b>${esc(r.productName)}</b><small>${r.journalNumber?esc(r.journalNumber)+' · ':''}${esc(r.date)} · ${esc(r.invoiceNumber||'—')} · ${esc(r.reason)}</small></div><div class="row-right"><strong class="money">${money(r.refundAmount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="deleteReturn('${r.id}')">Delete</button></div></div>`).join('') || '<div class="empty">No returns recorded.</div>';
+}
+async function startNewReturn(){
+ const invoices=(await bizInvoices()).filter(i=>i.status!=='void' && (i.items||[]).some(x=>x.productId));
+ if(!invoices.length){ alert('No invoices with product line items to return from yet.'); return; }
+ openModal(`<h2>New Return</h2>
+ <div class="field"><label>Invoice</label><select id="rtInvoice" onchange="loadReturnInvoiceLines()"><option value="">Select invoice</option>${invoices.sort((a,b)=>b.date.localeCompare(a.date)).map(i=>`<option value="${i.id}">${esc(i.number)} — ${esc(i.customer||'')} (${i.date})</option>`).join('')}</select></div>
+ <div id="rtLineFields"></div>
+ <button class="btn secondary full" onclick="showReturns()">Cancel</button>`);
+}
+async function loadReturnInvoiceLines(){
+ const inv=(await all('invoices')).find(x=>x.id===rtInvoice.value);
+ if(!inv){ rtLineFields.innerHTML=''; return; }
+ const lineOpts=(inv.items||[]).map((x,n)=>x.productId?`<option value="${n}" data-qty="${x.qty}" data-price="${x.price}">${esc(x.description)} (sold ${x.qty} @ ${money(x.price)})</option>`:'').join('');
+ rtLineFields.innerHTML=`
+ <div class="field"><label>Line item</label><select id="rtLine" onchange="prefillReturnAmount()">${lineOpts}</select></div>
+ <div class="row2"><div class="field"><label>Quantity returned</label><input id="rtQty" type="number" min="0" oninput="prefillReturnAmount()"></div><div class="field"><label>Refund amount</label><input id="rtRefund" type="number" min="0"></div></div>
+ <div class="field"><label>Reason</label><select id="rtReason"><option value="Defective">Defective</option><option value="Doesn't match description">Doesn't match description</option><option value="Wrong item">Wrong item</option><option value="Other">Other</option></select></div>
+ <div class="field"><label>Date</label><input id="rtDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+ <button class="btn accent full" onclick="saveReturn()">Save Return</button>`;
+ prefillReturnAmount();
+}
+function prefillReturnAmount(){
+ const opt=rtLine?.selectedOptions[0]; if(!opt) return;
+ const qty=Number(rtQty.value)||Number(opt.dataset.qty)||0;
+ if(!rtQty.value) rtQty.value=opt.dataset.qty;
+ rtRefund.value=(qty*Number(opt.dataset.price||0)).toFixed(2);
+}
+async function saveReturn(){
+ const inv=(await all('invoices')).find(x=>x.id===rtInvoice.value);
+ const lineIdx=Number(rtLine.value), line=inv.items[lineIdx];
+ const qty=Number(rtQty.value)||0, refundAmount=Number(rtRefund.value)||0;
+ if(qty<=0)return alert('Enter a quantity.');
+ const bizId=await getActiveBusinessId();
+ if(line.productId) await applyStockDelta([{productId:line.productId, qty}], +1);
+ const journalNumber=await nextJournalNo();
+ const rec={id:crypto.randomUUID(), businessId:bizId, invoiceId:inv.id, invoiceNumber:inv.number, productId:line.productId||'', productName:line.description, qty, reason:rtReason.value, refundAmount, date:rtDate.value, journalNumber};
+ await put('returns',rec);
+ closeModal(); await showReturns(); await refresh();
+}
+async function deleteReturn(id){
+ if(!confirm('Delete this return? Stock and the refund total will be reversed.'))return;
+ const r=(await all('returns')).find(x=>x.id===id); if(!r)return;
+ if(r.productId) await applyStockDelta([{productId:r.productId, qty:r.qty}], -1);
+ await del('returns',id);
+ returnsCache=returnsCache.filter(x=>x.id!==id); drawReturnsList(); refresh();
+}
+
+/* ---------------- Product Movement Report ---------------- */
+async function showProductMovementReport(){
+ const products=(await bizProducts()).filter(p=>p.trackStock);
+ openModal(`<h2>Product Movement Report ${hb("Every stock purchase (in), sale (out), and return (in) for a product, in order, with a running balance — so you can see exactly why the current stock number is what it is.")}</h2>
+ ${products.length?`<div class="field"><label>Product</label><select id="pmProduct" onchange="renderProductMovement()">${products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div><div id="pmBody"></div><button class="btn secondary full" onclick="exportProductMovementCSV()">Export CSV</button>`:'<div class="empty">No stock-tracked products yet.</div>'}
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ if(products.length) await renderProductMovement();
+}
+async function getProductMovementRows(productId){
+ const purchases=(await bizStockPurchases()).filter(sp=>sp.productId===productId).map(sp=>({date:sp.date, type:'Purchase (In)', qty:sp.qty, ref:sp.journalNumber||''}));
+ const sales=[];
+ for(const inv of (await bizInvoices()).filter(i=>i.status!=='void')){
+  for(const item of (inv.items||[])) if(item.productId===productId) sales.push({date:inv.date, type:'Sale (Out)', qty:-(Number(item.qty)||0), ref:inv.number});
+ }
+ const returns=(await bizReturns()).filter(r=>r.productId===productId).map(r=>({date:r.date, type:'Return (In)', qty:r.qty, ref:r.journalNumber||''}));
+ const rows=[...purchases,...sales,...returns].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+ let running=0;
+ for(const r of rows){ running+=r.qty; r.balance=running; }
+ return rows;
+}
+async function renderProductMovement(){
+ const rows=await getProductMovementRows(pmProduct.value);
+ pmBody.innerHTML=`<div class="list">${rows.map(r=>`<div class="row-item"><div><b>${esc(r.type)}</b><small>${esc(r.date)}${r.ref?' · '+esc(r.ref):''}</small></div><div class="row-right"><strong class="money" style="font-family:var(--font-mono)">${r.qty>0?'+':''}${r.qty}</strong><small>Balance: ${r.balance}</small></div></div>`).join('')||'<div class="empty">No movement yet for this product.</div>'}</div>`;
+}
+async function exportProductMovementCSV(){
+ const rows=await getProductMovementRows(pmProduct.value);
+ const productName=pmProduct.selectedOptions[0]?.textContent||'product';
+ const csvRows=[['Date','Type','Qty Change','Running Balance','Reference']];
+ for(const r of rows) csvRows.push([r.date, r.type, r.qty, r.balance, r.ref]);
+ downloadCSV(csvRows, 'product-movement-'+productName.replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.csv');
+}
+
 /* ---------------- Reports ---------------- */
+
 
 
 
