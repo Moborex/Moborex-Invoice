@@ -188,6 +188,11 @@ button{font-family:var(--font-body);cursor:pointer}
 @media(min-width:900px){.installBar{left:250px}}
 
 .lockScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:200;align-items:center;justify-content:center;padding:24px}
+.forceUpdateScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:250;align-items:center;justify-content:center;padding:24px}
+.forceUpdateScreen.show{display:flex}
+.updateBanner{display:none;position:fixed;left:0;right:0;bottom:0;z-index:81;background:var(--brass);color:#fff;padding:12px 14px;align-items:center;gap:10px;box-shadow:0 -6px 20px rgba(0,0,0,.18);font-size:12.5px}
+.updateBanner.show{display:flex}
+@media(min-width:900px){.updateBanner{left:250px}}
 .helpBtn{width:18px;height:18px;border-radius:50%;border:1.4px solid var(--brass);background:var(--brassSoft);color:var(--brass);font-size:10.5px;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:6px;vertical-align:middle;padding:0}
 .helpBubble{display:none;position:fixed;z-index:300;max-width:260px;background:var(--ink);color:#fff;padding:10px 12px;border-radius:10px;font-size:12.5px;line-height:1.5;box-shadow:var(--shadow-lg)}
 .helpBubble.show{display:block}
@@ -209,6 +214,9 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    no third-party database — reuses the Google account you already have).
    ===================================================================== */
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
+// Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
+// Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
+const APP_VERSION = 32;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -660,6 +668,18 @@ function logoutServerAccount(){
   </div>
 </div>
 <div class="helpBubble" id="helpBubble"></div>
+<div class="updateBanner" id="updateBanner">
+  <span>A new version is ready.</span>
+  <button class="btn primary" style="padding:8px 14px;font-size:12.5px;background:var(--ink)" onclick="doAppUpdate()">Update Now</button>
+  <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#00000030" onclick="dismissUpdateBanner()">×</button>
+</div>
+<div class="forceUpdateScreen" id="forceUpdateScreen">
+  <div style="max-width:320px;width:100%;text-align:center;color:#fff">
+    <div style="font-family:var(--font-display);font-size:22px;margin-bottom:6px">⬆ Update Required</div>
+    <div style="font-size:13px;opacity:.75;margin-bottom:18px" id="forceUpdateText">This copy of the app has been out of date for a while now — updating is needed to keep going.</div>
+    <button class="btn accent full" onclick="doAppUpdate()">Update Now</button>
+  </div>
+</div>
 <div class="installBar" id="installBar">
   <span id="installText">Install Moborex Ledger Vault on this device for one-tap access — no app store needed.</span>
   <button class="btn accent" id="installBtn" style="padding:8px 14px;font-size:12.5px" onclick="doInstall()">Install</button>
@@ -2596,10 +2616,10 @@ if('serviceWorker' in navigator){
   });
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('./sw.js').then(reg=>{
-      // Installed apps resumed from the background (tapping the home-screen icon
-      // again) don't always trigger a fresh navigation, so the browser's normal
-      // "check for updates" moment never fires. Force a check ourselves whenever
-      // the app comes back to the foreground.
+      window.moborexSwReg=reg;
+      // Installed apps resumed from the background don't always trigger a fresh
+      // navigation, so the browser's normal "check for updates" moment never
+      // fires reliably on its own. Ask the browser to check itself...
       const checkForUpdate=()=>{ if(reg) reg.update().catch(()=>{}); };
       document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') checkForUpdate(); });
       window.addEventListener('focus', checkForUpdate);
@@ -2607,5 +2627,64 @@ if('serviceWorker' in navigator){
     }).catch(()=>{});
   });
 }
+
+/* ---------------- Update detection & escalation ----------------
+   The browser's own "check if sw.js changed" can lag behind reality — CDN/host
+   caching, or simply nobody backgrounding the app for a long stretch. This
+   fetches sw.js directly with cache-busting (bypassing every caching layer) to
+   get a fast, reliable yes/no on whether a newer version genuinely exists on
+   the server, independent of whether the browser's SW lifecycle has caught up
+   yet. If it has and hasn't been acted on, this escalates: a dismissible
+   banner at first, then a repeating reminder, then — after a full day, or five
+   dismissals — a full-screen block that can't be skipped. ---------------- */
+function getUpdateState(){ try{ return JSON.parse(localStorage.getItem('moborex_update_state')||'null') || {}; }catch(e){ return {}; } }
+function setUpdateState(s){ localStorage.setItem('moborex_update_state', JSON.stringify(s)); }
+async function checkForNewVersion(){
+  try{
+    const res=await fetch('./sw.js?_='+Date.now(), {cache:'no-store'});
+    const text=await res.text();
+    const m=text.match(/moborex-invoice-v(\d+)/);
+    if(!m) return;
+    const serverVersion=Number(m[1]);
+    if(serverVersion<=APP_VERSION){
+      if(localStorage.getItem('moborex_update_state')) localStorage.removeItem('moborex_update_state');
+      return;
+    }
+    let state=getUpdateState();
+    if(state.version!==serverVersion) state={version:serverVersion, firstDetectedAt:Date.now(), dismissCount:0};
+    setUpdateState(state);
+    presentUpdatePrompt(state);
+  }catch(e){ console.error('Update check failed', e); }
+}
+function presentUpdatePrompt(state){
+  const hoursSince=(Date.now()-state.firstDetectedAt)/3600000;
+  if(hoursSince>=24 || state.dismissCount>=5){
+    forceUpdateText.textContent = hoursSince>=24
+      ? "This copy of the app has been out of date for over a day — updating is needed to keep going."
+      : "This update reminder has come up several times now — updating is needed to keep going.";
+    forceUpdateScreen.classList.add('show');
+    updateBanner.classList.remove('show');
+  } else if(hoursSince>=2 || state.dismissCount>=2){
+    openModal(`<h2>Update Available</h2><div class="notice">A newer version of the app is ready. Updating only takes a moment and keeps everything working as expected.</div><button class="btn accent full" onclick="doAppUpdate()">Update Now</button><button class="btn secondary full" onclick="remindUpdateLater()">Remind Me Later</button>`);
+  } else {
+    updateBanner.classList.add('show');
+  }
+}
+function dismissUpdateBanner(){
+  updateBanner.classList.remove('show');
+  const state=getUpdateState(); state.dismissCount=(state.dismissCount||0)+1; setUpdateState(state);
+}
+function remindUpdateLater(){
+  closeModal();
+  const state=getUpdateState(); state.dismissCount=(state.dismissCount||0)+1; setUpdateState(state);
+}
+async function doAppUpdate(){
+  try{ if(window.moborexSwReg) await window.moborexSwReg.update(); }catch(e){}
+  localStorage.removeItem('moborex_update_state');
+  window.location.reload();
+}
+setInterval(checkForNewVersion, 5*60*1000); // every 5 minutes while open
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') checkForNewVersion(); });
+window.addEventListener('load', ()=>setTimeout(checkForNewVersion, 3000));
 </script>
 </body></html>
