@@ -130,42 +130,25 @@ button{font-family:var(--font-body);cursor:pointer}
 .invoicePreview{background:#fff;border:1px solid #ddd;padding:26px;border-radius:12px;font-family:Georgia,'Times New Roman',Arial,'Noto Sans',sans-serif;color:#111;font-weight:500;overflow-wrap:break-word;word-break:break-word}
 .invoicePreview .sampleTop{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2.6px solid var(--ink);padding-bottom:14px}
 .invoicePreview .sampleLogo img{max-width:80px;max-height:70px}
-.invoicePreview .sampleCompany{display:flex;gap:12px;align-items:flex-start;text-align:left;font-size:12.5px;line-height:1.55;font-weight:600;max-width:60%;min-width:0}
-.invoicePreview .sampleCompany > div{min-width:0;overflow-wrap:break-word;word-break:break-word}
-.invoicePreview .sampleCompany h1{font-size:20px;margin:0 0 4px;font-weight:700;overflow-wrap:break-word;word-break:break-word}
-.invoicePreview .metaRight{text-align:right;font-size:12.5px;font-weight:600;flex-shrink:0;max-width:42%;min-width:0;overflow-wrap:break-word;word-break:break-word}
-.invoicePreview .metaRight strong{display:block;overflow-wrap:break-word;word-break:break-word}
+.invoicePreview .sampleCompany{display:flex;gap:12px;align-items:flex-start;text-align:left;font-size:12.5px;line-height:1.55;font-weight:600;max-width:60%}
+.invoicePreview .sampleCompany h1{font-size:20px;margin:0 0 4px;font-weight:700}
+.invoicePreview .metaRight{text-align:right;font-size:12.5px;font-weight:600;white-space:nowrap;flex-shrink:0}
 .invoicePreview .sampleMeta{display:flex;justify-content:space-between;gap:16px;margin-top:20px;padding-top:4px;font-size:12.5px;font-weight:600}
-.invoicePreview .sampleMeta > div{max-width:70%;min-width:0;overflow-wrap:break-word;word-break:break-word}
+.invoicePreview .sampleMeta > div{max-width:70%}
+.invoicePreview .sampleMeta strong{display:block;margin-top:2px;line-height:1.4}
+.invoicePreview .sampleMeta span{display:block;line-height:1.5}
 .invoicePreview b{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:#555;font-weight:800;margin-top:8px}
 .invoicePreview .vehicleBand{margin-top:16px;padding:10px 12px;background:#f4f4f2;border-radius:8px;font-size:12.5px;font-weight:600;line-height:1.5}
 .invoicePreview .vehicleBand strong{display:block;margin-top:3px}
-.invoicePreview table{width:100%;border-collapse:collapse;margin-top:16px;table-layout:fixed}
+.invoicePreview table{width:100%;border-collapse:collapse;margin-top:16px}
 .invoicePreview th{padding:8px;border-bottom:2px solid #333;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:800}
-.invoicePreview td{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12.5px;font-weight:600;overflow-wrap:break-word;word-break:break-word}
+.invoicePreview td{padding:8px;border-bottom:1px solid #ddd;text-align:left;font-size:12.5px;font-weight:600}
 .invoicePreview .r{text-align:right;font-family:var(--font-mono);font-weight:700}
 .invoicePreview .comment{font-size:11px;white-space:pre-wrap;margin-top:5px;color:#555;font-weight:500}
 .invoicePreview .paymentTotal{display:flex;justify-content:space-between;align-items:flex-end;margin-top:18px;gap:14px}
 .invoicePreview .totalPill{background:var(--ink);color:#fff;border-radius:12px;padding:10px 16px;text-align:right}
 .invoicePreview .totalPill span{display:block;font-size:10px;letter-spacing:.08em;opacity:.7;font-weight:700}
 .invoicePreview .totalPill b{color:#fff;font-family:var(--font-mono);font-size:19px;margin-top:2px;font-weight:700}
-.invoicePreview .poweredBy{text-align:right;font-size:9px;color:#999;margin-top:14px;letter-spacing:.02em}
-
-/* ---- Receipt (POS/thermal) layout — a completely different, narrow
-   single-column presentation reusing the same #pdfTarget node. Toggled by
-   adding class "receiptMode" right before printing/saving, and removed
-   right after, so the A4 layout is untouched the rest of the time. ---- */
-.invoicePreview.receiptMode{width:78mm;max-width:78mm;margin:0 auto;padding:8px;border:0;border-radius:0;font-family:var(--font-mono),'Courier New',monospace;font-size:10.5px;line-height:1.45}
-.invoicePreview.receiptMode .receiptHead{text-align:center;border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px}
-.invoicePreview.receiptMode .receiptHead h1{font-size:14px;margin:0 0 3px}
-.invoicePreview.receiptMode .receiptHead div{font-size:10px}
-.invoicePreview.receiptMode .receiptRow{display:flex;justify-content:space-between;gap:8px;padding:2px 0}
-.invoicePreview.receiptMode .receiptRule{border-top:1px dashed #000;margin:8px 0}
-.invoicePreview.receiptMode .receiptItems .receiptRow{align-items:flex-start}
-.invoicePreview.receiptMode .receiptItems .desc{flex:1;overflow-wrap:break-word;word-break:break-word}
-.invoicePreview.receiptMode .receiptItems .amt{white-space:nowrap;text-align:right}
-.invoicePreview.receiptMode .receiptTotal{font-weight:700;font-size:12.5px}
-.invoicePreview.receiptMode .receiptFoot{text-align:center;margin-top:10px;font-size:9.5px}
 
 @media print{
   .shell, #installBar, #backupBar, #drawerOverlay { display:none !important; }
@@ -175,7 +158,6 @@ button{font-family:var(--font-body);cursor:pointer}
   #pdfTarget{ border:0 !important; box-shadow:none !important; padding:0 !important; }
 }
 .pdfActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
-.pdfActions.receiptActions{grid-template-columns:1fr 1fr;margin-top:8px}
 
 .cloudBox{padding:13px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--paper);margin:12px 0}
 .cloudBox button{margin-top:8px}
@@ -204,13 +186,9 @@ button{font-family:var(--font-body);cursor:pointer}
 .installBar.show{display:flex}
 .installBar span{flex:1;line-height:1.4}
 @media(min-width:900px){.installBar{left:250px}}
-.updateCover{display:none;position:fixed;inset:0;background:var(--ink);z-index:220;align-items:center;justify-content:center;padding:24px;text-align:center}
-.updateCover.show{display:flex}
 
 .lockScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:200;align-items:center;justify-content:center;padding:24px}
 .helpBtn{width:18px;height:18px;border-radius:50%;border:1.4px solid var(--brass);background:var(--brassSoft);color:var(--brass);font-size:10.5px;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin-left:6px;vertical-align:middle;padding:0}
-.brandStrip{font-size:10px;letter-spacing:.03em;color:var(--brass);font-weight:700;text-transform:uppercase;margin:-8px 0 14px}
-.brandStrip span{color:var(--muted);margin:0 4px;font-weight:400;text-transform:none}
 .helpBubble{display:none;position:fixed;z-index:300;max-width:260px;background:var(--ink);color:#fff;padding:10px 12px;border-radius:10px;font-size:12.5px;line-height:1.5;box-shadow:var(--shadow-lg)}
 .helpBubble.show{display:block}
 .lockScreen.show{display:flex}
@@ -230,6 +208,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    no third-party database — reuses the Google account you already have).
    ===================================================================== */
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
+window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
   NGN:{sym:'₦',locale:'en-NG'}, USD:{sym:'$',locale:'en-US'}, GBP:{sym:'£',locale:'en-GB'},
@@ -243,34 +222,8 @@ function money(n){
   catch(e){return c+' '+(Number(n)||0).toLocaleString(undefined,{maximumFractionDigits:2})}
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-/* ---------------- Invoice numbering ---------------- */
-function deriveInvoicePrefix(name){
- // Culled from the company name: initials of each significant word, e.g.
- // "Moborex Service Hub" -> "MSH", "Ravos Farm" -> "RF". A single-word name
- // falls back to its first three letters, e.g. "Acme" -> "ACM". Always
- // derived live from the current name — renaming the business updates the
- // prefix on the next auto-generated number automatically.
- const words=(name||'').trim().split(/\s+/).filter(Boolean);
- if(!words.length) return 'INV';
- if(words.length===1) return words[0].replace(/[^a-zA-Z0-9]/g,'').slice(0,3).toUpperCase()||'INV';
- return words.map(w=>w[0]).join('').replace(/[^a-zA-Z0-9]/g,'').slice(0,5).toUpperCase()||'INV';
-}
-function nextInvoicePreview(b){ return deriveInvoicePrefix(b.name)+'-'+String(b.nextNumber||1).padStart(4,'0'); }
-async function nextInternalRef(){
- // A separate, always-on tracking number — assigned to EVERY invoice
- // regardless of whether numbering mode is manual or automatic, and never
- // shown as "the" invoice number. Its purpose is audit/record-keeping: if
- // the visible invoice number is typed by hand and isn't strictly
- // sequential, this still gives a true, gapless count of every document
- // actually issued by this business.
- let b=await getBusiness();
- let n=b.internalCounter||1;
- b.internalCounter=n+1;
- await put('business',b);
- return deriveInvoicePrefix(b.name)+'-'+String(n).padStart(6,'0');
-}/* ---------------- Help balloons ---------------- */
+/* ---------------- Help balloons ---------------- */
 function hb(text){return `<button type="button" class="helpBtn" onclick="showHelpBalloon(this)" data-help="${esc(text)}">?</button>`}
-function brandStrip(){return `<div class="brandStrip">Moborex Ledger Vault <span>·</span> Beyond Invoicing — to Reports &amp; Tax.</div>`}
 function showHelpBalloon(el){
  const bubble=document.getElementById('helpBubble');
  bubble.textContent=el.dataset.help;
@@ -291,9 +244,12 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=7;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=6;
 let idb;
-const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,internalCounter:1,currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,openingBalanceTaxStatus:'',type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
+function deriveInitials(name){
+ return (name||'').trim().split(/\s+/).map(w=>w[0]).filter(Boolean).join('').toUpperCase().slice(0,4) || 'INV';
+}
 function openDB(){
  return new Promise((resolve,reject)=>{
   const r=indexedDB.open(DB_NAME,DB_VERSION);
@@ -308,10 +264,9 @@ function openDB(){
    if(!d.objectStoreNames.contains('auditRecords'))d.createObjectStore('auditRecords',{keyPath:'id'});
    if(!d.objectStoreNames.contains('taxProfile'))d.createObjectStore('taxProfile',{keyPath:'id'});
    if(!d.objectStoreNames.contains('quotations')){let s=d.createObjectStore('quotations',{keyPath:'id'});s.createIndex('number','number');s.createIndex('customer','customer');s.createIndex('date','date')}
+   if(!d.objectStoreNames.contains('commissions')){let s=d.createObjectStore('commissions',{keyPath:'id'});s.createIndex('invoiceId','invoiceId')}
+   if(!d.objectStoreNames.contains('investments'))d.createObjectStore('investments',{keyPath:'id'});
    if(!d.objectStoreNames.contains('otherIncome')){let s=d.createObjectStore('otherIncome',{keyPath:'id'});s.createIndex('date','date')}
-   if(!d.objectStoreNames.contains('investmentAccounts')){let s=d.createObjectStore('investmentAccounts',{keyPath:'id'});s.createIndex('businessId','businessId')}
-   if(!d.objectStoreNames.contains('investmentMovements')){let s=d.createObjectStore('investmentMovements',{keyPath:'id'});s.createIndex('accountId','accountId');s.createIndex('date','date')}
-   if(!d.objectStoreNames.contains('commissions')){let s=d.createObjectStore('commissions',{keyPath:'id'});s.createIndex('invoiceId','invoiceId');s.createIndex('businessId','businessId')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};r.onerror=()=>reject(r.error);
  })
@@ -343,38 +298,13 @@ async function bizInvoices(){const id=await getActiveBusinessId();return (await 
 async function bizCustomers(){const id=await getActiveBusinessId();return (await all('customers')).filter(x=>x.businessId===id)}
 async function bizProducts(){const id=await getActiveBusinessId();return (await all('products')).filter(x=>x.businessId===id)}
 async function bizQuotations(){const id=await getActiveBusinessId();return (await all('quotations')).filter(x=>x.businessId===id)}
+async function bizCommissions(){const id=await getActiveBusinessId();return (await all('commissions')).filter(x=>x.businessId===id)}
 async function businessExpenseTypes(){const id=await getActiveBusinessId();return (await all('expenseTypes')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 async function businessExpenses(){const id=await getActiveBusinessId();return (await all('expenses')).filter(x=>x.kind!=='personal'&&x.businessId===id)}
 
-/* ---- Investment accounts: money moved out of cash into a Money Market /
-   Treasury Bills / etc account is a transfer, not an expense — it must never
-   touch P&L or the Tax Report on its own. Only the yield/interest earned on
-   a return movement is (optionally) taxable income; the principal moving in
-   and back out is just cash changing form. ---- */
-function investmentAccountBalance(acc,moves){
-  let bal=Number(acc.openingBalance)||0;
-  for(const m of moves){
-    if(m.accountId!==acc.id) continue;
-    if(m.type==='deposit') bal+=Number(m.amount)||0;
-    else if(m.type==='return') bal-=(Number(m.amount)||0)-(Number(m.yieldAmount)||0);
-  }
-  return bal;
-}
-async function investmentCashEffect(accountIds,allMoves){
-  // Net effect on Cash & Bank Balance: deposits pull cash out, returns (the
-  // full amount that lands back in the bank, principal + yield) bring it in.
-  let deposits=0, returns=0;
-  for(const m of allMoves){
-    if(!accountIds.includes(m.accountId)) continue;
-    if(m.type==='deposit') deposits+=Number(m.amount)||0;
-    else if(m.type==='return') returns+=Number(m.amount)||0;
-  }
-  return {deposits,returns,net:returns-deposits};
-}
-async function getGlobalInvestmentBalance(){
-  const accs=await all('investmentAccounts'), moves=await all('investmentMovements');
-  return accs.reduce((a,acc)=>a+investmentAccountBalance(acc,moves),0);
-}
+/* ---- Cross-business figures: bank balance and tax reporting look at every
+   business at once (plus shared personal expenses and recorded tax payments),
+   so the same combined balance shows no matter which business is active. ---- */
 async function businessFinancials(bizId){
   const b=(await all('business')).find(x=>x.id===bizId);
   if(!b) return null;
@@ -384,22 +314,9 @@ async function businessFinancials(bizId){
   const sales=invs.reduce((a,i)=>a+i.total,0);
   const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
   const expTotal=exps.reduce((a,e)=>a+e.amount,0);
-  // Commission owed to an in-house facilitator: only counted once its invoice
-  // is fully paid, since it's only actually paid out at that point — not an
-  // "Expense" the way the app usually tracks costs, and never shown on the
-  // invoice itself.
-  const fullyPaidInvIds=new Set(invs.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
-  const commissions=(await all('commissions')).filter(c=>c.businessId===bizId && c.status!=='void');
-  const commissionPaidTotal=commissions.filter(c=>fullyPaidInvIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
-  const commissionPendingTotal=commissions.filter(c=>!fullyPaidInvIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
-  const lifetimeProfit=(openRev+sales)-(openExp+expTotal)-commissionPaidTotal;
-  const investAccs=(await all('investmentAccounts')).filter(a=>a.kind==='business'&&a.businessId===bizId);
-  const investAccIds=investAccs.map(a=>a.id);
-  const allInvestMoves=await all('investmentMovements');
-  const investCash=await investmentCashEffect(investAccIds,allInvestMoves);
-  const investmentBalance=investAccs.reduce((a,acc)=>a+investmentAccountBalance(acc,allInvestMoves),0);
-  const bankBalance=openBal+received-expTotal-commissionPaidTotal+investCash.net;
-  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,investmentBalance,investDeposits:investCash.deposits,investReturns:investCash.returns,commissionPaidTotal,commissionPendingTotal};
+  const lifetimeProfit=(openRev+sales)-(openExp+expTotal);
+  const bankBalance=openBal+received-expTotal;
+  return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal};
 }
 async function allBusinessFinancials(){const list=await all('business');const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
 async function getGlobalBankBalance(){
@@ -408,9 +325,14 @@ async function getGlobalBankBalance(){
   const personalExpenses=(await all('expenses')).filter(e=>e.kind==='personal').reduce((a,e)=>a+e.amount,0);
   const otherIncomeTotal=(await all('otherIncome')).reduce((a,e)=>a+(Number(e.amount)||0),0);
   const taxPaid=(await all('taxSubmissions')).reduce((a,t)=>a+(Number(t.amountPaid)||0),0);
-  const personalInvestAccIds=(await all('investmentAccounts')).filter(a=>a.kind==='personal').map(a=>a.id);
-  const personalInvestCash=await investmentCashEffect(personalInvestAccIds,await all('investmentMovements'));
-  return businessTotal + otherIncomeTotal - personalExpenses - taxPaid + personalInvestCash.net;
+  const commissionsPaid=(await all('commissions')).filter(c=>c.paid).reduce((a,c)=>a+(Number(c.amount)||0),0);
+  const investments=await all('investments');
+  let investmentImpact=0;
+  for(const inv of investments){
+    if(!inv.preExisting) investmentImpact-=(Number(inv.amountInvested)||0);
+    investmentImpact+=(inv.withdrawals||[]).reduce((a,w)=>a+(Number(w.amount)||0),0);
+  }
+  return businessTotal + otherIncomeTotal + investmentImpact - personalExpenses - taxPaid - commissionsPaid;
 }
 async function getGlobalOutstanding(){
   const perBiz=await allBusinessFinancials();
@@ -433,12 +355,11 @@ async function autoGenerateSalaryIfDue(){
     if(b.type==='salary' && b.salaryAutoGenerate && (Number(b.salaryAmount)||0)>0 && b.salaryLastGenerated!==curYM){
       const monthName = new Date().toLocaleString('default',{month:'long',year:'numeric'});
       let number='';
-      if(b.invoiceMode==='auto'){ number=deriveInvoicePrefix(b.name)+'-'+String(b.nextNumber||1).padStart(4,'0'); b.nextNumber=(b.nextNumber||1)+1; }
-      const internalRefN=b.internalCounter||1; const internalRef=deriveInvoicePrefix(b.name)+'-'+String(internalRefN).padStart(6,'0'); b.internalCounter=internalRefN+1;
+      if(b.invoiceMode==='auto'){ number=String(b.nextNumber||1).padStart(4,'0'); b.nextNumber=(b.nextNumber||1)+1; }
       const employers = (await all('customers')).filter(c=>c.businessId===b.id);
       const employerName = employers.length ? employers[employers.length-1].name : (b.salaryEmployer||'Employer');
       const rec = {
-        id:crypto.randomUUID(), businessId:b.id, status:'active', number, internalRef,
+        id:crypto.randomUUID(), businessId:b.id, status:'active', number,
         date:new Date().toISOString().slice(0,10), dueDate:'',
         customerId:employers.length?employers[employers.length-1].id:'', customer:employerName, phone:'', address:'',
         vehicleDetails:'Auto-generated monthly salary', discount:0,
@@ -450,12 +371,13 @@ async function autoGenerateSalaryIfDue(){
       b.salaryLastGenerated=curYM;
       await req('business','readwrite',s=>s.put(b));
       Sync.markDirty();
+      ServerAccount.markDirty();
     }
   }
 }
 async function all(store){return req(store,'readonly',s=>s.getAll())}
-async function put(store,obj,skipDirty){obj.updatedAt=Date.now();let r=await req(store,'readwrite',s=>s.put(obj));if(!skipDirty)Sync.markDirty();return r}
-async function del(store,id){let r=await req(store,'readwrite',s=>s.delete(id));Sync.markDirty();return r}
+async function put(store,obj,skipDirty){obj.updatedAt=Date.now();let r=await req(store,'readwrite',s=>s.put(obj));if(!skipDirty){Sync.markDirty();ServerAccount.markDirty();}return r}
+async function del(store,id){let r=await req(store,'readwrite',s=>s.delete(id));Sync.markDirty();ServerAccount.markDirty();return r}
 
 /* ---------------- Sync engine (Google Drive appDataFolder) ---------------- */
 const Sync={
@@ -512,10 +434,10 @@ const Sync={
   async uploadEncrypted(text){const existing=await this.listBackup();const meta={name:'moborex_sync.enc',mimeType:'application/octet-stream'};if(!existing)meta.parents=['appDataFolder'];const boundary='moborex_'+crypto.randomUUID();const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+text+'\r\n--'+boundary+'--';const url=existing?`https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`:'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+this.accessToken,'Content-Type':'multipart/related; boundary='+boundary},body});if(!r.ok)throw Error(await r.text());return (await r.json()).id},
   async downloadEncrypted(){const f=await this.listBackup();if(!f)return null;const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,{headers:{Authorization:'Bearer '+this.accessToken}});if(!r.ok)throw Error(await r.text());return {text:await r.text(),modifiedTime:f.modifiedTime}},
 
-  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','investmentAccounts','investmentMovements','commissions'];const out={version:7,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
-  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','investmentAccounts','investmentMovements','commissions'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
+  async exportAll(){const arrayStores=['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments'];const out={version:7,exportedAt:new Date().toISOString()};for(const s of arrayStores){try{out[s]=await all(s)}catch(e){out[s]=[]}}try{out.business=await all('business')}catch(e){out.business=[]}return out},
+  async importAll(d){for(const s of ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments'])for(const item of(d[s]||[]))await req(s,'readwrite',st=>st.put(item));let biz=d.business;if(biz&&!Array.isArray(biz))biz=[biz];for(const b of (biz||[]))if(b&&b.id)await req('business','readwrite',st=>st.put(b));},
 
-  markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),4000)}},
+  markDirty(){this.dirty=true;if(this.connected&&this.accessToken&&(this.pin||this.plainMode)){clearTimeout(this.pushTimer);this.pushTimer=setTimeout(()=>this.push(),1500)}},
 
   async connect(){
     const ok=await this.auth(); if(!ok) return;
@@ -574,7 +496,7 @@ const Sync={
     }catch(e){console.error(e);if(force)alert('Could not read the cloud backup.'+(this.pin?' Check your Sync PIN.':''))}
     this.busy=false; this.paintStatus();
   },
-  startAutoPull(){clearInterval(this.pullTimer);this.pullTimer=setInterval(()=>this.pull(false),60000)},
+  startAutoPull(){clearInterval(this.pullTimer);this.pullTimer=setInterval(()=>this.pull(false),20000)},
   async resumeSession(){ // re-auth silently-ish for this browser tab session (Google requires a click)
     const ok=await this.auth(); if(!ok) return;
     if(!this.plainMode){ const pin=await this.ensurePin(false); if(!pin){this.pin=null;return} }
@@ -583,6 +505,128 @@ const Sync={
   disconnect(){this.accessToken=null;this.user=null;this.pin=null;this.plainMode=false;this.connected=false;clearInterval(this.pullTimer);localStorage.removeItem('moborex_google_connected');localStorage.removeItem('moborex_plain_mode');this.paintStatus()}
 };
 window.addEventListener('DOMContentLoaded',()=>Sync.init());
+
+/* ---------------- Account Sync (Cloudflare Workers backend) ----------------
+   Sign up / log in once, then log into the same account on every device.
+   Unlike Google Drive sync, the server stores the snapshot as-is — protected
+   by account login, not end-to-end encrypted. That's the standard model for
+   a real hosted account, same as most business software. ---------------- */
+const ServerAccount = {
+  configured:false, token:null, tenant:null,
+  dirty:false, pushTimer:null, pullTimer:null, busy:false,
+  init(){
+    this.configured = !!(window.MOBOREX_SERVER_URL && !window.MOBOREX_SERVER_URL.includes('PASTE_'));
+    this.token = localStorage.getItem('moborex_server_token');
+    try{ this.tenant = JSON.parse(localStorage.getItem('moborex_server_tenant')||'null'); }catch(e){ this.tenant=null; }
+    if(this.configured && this.token) this.startAutoPull();
+  },
+  async api(path, opts={}){
+    const res = await fetch(window.MOBOREX_SERVER_URL + path, {
+      ...opts,
+      headers: { 'Content-Type':'application/json', ...(this.token?{'Authorization':'Bearer '+this.token}:{}), ...(opts.headers||{}) }
+    });
+    let data; try{ data = await res.json(); }catch(e){ data = null; }
+    if(!res.ok) throw new Error((data && data.error) || ('Server error ('+res.status+')'));
+    return data;
+  },
+  async signup(email, password, tenantName){
+    const data = await this.api('/api/signup', { method:'POST', body: JSON.stringify({email,password,tenantName}) });
+    this.token = data.token; this.tenant = data.tenant;
+    localStorage.setItem('moborex_server_token', this.token);
+    localStorage.setItem('moborex_server_tenant', JSON.stringify(this.tenant));
+    await this.push();
+    this.startAutoPull();
+    return data;
+  },
+  async login(email, password){
+    const data = await this.api('/api/login', { method:'POST', body: JSON.stringify({email,password}) });
+    this.token = data.token; this.tenant = data.tenant;
+    localStorage.setItem('moborex_server_token', this.token);
+    localStorage.setItem('moborex_server_tenant', JSON.stringify(this.tenant));
+    this.startAutoPull();
+    return data;
+  },
+  logout(){
+    if(this.token) this.api('/api/logout', {method:'POST'}).catch(()=>{}); // revoke server-side too; ignore failure, we're clearing locally regardless
+    this.token=null; this.tenant=null; clearInterval(this.pullTimer);
+    localStorage.removeItem('moborex_server_token'); localStorage.removeItem('moborex_server_tenant');
+  },
+  markDirty(){
+    this.dirty=true;
+    if(this.token){ clearTimeout(this.pushTimer); this.pushTimer=setTimeout(()=>this.push(),1500); }
+  },
+  async push(force){
+    if(!this.token) return;
+    if(!this.dirty && !force) return;
+    this.busy=true;
+    try{
+      const data = await Sync.exportAll();
+      await this.api('/api/sync/push', { method:'POST', body: JSON.stringify({payload: JSON.stringify(data)}) });
+      this.dirty=false;
+      localStorage.setItem('moborex_server_last_push', new Date().toISOString());
+    }catch(e){ console.error('Server push failed', e); }
+    this.busy=false;
+  },
+  async pull(force){
+    if(!this.token) return;
+    if(this.dirty && !force) return;
+    this.busy=true;
+    try{
+      const data = await this.api('/api/sync/pull', { method:'GET' });
+      if(data && data.payload){
+        const parsed = JSON.parse(data.payload);
+        await Sync.importAll(parsed);
+        localStorage.setItem('moborex_server_last_pull', new Date().toISOString());
+        await refresh();
+      }
+    }catch(e){ console.error('Server pull failed', e); if(force) alert('Could not reach the server: '+e.message); }
+    this.busy=false;
+  },
+  startAutoPull(){ clearInterval(this.pullTimer); this.pullTimer=setInterval(()=>this.pull(false), 20000); }
+};
+window.addEventListener('DOMContentLoaded', ()=>ServerAccount.init());
+
+/* iOS Safari throttles timers hard once a tab/PWA is backgrounded, and can evict
+   local storage from sites that go quiet — a 20s poll and a short debounce aren't
+   enough on their own. So: push immediately (bypassing the debounce) the instant
+   the app is about to leave the foreground, and pull fresh the instant it returns,
+   on both the Drive and server sync engines. 'pagehide' catches the case iOS
+   sometimes skips 'visibilitychange' for (closing the tab/app outright). */
+function flushSyncOnBackground(){
+  if(Sync.connected && Sync.dirty) Sync.push();
+  if(ServerAccount.token && ServerAccount.dirty) ServerAccount.push(true);
+}
+function refreshSyncOnForeground(){
+  if(Sync.connected) Sync.pull(false);
+  if(ServerAccount.token) ServerAccount.pull(false);
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden') flushSyncOnBackground();
+  else refreshSyncOnForeground();
+});
+window.addEventListener('pagehide', flushSyncOnBackground);
+window.addEventListener('focus', refreshSyncOnForeground);
+
+async function doServerSignup(){
+  if(!saEmail.value || !saPassword.value) return alert('Enter an email and password.');
+  try{
+    await ServerAccount.signup(saEmail.value.trim(), saPassword.value, saName.value.trim());
+    alert('Account created! Your data is now backed up to your account.');
+    closeModal(); showCloudSync();
+  }catch(e){ alert('Could not create account: '+e.message); }
+}
+async function doServerLogin(){
+  if(!saLoginEmail.value || !saLoginPassword.value) return alert('Enter your email and password.');
+  try{
+    await ServerAccount.login(saLoginEmail.value.trim(), saLoginPassword.value);
+    if(confirm("Signed in. Pull this account's data into this device now? (Recommended for a new device.)")) await ServerAccount.pull(true);
+    closeModal(); showCloudSync();
+  }catch(e){ alert('Could not sign in: '+e.message); }
+}
+function logoutServerAccount(){
+  if(!confirm('Log out of this account on this device? Your data stays on the server.')) return;
+  ServerAccount.logout(); closeModal(); showCloudSync();
+}
 </script>
 </head>
 <body>
@@ -607,19 +651,6 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
   <button class="btn primary" style="padding:8px 14px;font-size:12.5px;background:var(--ink)" onclick="startOnboardingBackup()">Set Up Backup</button>
   <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#00000030" onclick="dismissBackupBar()">×</button>
 </div>
-<div class="installBar" id="updateBar" style="background:var(--good)">
-  <span>A new version of Ledger Vault is ready. Update now to get the latest fixes.</span>
-  <button class="btn primary" style="padding:8px 14px;font-size:12.5px;background:var(--ink)" onclick="applyUpdate()">Update Now</button>
-  <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#00000030" onclick="dismissUpdateBar()">×</button>
-</div>
-<div class="updateCover" id="updateCover">
-  <div style="max-width:340px;color:#fff">
-    <div class="seal" style="width:56px;height:56px;font-size:26px;margin:0 auto 16px">▦</div>
-    <h2 style="color:#fff;margin-bottom:8px">Update Required</h2>
-    <p style="color:#cfd6e0;font-size:13.5px;line-height:1.5;margin-bottom:18px">A new version of Ledger Vault has been available for a while. Please update now to keep using the app — your data stays exactly as it is.</p>
-    <button class="btn accent full" onclick="applyUpdate()">Update Now</button>
-  </div>
-</div>
 <div class="shell">
 
 <aside class="sidebar">
@@ -632,8 +663,8 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
   <button class="navbtn" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
   <button class="navbtn" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
   <button class="navbtn" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
-  <button class="navbtn" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
   <button class="navbtn" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
+  <button class="navbtn" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
   <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
   <button class="navbtn" onclick="showReports()"><span class="ic">▥</span> Reports</button>
@@ -648,7 +679,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 
 <header class="topbar">
 <div class="topbar-row">
-<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Moborex Ledger Vault</div><div class="tagline">Beyond Invoicing — to Reports &amp; Tax.</div><button class="bizname bizSwitch" onclick="showBusinessSwitcher()"><span id="brandName">Business</span> <span class="chev">▾</span></button></div></div>
+<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Moborex Ledger Vault</div><button class="bizname bizSwitch" onclick="showBusinessSwitcher()"><span id="brandName">Business</span> <span class="chev">▾</span></button></div></div>
 <button class="iconbtn drawerToggle" onclick="openDrawer()">☰</button>
 </div>
 <div class="hello">Business dashboard</div><div class="pagehead">Good day 👋</div>
@@ -669,7 +700,6 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 <div class="stat"><div class="lbl">Outstanding</div><div class="val" id="outstanding">—</div></div>
 <div class="stat accent"><div class="lbl">Profit (lifetime)</div><div class="val" id="profit">—</div></div>
 <div class="stat"><div class="lbl">Personal Spend</div><div class="val" id="personalSpend">—</div></div>
-<div class="stat"><div class="lbl">Investment Balance</div><div class="val" id="investBalance">—</div></div>
 </div>
 
 <div class="sectionhead"><h3>Quick actions</h3></div>
@@ -695,8 +725,8 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 <button class="navbtn" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
 <button class="navbtn" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
 <button class="navbtn" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
-<button class="navbtn" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
 <button class="navbtn" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
+<button class="navbtn" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
 <button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
 <button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
 <button class="navbtn" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
@@ -717,18 +747,7 @@ window.addEventListener('DOMContentLoaded',()=>Sync.init());
 let uiHistoryPushed=false;
 function isAnyOverlayOpen(){return modal.classList.contains('show')||drawerOverlay.classList.contains('show')}
 function pushNavIfNeeded(){if(!uiHistoryPushed){history.pushState({moborexUI:true},'');uiHistoryPushed=true}}
-function popNavIfNeeded(){
- // Deferred to a microtask on purpose: several flows close one screen and
- // immediately open another right after (e.g. Generate Audit Report closes
- // the findings screen, then opens the report preview). history.back() is
- // asynchronous — calling it here and then synchronously re-opening a modal
- // left a popstate event pending that would fire moments later and yank the
- // just-opened modal back closed. Waiting a microtask lets that synchronous
- // reopen (if any) happen first, so we only actually go back if the app is
- // still closed once the current call chain has finished.
- if(!uiHistoryPushed) return;
- queueMicrotask(()=>{ if(uiHistoryPushed&&!isAnyOverlayOpen()){uiHistoryPushed=false;history.back()} });
-}
+function popNavIfNeeded(){if(uiHistoryPushed&&!isAnyOverlayOpen()){uiHistoryPushed=false;history.back()}}
 window.addEventListener('popstate',()=>{modal.classList.remove('show');drawerOverlay.classList.remove('show');uiHistoryPushed=false});
 
 function openDrawer(){drawerOverlay.classList.add('show');pushNavIfNeeded()}
@@ -752,14 +771,11 @@ async function refresh(){
  let sales=inv.reduce((a,i)=>a+i.total,0),paid=inv.reduce((a,i)=>a+i.payments.reduce((x,p)=>x+p.amount,0),0);
  let bizExpensesTotal=ex.reduce((a,e)=>a+e.amount,0);
  let personalExpenses=personalEx.reduce((a,e)=>a+e.amount,0);
- const activeBf=await businessFinancials(b.id);
- let lifetimeProfit=activeBf?activeBf.lifetimeProfit:(openRev+sales)-(openExp+bizExpensesTotal);
+ let lifetimeProfit=(openRev+sales)-(openExp+bizExpensesTotal);
  let bankBalance=await getGlobalBankBalance();
  let globalOutstanding=await getGlobalOutstanding();
- let investBalance=await getGlobalInvestmentBalance();
  document.getElementById('sales').textContent=money(openRev+sales);document.getElementById('received').textContent=money(paid);document.getElementById('outstanding').textContent=money(sales-paid);document.getElementById('profit').textContent=money(lifetimeProfit);document.getElementById('personalSpend').textContent=money(personalExpenses);
  document.getElementById('bankBalance').textContent=money(bankBalance);
- document.getElementById('investBalance').textContent=money(investBalance);
  document.getElementById('heroOutstanding').textContent=money(globalOutstanding);
  inv.sort((a,b)=>b.date.localeCompare(a.date));
  recent.innerHTML=inv.slice(0,5).map(i=>{const st=invoiceStatusStamp(i);
@@ -831,7 +847,7 @@ async function showSettings(){
  let b=await getBusiness();
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
  openModal(`<h2>Business Settings ${hb("Everything specific to this one business: its name, currency, invoice numbering, and how it's classified for tax purposes.")}</h2>
- <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}" oninput="updateInvoiceNumberPreview()"></div><div class="field"><label>Type ${hb("Business tracks sales and expenses normally. Salary auto-logs a monthly pay entry instead, and relabels Customers to Employer.")}</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option></select></div></div>
+ <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div><div class="field"><label>Type ${hb("Business tracks sales and expenses normally. Salary auto-logs a monthly pay entry instead, and relabels Customers to Employer.")}</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option></select></div></div>
  <div id="salaryFieldsBox" style="display:none">
   <div class="notice">Once set up, this business logs a salary payment automatically each month until you switch off auto-generate, change amount, or change employer. "Customers" becomes "Employer" for this business.</div>
   <div class="row2"><div class="field"><label>Monthly Salary Amount</label><input id="bsalAmt" type="number" min="0" value="${b.salaryAmount||0}"></div><div class="field"><label>Auto-generate monthly ${hb("When on, this business logs a salary payment for you automatically once a month, with no need to create it by hand.")}</label><select id="bsalAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div></div>
@@ -849,23 +865,10 @@ async function showSettings(){
  <div class="field"><label>Invoice header note</label><textarea id="bh">${esc(b.headerComment)}</textarea></div>
  <div class="field"><label>Invoice footer / terms</label><textarea id="bf">${esc(b.footerComment)}</textarea></div>
  <h3 style="font-size:14px;margin-top:16px">Invoice numbering</h3>
- <div class="row2"><div class="field"><label>Numbering Mode ${hb("Manual: you type each invoice number yourself. Automatic: the app assigns the next number in sequence for you, with a prefix taken from your business name (e.g. \"Moborex Service Hub\" → MSH-0001).")}</label><select id="bm" onchange="updateInvoiceNumberPreview()"><option value="manual">Manual</option><option value="auto">Automatic</option></select></div><div class="field"><label>Next automatic number</label><input id="bnext" type="number" value="${b.nextNumber}" oninput="updateInvoiceNumberPreview()"></div></div>
- <div id="invoiceNumberPreviewRow" style="display:none;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px">
-  <small style="color:var(--muted)">If switched to Automatic, next number would be</small>
-  <span id="invoiceNumberPreview" class="stamp due" style="cursor:default;font-family:var(--font-mono);pointer-events:none"></span>
- </div>
+ <div class="row2"><div class="field"><label>Numbering Mode ${hb("Manual: you type each invoice number yourself. Automatic: the app assigns the next number in sequence for you.")}</label><select id="bm"><option value="manual">Manual</option><option value="auto">Automatic</option></select></div><div class="field"><label>Next automatic number</label><input id="bnext" type="number" value="${b.nextNumber}"></div></div>
+ <div class="field"><label>Number prefix ${hb("Added in front of every automatically-generated invoice number, e.g. MSH-0007. Defaults to initials from your business name — change it if you want something else. Invoices already saved keep whatever prefix they were created with, even if you change this later.")}</label><input id="bprefix" value="${esc(b.numberPrefix||'')}" placeholder="${deriveInitials(b.name)} (auto from business name)"></div>
  <button class="btn primary full" onclick="saveSettings()">Save Settings</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- bm.value=b.invoiceMode; btype.value=b.type||'business'; blegal.value=b.legalForm||'businessName'; toggleSalaryFields(); toggleFixedAssets(); updateInvoiceNumberPreview();
-}
-function updateInvoiceNumberPreview(){
- if(!document.getElementById('invoiceNumberPreviewRow')) return;
- const isManual = bm.value==='manual';
- invoiceNumberPreviewRow.style.display = isManual ? 'flex' : 'none';
- if(isManual){
-  const prefix = deriveInvoicePrefix(bn.value);
-  const n = Number(bnext.value)||1;
-  invoiceNumberPreview.textContent = prefix+'-'+String(n).padStart(4,'0');
- }
+ bm.value=b.invoiceMode; btype.value=b.type||'business'; blegal.value=b.legalForm||'businessName'; toggleSalaryFields(); toggleFixedAssets();
 }
 function toggleSalaryFields(){
  const isSalary=btype.value==='salary';
@@ -875,7 +878,7 @@ function toggleSalaryFields(){
 function toggleFixedAssets(){fixedAssetsField.style.display = blegal.value==='limited' ? 'block' : 'none';}
 async function saveSettings(){
  let b=await getBusiness();
- let done=async logo=>{b.name=bn.value;b.type=btype.value;b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}else{b.legalForm=blegal.value;if(blegal.value==='limited')b.fixedAssets=Number(bassets.value)||0;}if(logo!==undefined)b.logo=logo;await put('business',b);closeModal();refresh()};
+ let done=async logo=>{b.name=bn.value;b.type=btype.value;b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;b.numberPrefix=bprefix.value.trim();if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}else{b.legalForm=blegal.value;if(blegal.value==='limited')b.fixedAssets=Number(bassets.value)||0;}if(logo!==undefined)b.logo=logo;await put('business',b);closeModal();refresh()};
  if(bl.files[0]){let r=new FileReader();r.onload=()=>done(r.result);r.readAsDataURL(bl.files[0])}else done();
 }
 
@@ -943,7 +946,7 @@ function quoteStatusStamp(q){
  if(q.status==='sent') return {cls:'duesoon',label:'Sent'};
  return {cls:'due',label:'Draft'};
 }
-async function nextQuoteNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextQuoteNumber||1;b.nextQuoteNumber=n+1;await put('business',b);return 'Q-'+String(n).padStart(4,'0')}
+async function nextQuoteNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextQuoteNumber||1;b.nextQuoteNumber=n+1;await put('business',b);const prefix=b.numberPrefix||deriveInitials(b.name);return prefix+'-Q-'+String(n).padStart(4,'0')}
 async function showQuotations(){
  let qs=await bizQuotations();
  openModal(`<h2>Quotations ${hb("A quote you can send before doing any work. Nothing here counts as a sale until you convert an approved quote into a real invoice.")}</h2><div class="notice">Quotations never appear in Sales, Profit, Reports, or Tax — only once a quotation is converted to an invoice does it count anywhere.</div>
@@ -1048,20 +1051,24 @@ function invoiceStatusStamp(i){
   if(i.dueDate){const days=Math.ceil((new Date(i.dueDate)-new Date(today))/86400000);if(days>=0&&days<=3)return {cls:'duesoon',label:'Due in '+days+'d'};}
   return {cls:'due',label:'Balance '+money(i.total-paid)};
 }
-async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextNumber||1;b.nextNumber=n+1;await put('business',b);return deriveInvoicePrefix(b.name)+'-'+String(n).padStart(4,'0')}
+async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')return '';let n=b.nextNumber||1;b.nextNumber=n+1;await put('business',b);const prefix=b.numberPrefix||deriveInitials(b.name);return prefix+'-'+String(n).padStart(4,'0')}
+async function previewNextNo(b){const prefix=b.numberPrefix||deriveInitials(b.name);return prefix+'-'+String(b.nextNumber||1).padStart(4,'0')}
 async function openInvoice(id){
  let b=await getBusiness(),allInv=await bizInvoices(),inv=id?allInv.find(x=>x.id===id):null,customers=await bizCustomers();
- inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),internalRef:await nextInternalRef(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
- window.editing=inv;window.items=(inv.items||[]).map(x=>({...x}));window.invoiceExpenses=(await all('expenses')).filter(x=>x.invoiceId===inv.id);window.invoiceCommissions=(await all('commissions')).filter(x=>x.invoiceId===inv.id);
+ inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
+ window.editing=inv;window.items=(inv.items||[]).map(x=>({...x}));window.invoiceExpenses=(await all('expenses')).filter(x=>x.invoiceId===inv.id);
+ const commission = id ? (await all('commissions')).find(c=>c.invoiceId===id) : null;
+ window.editingCommission = commission;
  const isVoid=inv.status==='void';
  const isSalary=b.type==='salary';
  const custLabel=isSalary?'Employer':'Customer';
  const custOpts=`<option value="">Select saved ${custLabel.toLowerCase()}</option>`+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
- openModal(`<h2>${id?(isSalary?'Edit Salary Payment':'Edit Invoice'):(isSalary?'Log Salary Payment':'New Invoice')}</h2>${brandStrip()}
+ const nextPreview = b.invoiceMode==='auto' ? await previewNextNo(b) : null;
+ openModal(`<h2>${id?(isSalary?'Edit Salary Payment':'Edit Invoice'):(isSalary?'Log Salary Payment':'New Invoice')}</h2>
  ${isSalary?'<div class="notice">This entry is treated like an invoice under the hood, so it shows up in Reports, Tax Report, and your bank balance the same way regular sales do.</div>':''}
  ${isVoid?`<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)"><b>This ${isSalary?'entry':'invoice'} is void.</b> It's kept for your records and numbering, but excluded from sales, profit, and reports.</div>`:''}
- <div class="row2"><div class="field"><label>${isSalary?'Reference':'Invoice'} number</label><input id="fNo" value="${esc(inv.number)}" ${isVoid?'disabled':''}></div><div class="field"><label>${isSalary?'Pay':'Invoice'} date</label><input id="fDate" type="date" value="${inv.date}" ${isVoid?'disabled':''}></div></div>
- ${inv.internalRef?`<div style="display:flex;justify-content:flex-end;margin:-4px 0 6px"><small style="color:var(--muted)">Internal tracking ref (non-editable): <span style="font-family:var(--font-mono)">${esc(inv.internalRef)}</span></small></div>`:''}
+ <div class="row2"><div class="field"><label>${isSalary?'Reference':'Invoice'} number ${b.invoiceMode==='auto'?'<span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">(auto — not editable)</span>':''}</label><input id="fNo" value="${esc(inv.number)}" ${(isVoid||b.invoiceMode==='auto')?'disabled':''}></div><div class="field"><label>${isSalary?'Pay':'Invoice'} date</label><input id="fDate" type="date" value="${inv.date}" ${isVoid?'disabled':''}></div></div>
+ ${(!id && nextPreview) ? `<div class="notice">Next number in this business's sequence: <b>${esc(nextPreview)}</b></div>` : ''}
  <div class="row2"><div class="field"><label>${custLabel}</label><select id="fCustomerSelect" onchange="selectCustomer(this.value)" ${isVoid?'disabled':''}>${custOpts}</select></div><div class="field"><label>Due date</label><input id="fDue" type="date" value="${inv.dueDate||''}" ${isVoid?'disabled':''}></div></div>
  <div class="row2"><div class="field"><label>${custLabel} phone</label><input id="fPhone" value="${esc(inv.phone)}" readonly></div><div class="field"><label>${custLabel} address</label><input id="fAddress" value="${esc(inv.address)}" readonly></div></div>
  <div class="field"><label>Job details</label><input id="fVehicle" value="${esc(inv.vehicleDetails||'')}" placeholder="Optional — job reference, service description, etc." ${isVoid?'disabled':''}></div>
@@ -1071,22 +1078,16 @@ async function openInvoice(id){
  <div class="field"><label>Discount ${hb("A flat amount subtracted from this invoice's total. Doesn't affect the product's catalogue price for future invoices.")}</label><input id="fDiscount" type="number" min="0" value="${inv.discount||0}" oninput="updateInvoiceTotal()" ${isVoid?'disabled':''}></div>
  <div class="sectionhead"><h3>Job expenses</h3>${isVoid?'':'<button class="btn secondary" onclick="addInvoiceExpense()">＋ Add</button>'}</div>
  <div class="notice">Expenses here are for your profit reporting only — they never appear on the customer's invoice.</div><div id="invoiceExpenseLines"></div>
- <div class="sectionhead"><h3>Commission</h3>${isVoid?'':'<button class="btn secondary" onclick="addInvoiceCommission()">＋ Add</button>'}</div>
- <div class="notice">Paid to whoever facilitated this job — never appears on the customer's invoice, and never counted as a Business Expense. It only comes out of your Cash &amp; Bank Balance once this invoice is fully paid, and is voided automatically along with this invoice (restored if you un-void it).</div><div id="invoiceCommissionLines"></div>
+ <div class="sectionhead"><h3>Commission ${hb("Paid to whoever facilitated this job. Never shown on the customer's invoice, never counted as a business expense — tracked separately, and only payable once this invoice is fully paid.")}</h3></div>
+ <div class="row2"><div class="field"><label>Person</label><input id="fCommissionPerson" value="${esc(commission?.personName||'')}" ${isVoid?'disabled':''}></div><div class="field"><label>Amount</label><input id="fCommissionAmount" type="number" min="0" value="${commission?.amount||0}" ${isVoid?'disabled':''}></div></div>
  <div class="totalBox"><div class="totalRow"><span>Sales</span><b id="lineTotal">—</b></div><div class="totalRow"><span>Discount</span><b id="discTotal">—</b></div><div class="totalRow"><span>Job expenses</span><b id="invExpTotal">—</b></div><div class="totalRow grand"><span>Customer total</span><b id="grandTotal">—</b></div></div>
  ${isVoid?'':'<button class="btn primary full" onclick="saveInvoice()">Save Invoice</button>'}${id?`<button class="btn secondary full" onclick="payments('${id}')">Payments</button><button class="btn secondary full" onclick="previewInvoice('${id}')">Preview & PDF</button><button class="btn secondary full" onclick="duplicateInvoice('${id}')">Duplicate</button>${isVoid?`<button class="btn secondary full" onclick="restoreInvoice('${id}')">Restore (Un-void)</button>`:`<button class="btn danger full" onclick="voidInvoiceConfirm('${id}')">Void Invoice</button>`}`:''}<button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- window.selectedCustomerId=inv.customerId||'';if(fCustomerSelect)fCustomerSelect.value=window.selectedCustomerId;if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();await drawInvoiceCommissions();updateInvoiceTotal();
+ window.selectedCustomerId=inv.customerId||'';if(fCustomerSelect)fCustomerSelect.value=window.selectedCustomerId;if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();updateInvoiceTotal();
 }
 async function selectCustomer(id){window.selectedCustomerId=id;const cs=await bizCustomers(),c=cs.find(x=>x.id===id);fPhone.value=c?.phone||'';fAddress.value=c?.address||'';}
 async function drawInvoiceExpenses(){const types=await businessExpenseTypes(),opts='<option value="">Select expense type</option>'+types.sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');invoiceExpenseLines.innerHTML=invoiceExpenses.map((x,n)=>`<div class="line"><select onchange="invoiceExpenses[${n}].typeId=this.value">${opts}</select><input type="number" min="0" placeholder="Amount" value="${x.amount||0}" oninput="invoiceExpenses[${n}].amount=Number(this.value);updateInvoiceTotal()"><input placeholder="Note" value="${esc(x.description||'')}" oninput="invoiceExpenses[${n}].description=this.value"><button class="btn danger" onclick="invoiceExpenses.splice(${n},1);drawInvoiceExpenses();updateInvoiceTotal()">×</button></div>`).join('');invoiceExpenses.forEach((x,n)=>{let q=invoiceExpenseLines.querySelectorAll('select')[n];if(q)q.value=x.typeId||'';});}
 async function addInvoiceExpense(){invoiceExpenses.push({id:crypto.randomUUID(),invoiceId:editing.id,typeId:'',amount:0,description:''});await drawInvoiceExpenses();updateInvoiceTotal();}
 function invoiceExpenseAmount(){return invoiceExpenses.reduce((a,x)=>a+(Number(x.amount)||0),0);}
-async function drawInvoiceCommissions(){
- const paidSoFar=(editing.payments||[]).reduce((a,p)=>a+p.amount,0), isFullyPaid=paidSoFar>=editing.total&&editing.total>0;
- const statusTag=isFullyPaid?'<span class="stamp paid" style="margin-left:6px">Paid out</span>':'<span class="stamp due" style="margin-left:6px">Pending — pays out once invoice is fully paid</span>';
- invoiceCommissionLines.innerHTML=invoiceCommissions.map((x,n)=>`<div class="line"><input placeholder="Recipient name" value="${esc(x.recipientName||'')}" oninput="invoiceCommissions[${n}].recipientName=this.value"><input type="number" min="0" placeholder="Amount" value="${x.amount||0}" oninput="invoiceCommissions[${n}].amount=Number(this.value)"><button class="btn danger" onclick="invoiceCommissions.splice(${n},1);drawInvoiceCommissions()">×</button></div>${x.amount?statusTag:''}`).join('');
-}
-async function addInvoiceCommission(){invoiceCommissions.push({id:crypto.randomUUID(),invoiceId:editing.id,recipientName:'',amount:0});await drawInvoiceCommissions();}
 async function drawLines(){
  const products=await bizProducts();
  const opts='<option value="">Select product / service</option>'+products.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}">${esc(p.name)} — ${money(p.price)}</option>`).join('');
@@ -1108,45 +1109,28 @@ async function saveInvoice(){
  for(const x of (await all('expenses')).filter(x=>x.invoiceId===i.id))await del('expenses',x.id);
  const types=await businessExpenseTypes();
  for(const x of invoiceExpenses.filter(x=>(Number(x.amount)||0)>0)){const t=types.find(q=>q.id===x.typeId);await put('expenses',{id:x.id,invoiceId:i.id,date:i.date,category:t?.name||'Invoice Expense',amount:Number(x.amount)||0,description:x.description||'',typeId:x.typeId||'',kind:'business',businessId:bizId});}
- for(const x of (await all('commissions')).filter(x=>x.invoiceId===i.id))await del('commissions',x.id);
- for(const x of invoiceCommissions.filter(x=>(Number(x.amount)||0)>0 && x.recipientName.trim())){await put('commissions',{id:x.id,invoiceId:i.id,businessId:bizId,recipientName:x.recipientName.trim(),amount:Number(x.amount)||0,status:'active'});}
+ const commPerson=(document.getElementById('fCommissionPerson')?.value||'').trim(), commAmount=Number(document.getElementById('fCommissionAmount')?.value)||0;
+ if(commPerson && commAmount>0){
+  const existingComm=window.editingCommission;
+  await put('commissions',{id:existingComm?existingComm.id:crypto.randomUUID(),invoiceId:i.id,businessId:bizId,personName:commPerson,amount:commAmount,paid:existingComm?existingComm.paid:false,paidDate:existingComm?existingComm.paidDate:''});
+ } else if(window.editingCommission){
+  await del('commissions',window.editingCommission.id);
+ }
  closeModal();await refresh();
 }
-async function voidInvoiceConfirm(id){if(!confirm('Void this invoice? It will stay in your records for numbering and history, but be removed from sales, profit, and reports. Any commission on this invoice is voided along with it — automatically un-voided if you restore the invoice.'))return;const inv=(await all('invoices')).find(x=>x.id===id);inv.status='void';await put('invoices',inv);for(const c of (await all('commissions')).filter(x=>x.invoiceId===id)){c.status='void';await put('commissions',c);}closeModal();await refresh();}
-async function restoreInvoice(id){const inv=(await all('invoices')).find(x=>x.id===id);inv.status='active';await put('invoices',inv);for(const c of (await all('commissions')).filter(x=>x.invoiceId===id)){c.status='active';await put('commissions',c);}closeModal();await openInvoice(id);}
-async function showCommissions(){
- const activeId=await getActiveBusinessId(), biz=await getBusiness();
- const allCommissions=(await all('commissions')).filter(c=>c.businessId===activeId);
- const commissions=allCommissions.filter(c=>c.status!=='void');
- const voided=allCommissions.filter(c=>c.status==='void');
- const invs=(await all('invoices')).filter(i=>i.businessId===activeId);
- const rowFor=c=>{
-  const inv=invs.find(i=>i.id===c.invoiceId);
-  const paid=inv?(inv.payments||[]).reduce((a,p)=>a+p.amount,0):0;
-  const isFullyPaid=inv && paid>=inv.total && inv.total>0;
-  return `<div class="row-item"><div><b>${esc(c.recipientName)}</b><small>${inv?esc(inv.number)+' · '+esc(inv.customer||''):'Invoice not found'}</small></div><div class="row-right"><strong class="money">${money(c.amount)}</strong><span class="stamp ${isFullyPaid?'paid':'due'}">${isFullyPaid?'Paid out':'Pending'}</span>${inv?`<button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="openInvoice('${inv.id}')">Open Invoice</button>`:''}</div></div>`;
- };
- const voidRowFor=c=>{
-  const inv=invs.find(i=>i.id===c.invoiceId);
-  return `<div class="row-item"><div><b>${esc(c.recipientName)}</b><small>${inv?esc(inv.number)+' · '+esc(inv.customer||''):'Invoice not found'} · voided with its invoice</small></div><div class="row-right"><strong class="money">${money(c.amount)}</strong><span class="stamp void">Void</span>${inv?`<button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="openInvoice('${inv.id}')">Open Invoice</button>`:''}</div></div>`;
- };
- const pending=commissions.filter(c=>{const inv=invs.find(i=>i.id===c.invoiceId);const paid=inv?(inv.payments||[]).reduce((a,p)=>a+p.amount,0):0;return !(inv && paid>=inv.total && inv.total>0)});
- const paidOut=commissions.filter(c=>!pending.includes(c));
- openModal(`<h2>Commissions — ${esc(biz.name)} ${hb("Money owed to whoever facilitated a job. Never shown on the customer's invoice, never counted as a Business Expense — only leaves your Cash & Bank Balance once the linked invoice is fully paid. Voiding the invoice voids its commission too (restoring the invoice restores it); to remove just the commission and keep the invoice, edit it from the invoice itself.")}</h2>
- <div class="totalBox"><div class="totalRow"><span>Pending</span><b>${money(pending.reduce((a,c)=>a+c.amount,0))}</b></div><div class="totalRow grand"><span>Paid out</span><b>${money(paidOut.reduce((a,c)=>a+c.amount,0))}</b></div></div>
- <h3 style="font-size:14px;margin-top:14px">Pending</h3>
- <div class="list">${pending.map(rowFor).join('')||'<div class="empty">Nothing pending.</div>'}</div>
- <h3 style="font-size:14px;margin-top:16px">Paid Out</h3>
- <div class="list">${paidOut.map(rowFor).join('')||'<div class="empty">None paid out yet.</div>'}</div>
- ${voided.length?`<h3 style="font-size:14px;margin-top:16px">Void</h3><div class="list">${voided.map(voidRowFor).join('')}</div>`:''}
- <div class="notice">To add or edit a commission, open the relevant invoice — commission is set per job, not from a standalone form.</div>
- <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+async function voidInvoiceConfirm(id){
+ if(!confirm('Void this invoice? It will stay in your records for numbering and history, but be removed from sales, profit, and reports. Any linked commission will be removed too.'))return;
+ const inv=(await all('invoices')).find(x=>x.id===id);
+ inv.status='void';await put('invoices',inv);
+ const comm=(await all('commissions')).find(c=>c.invoiceId===id);
+ if(comm)await del('commissions',comm.id);
+ closeModal();await refresh();
 }
+async function restoreInvoice(id){const inv=(await all('invoices')).find(x=>x.id===id);inv.status='active';await put('invoices',inv);closeModal();await openInvoice(id);}
 async function duplicateInvoice(id){
  const src=(await all('invoices')).find(x=>x.id===id); if(!src) return;
  const newNumber=await nextNo();
- const newInternalRef=await nextInternalRef();
- const dup={...src,id:crypto.randomUUID(),status:'active',number:newNumber||(src.number+'-copy'),internalRef:newInternalRef,date:new Date().toISOString().slice(0,10),dueDate:'',payments:[],items:src.items.map(x=>({...x}))};
+ const dup={...src,id:crypto.randomUUID(),status:'active',number:newNumber||(src.number+'-copy'),date:new Date().toISOString().slice(0,10),dueDate:'',payments:[],items:src.items.map(x=>({...x}))};
  await put('invoices',dup); closeModal(); await openInvoice(dup.id);
 }
 async function showInvoices(){
@@ -1233,155 +1217,6 @@ async function addOtherIncome(){
 }
 async function deleteOtherIncome(id){if(!confirm('Delete this income record?'))return;await del('otherIncome',id);oiCache=oiCache.filter(x=>x.id!==id);drawOtherIncome();refresh()}
 
-/* ---------------- Investment Accounts (Money Market, Treasury Bills, etc.) ----------------
-   A deposit moves cash OUT to an account; a return moves it back IN, along with
-   whatever it yielded (or lost) while invested. Neither touches P&L on its own —
-   only a return's yield (if flagged taxable) becomes income; the principal
-   itself is just cash changing form. Accounts already held before using this
-   app just need one "Return" movement — set an opening balance instead of a
-   deposit, since the deposit itself happened before the app existed. */
-async function showInvestments(){
- const activeId=await getActiveBusinessId(), biz=await getBusiness();
- const accs=await all('investmentAccounts'), moves=await all('investmentMovements');
- const bizAccs=accs.filter(a=>a.kind==='business'&&a.businessId===activeId);
- const personalAccs=accs.filter(a=>a.kind==='personal');
- const rowFor=a=>{
-  const bal=investmentAccountBalance(a,moves);
-  return `<div class="row-item"><div><b>${esc(a.name)}</b>${a.openingBalance?`<small>Opening: ${money(a.openingBalance)} as of ${esc(a.openingAsOfDate||'—')}</small>`:''}</div><div class="row-right"><strong class="money">${money(bal)}</strong><button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="showInvestmentAccount('${a.id}')">Open</button></div></div>`;
- };
- openModal(`<h2>Investments ${hb("Money market accounts, treasury bills, fixed deposits, portfolios — anything cash gets moved into and eventually returns from, kept separate from business and personal expenses. Only interest/yield you flag as taxable ever touches your Tax Report; the principal moving in and out never does.")}</h2>
- <h3 style="font-size:13.5px">${esc(biz.name)}</h3>
- <div class="list">${bizAccs.map(rowFor).join('')||'<div class="empty">No investment accounts for this business yet.</div>'}</div>
- <h3 style="font-size:13.5px;margin-top:16px">Personal</h3>
- <div class="list">${personalAccs.map(rowFor).join('')||'<div class="empty">No personal investment accounts yet.</div>'}</div>
- <button class="btn accent full" style="margin-top:14px" onclick="showAddInvestmentAccount()">+ New Investment Account</button>
- <button class="btn secondary full" onclick="closeModal()">Close</button>`);
-}
-async function showAddInvestmentAccount(){
- const biz=await getBusiness();
- openModal(`<h2>New Investment Account</h2>
- <div class="field"><label>Account name</label><input id="iaName" placeholder="e.g. Money Market, Treasury Bills"></div>
- <div class="field"><label>Belongs to</label><select id="iaScope">
-  <option value="business">${esc(biz.name)} (this business)</option>
-  <option value="personal">Personal</option>
- </select></div>
- <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:12px 0"><input type="checkbox" id="iaHasOpening" onchange="toggleInvestOpeningFields()"> Already had money in this before using Ledger Vault</label>
- <div id="iaOpeningFields" style="display:none">
-  <div class="field"><label>Amount already invested</label><input id="iaOpenAmt" type="number" min="0" value="0"></div>
-  <div class="field"><label>As of date</label><input id="iaOpenDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-  <div class="field"><label>Has tax already been paid on this? ${hb("Same idea as the cash balance brought forward — tells the Tax Report whether this principal was already taxed, so a future return isn't taxed twice or missed.")}</label><select id="iaOpenTax">
-   <option value="">Not answered yet</option>
-   <option value="taxed">Already taxed</option>
-   <option value="untaxed">Not yet taxed</option>
-  </select></div>
- </div>
- <button class="btn primary full" onclick="saveNewInvestmentAccount()">Save Account</button><button class="btn secondary full" onclick="showInvestments()">Cancel</button>`);
-}
-function toggleInvestOpeningFields(){iaOpeningFields.style.display=iaHasOpening.checked?'block':'none'}
-async function saveNewInvestmentAccount(){
- const name=iaName.value.trim(); if(!name)return alert('Enter an account name.');
- const scope=iaScope.value, activeId=await getActiveBusinessId();
- const hasOpening=iaHasOpening.checked;
- const acc={id:crypto.randomUUID(), kind:scope, businessId:scope==='business'?activeId:null, name,
-  openingBalance:hasOpening?(Number(iaOpenAmt.value)||0):0,
-  openingAsOfDate:hasOpening?iaOpenDate.value:'',
-  openingBalanceTaxStatus:hasOpening?(iaOpenTax.value||''):'',
-  createdAt:new Date().toISOString()};
- await put('investmentAccounts',acc);
- await showInvestments(); await refresh();
-}
-async function showInvestmentAccount(id){
- const acc=(await all('investmentAccounts')).find(a=>a.id===id);
- if(!acc) return showInvestments();
- const moves=(await all('investmentMovements')).filter(m=>m.accountId===id).sort((a,b)=>b.date.localeCompare(a.date));
- const bal=investmentAccountBalance(acc,moves);
- const moveRow=m=>{
-  if(m.type==='deposit') return `<div class="row-item"><div><b>Deposit</b><small>${esc(m.date)}${m.note?' · '+esc(m.note):''}</small></div><div class="row-right"><strong class="money">${money(m.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteInvestmentMovement('${m.id}','${id}')">Delete</button></div></div>`;
-  const yieldAmt=Number(m.yieldAmount)||0;
-  const yieldLabel=yieldAmt>0?`Yield ${money(yieldAmt)}${m.taxable?' (taxable)':' (not taxable)'}`:yieldAmt<0?`Loss ${money(-yieldAmt)}${m.deductible?' (deductible)':' (not deductible)'}`:'';
-  return `<div class="row-item"><div><b>Return to Bank</b><small>${esc(m.date)}${yieldLabel?' · '+yieldLabel:''}${m.note?' · '+esc(m.note):''}</small></div><div class="row-right"><strong class="money">${money(m.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteInvestmentMovement('${m.id}','${id}')">Delete</button></div></div>`;
- };
- openModal(`<h2>${esc(acc.name)}</h2>
- <div class="totalBox"><div class="totalRow grand"><span>Current Balance</span><b>${money(bal)}</b></div></div>
- ${acc.openingBalance?`<div class="notice">Opening: ${money(acc.openingBalance)} as of ${esc(acc.openingAsOfDate||'—')} — ${acc.openingBalanceTaxStatus==='taxed'?'already taxed':acc.openingBalanceTaxStatus==='untaxed'?'not yet taxed':'tax status not answered'}. <button class="btn secondary" style="padding:4px 10px;font-size:11px;margin-top:6px" onclick="showEditInvestmentOpening('${id}')">Edit</button></div>`:`<button class="btn secondary full" onclick="showEditInvestmentOpening('${id}')">Had money in this before the app? Add opening balance</button>`}
- <div class="row2" style="margin-top:12px">
-  <button class="btn primary full" onclick="showInvestDeposit('${id}')">Deposit (Bank → Investment)</button>
-  <button class="btn accent full" onclick="showInvestReturn('${id}')">Return to Bank</button>
- </div>
- <h3 style="font-size:14px;margin-top:18px">Movement History</h3>
- <div class="list">${moves.map(moveRow).join('')||'<div class="empty">No movements recorded yet.</div>'}</div>
- <button class="btn danger full" style="margin-top:14px" onclick="deleteInvestmentAccountConfirm('${id}')">Delete Account</button>
- <button class="btn secondary full" onclick="showInvestments()">Back</button>`);
-}
-async function showEditInvestmentOpening(id){
- const acc=(await all('investmentAccounts')).find(a=>a.id===id);
- openModal(`<h2>Opening Balance — ${esc(acc.name)}</h2>
- <div class="field"><label>Amount already invested before using Ledger Vault</label><input id="ieOpenAmt" type="number" min="0" value="${acc.openingBalance||0}"></div>
- <div class="field"><label>As of date</label><input id="ieOpenDate" type="date" value="${acc.openingAsOfDate||new Date().toISOString().slice(0,10)}"></div>
- <div class="field"><label>Has tax already been paid on this?</label><select id="ieOpenTax">
-  <option value="" ${!acc.openingBalanceTaxStatus?'selected':''}>Not answered yet</option>
-  <option value="taxed" ${acc.openingBalanceTaxStatus==='taxed'?'selected':''}>Already taxed</option>
-  <option value="untaxed" ${acc.openingBalanceTaxStatus==='untaxed'?'selected':''}>Not yet taxed</option>
- </select></div>
- <button class="btn primary full" onclick="saveInvestmentOpening('${id}')">Save</button><button class="btn secondary full" onclick="showInvestmentAccount('${id}')">Cancel</button>`);
-}
-async function saveInvestmentOpening(id){
- const acc=(await all('investmentAccounts')).find(a=>a.id===id);
- acc.openingBalance=Number(ieOpenAmt.value)||0; acc.openingAsOfDate=ieOpenDate.value; acc.openingBalanceTaxStatus=ieOpenTax.value||'';
- await put('investmentAccounts',acc);
- await showInvestmentAccount(id); await refresh();
-}
-async function showInvestDeposit(id){
- openModal(`<h2>Deposit — Bank → Investment</h2>
- <div class="field"><label>Date</label><input id="idDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
- <div class="field"><label>Amount</label><input id="idAmt" type="number" min="0"></div>
- <div class="field"><label>Note (optional)</label><input id="idNote"></div>
- <button class="btn primary full" onclick="saveInvestDeposit('${id}')">Save Deposit</button><button class="btn secondary full" onclick="showInvestmentAccount('${id}')">Cancel</button>`);
-}
-async function saveInvestDeposit(accountId){
- const amount=Number(idAmt.value)||0; if(amount<=0)return alert('Enter an amount.');
- const m={id:crypto.randomUUID(), accountId, type:'deposit', date:idDate.value, amount, note:idNote.value.trim()};
- await put('investmentMovements',m);
- await showInvestmentAccount(accountId); await refresh();
-}
-async function showInvestReturn(id){
- openModal(`<h2>Return to Bank ${hb("The total cash landing back in your bank account, plus how much of that was yield/interest earned (or a loss, entered as a negative number). Only the yield/loss matters for tax — the rest is just your principal coming back.")}</h2>
- <div class="field"><label>Date</label><input id="irDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
- <div class="field"><label>Amount returned to bank</label><input id="irAmt" type="number" min="0"></div>
- <div class="field"><label>Amount yielded (profit — enter negative if this was a loss)</label><input id="irYield" type="number" value="0" oninput="toggleInvestYieldFields()"></div>
- <div id="irTaxableField" style="display:none"><label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:10px 0"><input type="checkbox" id="irTaxable"> This yield is taxable income</label></div>
- <div id="irDeductibleField" style="display:none"><label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:10px 0"><input type="checkbox" id="irDeductible"> This loss is tax-deductible (confirm with a tax adviser)</label></div>
- <div class="field"><label>Note (optional)</label><input id="irNote"></div>
- <button class="btn accent full" onclick="saveInvestReturn('${id}')">Save Return</button><button class="btn secondary full" onclick="showInvestmentAccount('${id}')">Cancel</button>`);
- toggleInvestYieldFields();
-}
-function toggleInvestYieldFields(){
- const y=Number(irYield.value)||0;
- irTaxableField.style.display = y>0 ? 'block' : 'none';
- irDeductibleField.style.display = y<0 ? 'block' : 'none';
-}
-async function saveInvestReturn(accountId){
- const amount=Number(irAmt.value)||0; if(amount<=0)return alert('Enter the amount returned to bank.');
- const yieldAmount=Number(irYield.value)||0;
- const taxable=yieldAmount>0 && irTaxable.checked;
- const deductible=yieldAmount<0 && irDeductible.checked;
- const m={id:crypto.randomUUID(), accountId, type:'return', date:irDate.value, amount, yieldAmount, taxable, deductible, note:irNote.value.trim()};
- await put('investmentMovements',m);
- await showInvestmentAccount(accountId); await refresh();
-}
-async function deleteInvestmentMovement(id,accountId){
- if(!confirm('Delete this movement? This will change the account balance.'))return;
- await del('investmentMovements',id);
- await showInvestmentAccount(accountId); await refresh();
-}
-async function deleteInvestmentAccountConfirm(id){
- const moves=(await all('investmentMovements')).filter(m=>m.accountId===id);
- if(!confirm(moves.length? `Delete this account and its ${moves.length} recorded movement(s)? This cannot be undone.` : 'Delete this investment account?'))return;
- for(const m of moves) await del('investmentMovements',m.id);
- await del('investmentAccounts',id);
- await showInvestments(); await refresh();
-}
-
 /* ---------------- Opening Balances (migrating pre-app history) ---------------- */
 
 async function showOpeningBalances(){
@@ -1391,15 +1226,12 @@ async function showOpeningBalances(){
  <div class="field"><label>Revenue brought forward ${hb("Total sales this business made before you started using this app — so your lifetime totals include your real history.")}</label><input id="oRev" type="number" min="0" value="${b.openingRevenue||0}"></div>
  <div class="field"><label>Total expenses brought forward ${hb("Total business expenses before you started using this app, matching Revenue brought forward.")}</label><input id="oExp" type="number" min="0" value="${b.openingExpenses||0}"></div>
  <div class="field"><label>Cash / bank balance brought forward ${hb("The actual money you had in the bank on the date above — this feeds directly into your dashboard's Cash & Bank Balance.")}</label><input id="oBal" type="number" value="${b.openingBalance||0}"></div>
- <div class="field"><label>Has tax already been paid on this balance? ${hb("This money existed before you started using Ledger Vault. Tell the Tax Report whether it was already taxed (e.g. savings, a previously-declared balance) or whether it should be declared as income now, so it isn't silently left out of — or wrongly duplicated into — your tax estimate.")}</label><select id="oTaxStatus">
-  <option value="">Not answered yet</option>
-  <option value="taxed" ${b.openingBalanceTaxStatus==='taxed'?'selected':''}>Already taxed — exclude from Tax Report income</option>
-  <option value="untaxed" ${b.openingBalanceTaxStatus==='untaxed'?'selected':''}>Not yet taxed — include as income in the Tax Report</option>
- </select></div>
- <div class="notice">Revenue and expenses brought forward feed into Lifetime Profit &amp; Loss on the Reports screen. The cash/bank balance feeds directly into the Cash &amp; Bank Balance figure on your dashboard, and — based on your answer above — into the Tax Report for the year matching "As of date".</div>
+ <div class="field"><label>Has tax already been paid on this brought-forward revenue? ${hb("If yes, it's excluded from the Tax Report's taxable income estimate, since counting it again would double-tax money already declared. If no, it's included as taxable income — treated as income that still needs declaring, now that it's on record here.")}</label><select id="oTaxPaid"><option value="1">Yes — already declared/taxed previously</option><option value="0">No — not yet taxed, should count as taxable income</option></select></div>
+ <div class="notice">Revenue and expenses brought forward feed into Lifetime Profit &amp; Loss on the Reports screen and the Tax Report. The cash/bank balance feeds directly into the Cash &amp; Bank Balance figure on your dashboard. Whether tax was already paid on the revenue decides whether the Tax Report counts it toward your estimated tax bill.</div>
  <button class="btn primary full" onclick="saveOpeningBalances()">Save Opening Balances</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ oTaxPaid.value = b.openingTaxPaid ? '1' : '0';
 }
-async function saveOpeningBalances(){let b=await getBusiness();b.openingAsOfDate=oDate.value;b.openingRevenue=Number(oRev.value)||0;b.openingExpenses=Number(oExp.value)||0;b.openingBalance=Number(oBal.value)||0;b.openingBalanceTaxStatus=oTaxStatus.value||'';await put('business',b);closeModal();await refresh();}
+async function saveOpeningBalances(){let b=await getBusiness();b.openingAsOfDate=oDate.value;b.openingRevenue=Number(oRev.value)||0;b.openingExpenses=Number(oExp.value)||0;b.openingBalance=Number(oBal.value)||0;b.openingTaxPaid=oTaxPaid.value==='1';await put('business',b);closeModal();await refresh();}
 
 /* ---------------- Tax Report & Government Submissions ---------------- */
 /* ---------------- Nigeria Tax Estimators (Nigeria Tax Act 2025, effective 1 Jan 2026) ----------------
@@ -1447,7 +1279,7 @@ async function showTaxProfile(){
 async function saveTaxProfile(){
  const p=await getTaxProfile();
  p.annualRentPaid=Number(tpRent.value)||0; p.pensionContribution=Number(tpPension.value)||0;
- await req('taxProfile','readwrite',s=>s.put(p)); Sync.markDirty();
+ await req('taxProfile','readwrite',s=>s.put(p)); Sync.markDirty(); ServerAccount.markDirty();
  closeModal(); await showTaxReport();
 }
 
@@ -1456,7 +1288,7 @@ async function showTaxReport(){
  const curYear=new Date().getFullYear();
  let yearOpts='';
  for(let y=2026;y<=curYear;y++) yearOpts+=`<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`;
- openModal(`<h2>Tax Report ${hb("Combines every business, personal spending, and all other income into one picture, with an estimated tax position for each business based on how it's classified.")}</h2>${brandStrip()}
+ openModal(`<h2>Tax Report ${hb("Combines every business, personal spending, and all other income into one picture, with an estimated tax position for each business based on how it's classified.")}</h2>
  <div class="notice">Combines every business, your personal expenses, and all other income into one analytic breakdown — plus an estimated tax position for each business, based on how you've classified it. <b>Estimates only</b> — confirm current rates and thresholds with FIRS, LIRS, or a tax professional before filing.</div>
  <div id="taxCurrencyWarning"></div>
  <div class="row2"><div class="field"><label>Tax year</label><select id="taxYear" onchange="loadTaxReport()">${yearOpts}</select></div><div class="field" style="display:flex;align-items:flex-end"><button class="btn secondary full" onclick="showTaxProfile()">Edit Tax Profile (Rent/Pension)</button></div></div>
@@ -1479,56 +1311,38 @@ async function loadTaxReport(){
  taxCurrencyWarning.innerHTML = currencies.size>1 ? `<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">Your businesses use different currencies (${[...currencies].join(', ')}) — the combined totals below add these together directly, which isn't meaningful across currencies. Treat the per-business figures as the accurate ones.</div>` : '';
  const taxProfile=await getTaxProfile();
 
- let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0, totalCommissionPaid=0;
+ let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0, totalCommission=0;
  let personalIncomeBase=0; // salary + business-name profit + taxable other income, feeds PIT
- let bizTaxSections='', openingBalanceSection='', openingBalanceIncomeTotal=0;
+ let bizTaxSections='', broughtForwardRows='', broughtForwardUntaxedTotal=0;
  for(const b of businesses){
   const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
-  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0);
-  // Commission to an in-house facilitator only counts once its invoice is
-  // fully paid (that's when it's actually paid out), dated to the invoice's
-  // own date — same as the revenue it's tied to.
-  const allBizInvs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void');
-  const fullyPaidIds=new Set(allBizInvs.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
-  const bizInvIdsThisYear=new Set(invs.map(i=>i.id));
-  const commissionPaid=(await all('commissions')).filter(c=>c.businessId===b.id && c.status!=='void' && fullyPaidIds.has(c.invoiceId) && bizInvIdsThisYear.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
-  const profit=rev-expTotal-commissionPaid;
-  totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit; totalCommissionPaid+=commissionPaid;
-  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}${commissionPaid?' · Comm '+money(commissionPaid):''}</small></div></div>`;
+  const invIds=new Set(invs.map(i=>i.id));
+  const commTotal=(await all('commissions')).filter(c=>c.businessId===b.id && invIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
+  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal-commTotal;
+  totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit; totalCommission+=commTotal;
+  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}${commTotal?' · Comm '+money(commTotal):''}</small></div></div>`;
 
-  // Balance brought forward: a one-time pre-app figure, only relevant to the tax
-  // year matching its "as of" date. Whether it counts as income depends on
-  // whether it was already taxed before this business started using the app.
-  const ob=Number(b.openingBalance)||0, obYear=b.openingAsOfDate?Number(b.openingAsOfDate.slice(0,4)):null, obStatus=b.openingBalanceTaxStatus||'';
-  let obIncludedThisYear=0;
-  if(ob!==0){
-   if(obYear!==year){
-    openingBalanceSection+=`<div class="notice">${esc(b.name)}: ${money(ob)} balance brought forward${b.openingAsOfDate?` as of ${esc(b.openingAsOfDate)}`:' (no "as of" date set)'} isn't dated to ${year}, so it's not included in this year's report. <button class="btn secondary" style="padding:4px 10px;font-size:11px;margin-top:6px" onclick="showOpeningBalances()">Review Opening Balances</button></div>`;
-   } else if(obStatus===''){
-    openingBalanceSection+=`<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">${esc(b.name)}: ${money(ob)} balance brought forward as of ${esc(b.openingAsOfDate)} hasn't been marked as taxed or untaxed yet, so it's currently excluded from this estimate. Was tax already paid on it, or should it be declared as income now? <button class="btn secondary" style="padding:4px 10px;font-size:11px;margin-top:6px" onclick="showOpeningBalances()">Answer now</button></div>`;
-   } else if(obStatus==='taxed'){
-    openingBalanceSection+=`<div class="notice">${esc(b.name)}: ${money(ob)} balance brought forward as of ${esc(b.openingAsOfDate)} was already taxed previously — excluded from ${year}'s taxable income.</div>`;
-   } else if(obStatus==='untaxed'){
-    obIncludedThisYear=ob; openingBalanceIncomeTotal+=ob;
-    openingBalanceSection+=`<div class="notice">${esc(b.name)}: ${money(ob)} balance brought forward as of ${esc(b.openingAsOfDate)} has not been taxed before — included as income for ${year} below.</div>`;
-   }
+  const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openNet=openRev-openExp;
+  if(openRev||openExp){
+   broughtForwardRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>As of ${esc(b.openingAsOfDate||'—')} · ${b.openingTaxPaid?'Already taxed':'Not yet taxed'}</small></div><div class="row-right"><strong class="money">${money(openNet)}</strong><small>Rev ${money(openRev)} · Exp ${money(openExp)}</small></div></div>`;
+   if(!b.openingTaxPaid && b.type!=='limited' && b.legalForm!=='limited') broughtForwardUntaxedTotal+=openNet;
   }
 
   if(b.type==='salary'){
-   personalIncomeBase+=rev+obIncludedThisYear;
-   bizTaxSections+=`<div class="notice">${esc(b.name)} (Salary): ${money(rev)} for ${year}${obIncludedThisYear?` plus ${money(obIncludedThisYear)} balance brought forward`:''} feeds into your combined Personal Income Tax estimate below.</div>`;
+   personalIncomeBase+=rev;
+   bizTaxSections+=`<div class="notice">${esc(b.name)} (Salary): ${money(rev)} for ${year} feeds into your combined Personal Income Tax estimate below.</div>`;
   } else if(b.legalForm==='limited'){
-   const citProfit=profit+obIncludedThisYear;
-   const cit=calculateNigeriaCIT(rev+obIncludedThisYear, b.fixedAssets, citProfit);
+   const cit=calculateNigeriaCIT(rev, b.fixedAssets, profit);
    bizTaxSections+=`<h3 style="font-size:13.5px;margin-top:14px">${esc(b.name)} — Company Income Tax (${year})</h3>
-   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div>${obIncludedThisYear?`<div class="totalRow"><span>Balance brought forward (declared as income)</span><b>${money(obIncludedThisYear)}</b></div>`:''}<div class="totalRow"><span>Assessable profit</span><b>${money(citProfit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
-   <div class="notice">${cit.note} Files with <b>FIRS</b> (Company Income Tax, VAT if turnover exceeds ₦25,000,000); PAYE for any staff salaries remits to <b>LIRS</b> if Lagos-based (or the relevant state IRS elsewhere).</div>`;
+   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div><div class="totalRow"><span>Business expenses</span><b>−${money(expTotal)}</b></div>${commTotal?`<div class="totalRow"><span>Commission (deductible)</span><b>−${money(commTotal)}</b></div>`:''}<div class="totalRow"><span>Assessable profit</span><b>${money(profit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
+   <div class="notice">${cit.note} Files with <b>FIRS</b> (Company Income Tax, VAT if turnover exceeds ₦25,000,000); PAYE for any staff salaries remits to <b>LIRS</b> if Lagos-based (or the relevant state IRS elsewhere).${(openRev||openExp)?' This business also has a balance brought forward — since Company Income Tax is assessed per year, discuss with your accountant how to treat pre-software historical profit in your CIT filing; it is not auto-included in this year\'s figure above.':''}</div>`;
   } else {
-   personalIncomeBase+=profit+obIncludedThisYear;
-   bizTaxSections+=`<div class="notice">${esc(b.name)} (Business Name): ${money(profit)} profit for ${year}${obIncludedThisYear?` plus ${money(obIncludedThisYear)} balance brought forward`:''} is taxed as your personal income, not separately — it's included in the combined Personal Income Tax estimate below. Files with your state IRS (<b>LIRS</b> if Lagos-based) as an individual return.</div>`;
+   personalIncomeBase+=profit;
+   bizTaxSections+=`<div class="notice">${esc(b.name)} (Business Name): ${money(profit)} profit for ${year}${commTotal?' (after '+money(commTotal)+' commission)':''} is taxed as your personal income, not separately — it's included in the combined Personal Income Tax estimate below. Files with your state IRS (<b>LIRS</b> if Lagos-based) as an individual return.</div>`;
   }
  }
+ personalIncomeBase+=broughtForwardUntaxedTotal;
 
  const personalExpList=(await all('expenses')).filter(e=>e.kind==='personal' && e.date>=from && e.date<=to);
  const personalExp=personalExpList.reduce((a,e)=>a+e.amount,0);
@@ -1538,28 +1352,9 @@ async function loadTaxReport(){
  const nonTaxableOtherIncome=yearIncome.filter(e=>!e.taxable).reduce((a,e)=>a+e.amount,0);
  personalIncomeBase+=taxableOtherIncome;
 
- // Investment yield/interest: only the gain earned counts as income (and only
- // if flagged taxable) — the principal moving out to and back from an
- // investment account is a transfer, never income or an expense.
- const yearReturns=(await all('investmentMovements')).filter(m=>m.type==='return' && m.date>=from && m.date<=to);
- const investAccountsAll=await all('investmentAccounts');
- let investmentYieldTaxable=0, investmentYieldNonTaxable=0, investmentLossDeductible=0, investmentLossNonDeductible=0, investmentSection='';
- for(const m of yearReturns){
-  const acc=investAccountsAll.find(a=>a.id===m.accountId);
-  const yieldAmt=Number(m.yieldAmount)||0;
-  if(yieldAmt>0){
-   if(m.taxable){ investmentYieldTaxable+=yieldAmt; investmentSection+=`<div class="notice">${esc(acc?acc.name:'Investment')}: ${money(yieldAmt)} yield on ${esc(m.date)} — included as taxable income for ${year} below.</div>`; }
-   else { investmentYieldNonTaxable+=yieldAmt; investmentSection+=`<div class="notice">${esc(acc?acc.name:'Investment')}: ${money(yieldAmt)} yield on ${esc(m.date)} — marked not taxable, excluded from income.</div>`; }
-  } else if(yieldAmt<0){
-   if(m.deductible){ investmentLossDeductible+=(-yieldAmt); investmentSection+=`<div class="notice">${esc(acc?acc.name:'Investment')}: ${money(-yieldAmt)} loss on ${esc(m.date)} — marked tax-deductible, subtracted from income for ${year} below.</div>`; }
-   else { investmentLossNonDeductible+=(-yieldAmt); investmentSection+=`<div class="notice">${esc(acc?acc.name:'Investment')}: ${money(-yieldAmt)} loss on ${esc(m.date)} — investment losses generally aren't deductible against ordinary income; excluded from this estimate. Confirm with a tax adviser if you believe this one qualifies.</div>`; }
-  }
- }
- personalIncomeBase += investmentYieldTaxable - investmentLossDeductible;
-
  const pit=calculateNigeriaPIT(personalIncomeBase, taxProfile.annualRentPaid, taxProfile.pensionContribution);
 
- const fullProfitLoss = totalRevenue + openingBalanceIncomeTotal + nonTaxableOtherIncome + taxableOtherIncome + investmentYieldTaxable + investmentYieldNonTaxable - investmentLossDeductible - investmentLossNonDeductible - totalExpenses - totalCommissionPaid - personalExp;
+ const fullProfitLoss = totalRevenue + nonTaxableOtherIncome + taxableOtherIncome - totalExpenses - totalCommission - personalExp;
  const globalBalance=await getGlobalBankBalance();
  const submission=(await all('taxSubmissions')).find(t=>t.year===year);
 
@@ -1571,23 +1366,20 @@ async function loadTaxReport(){
  <h3 style="font-size:14px;margin-top:16px">Per-business (${year})</h3>
  <div class="list">${bizRows||'<div class="empty">No businesses.</div>'}</div>
 
- ${openingBalanceSection?`<h3 style="font-size:14px;margin-top:18px">Balance Brought Forward ${hb("Cash/bank balances entered under Opening Balances, before you started using Ledger Vault. Whether each counts as income for a given tax year depends on the answer you gave for that business: already taxed, or to be declared now.")}</h3>${openingBalanceSection}`:''}
-
- ${investmentSection?`<h3 style="font-size:14px;margin-top:18px">Investment Yield &amp; Losses ${hb("Only the interest/yield an account actually earned counts here — never the principal you moved in or out, since that's just a transfer. Losses are excluded from your tax estimate by default since they generally aren't deductible against ordinary income; you can flag one as deductible per return movement if that's confirmed with a tax adviser.")}</h3>${investmentSection}`:''}
+ ${broughtForwardRows?`<h3 style="font-size:14px;margin-top:18px">Balance Brought Forward — Tax Treatment</h3>
+ <div class="notice">One-time historical figures from before you started using this app — not tied to any single year, shown every time until resolved. "Already taxed" means it's excluded from the tax estimate below. "Not yet taxed" means it's added in, as income that still needs declaring.</div>
+ <div class="list">${broughtForwardRows}</div>
+ ${broughtForwardUntaxedTotal?`<div class="notice" style="background:var(--brassSoft);border-color:#e6cf9f;color:#7a5a1f">${money(broughtForwardUntaxedTotal)} of brought-forward business/salary revenue is marked not-yet-taxed, and is included in the Personal Income Tax estimate below. Change this in Opening Balances once it's been declared, so it stops appearing every year.</div>`:''}
+ <button class="btn secondary full" onclick="closeModal();showOpeningBalances()">Edit Opening Balances</button>`:''}
 
  <h3 style="font-size:14px;margin-top:18px">Full Profit &amp; Loss — Business + Personal (${year})</h3>
  <div class="notice">Everything in one place: business revenue and expenses, personal spending, and all other income — the complete picture, not just the business-only view in Reports.</div>
  <div class="totalBox">
   <div class="totalRow"><span>Business revenue (all businesses)</span><b>${money(totalRevenue)}</b></div>
-  ${openingBalanceIncomeTotal?`<div class="totalRow"><span>Balance brought forward (declared as income this year)</span><b>${money(openingBalanceIncomeTotal)}</b></div>`:''}
   <div class="totalRow"><span>Other income — taxable</span><b>${money(taxableOtherIncome)}</b></div>
   <div class="totalRow"><span>Other income — not taxable (gifts, inheritance)</span><b>${money(nonTaxableOtherIncome)}</b></div>
-  ${investmentYieldTaxable?`<div class="totalRow"><span>Investment yield — taxable</span><b>${money(investmentYieldTaxable)}</b></div>`:''}
-  ${investmentYieldNonTaxable?`<div class="totalRow"><span>Investment yield — not taxable</span><b>${money(investmentYieldNonTaxable)}</b></div>`:''}
-  ${investmentLossDeductible?`<div class="totalRow"><span>Investment losses — deductible</span><b>-${money(investmentLossDeductible)}</b></div>`:''}
-  ${investmentLossNonDeductible?`<div class="totalRow"><span>Investment losses — not deductible</span><b>-${money(investmentLossNonDeductible)}</b></div>`:''}
   <div class="totalRow"><span>Business expenses (all businesses)</span><b>${money(totalExpenses)}</b></div>
-  ${totalCommissionPaid?`<div class="totalRow"><span>Commission paid out (all businesses)</span><b>${money(totalCommissionPaid)}</b></div>`:''}
+  ${totalCommission?`<div class="totalRow"><span>Commission (all businesses)</span><b>${money(totalCommission)}</b></div>`:''}
   <div class="totalRow"><span>Personal expenses</span><b>${money(personalExp)}</b></div>
   <div class="totalRow grand"><span>Net Position for ${year}</span><b>${money(fullProfitLoss)}</b></div>
  </div>
@@ -1616,47 +1408,42 @@ async function loadTaxReport(){
  <div class="totalBox"><div class="totalRow grand"><span>As of today</span><b>${money(globalBalance)}</b></div></div>
 
  <h3 style="font-size:14px;margin-top:16px">Government Submission — ${year}</h3>
- ${submission ? `<div class="notice"><b>Marked submitted.</b> ${money(submission.amountPaid)} paid on ${esc(submission.dateSubmitted)}.${submission.note?' Note: '+esc(submission.note):''}<br><span class="stamp ${submission.paymentStatus==='partial'?'due':'paid'}" style="margin-top:6px">${submission.paymentStatus==='partial'?'Balance still owing: '+money(submission.balanceRemaining||0):'Fully paid / closed'}</span></div><button class="btn secondary full" onclick="showMarkTaxSubmission(${year})">Edit Submission</button><button class="btn secondary full" onclick="unmarkTaxSubmission('${submission.id}')">Undo Submission Mark</button>`
-  : `<div class="notice">Not yet marked as submitted for ${year}.</div><button class="btn accent full" onclick="showMarkTaxSubmission(${year})">Mark ${year} as Submitted to Government</button>`}
+ ${submission ? `<div class="notice" style="${submission.status==='closed'?'background:var(--goodSoft);border-color:#bfe0d1;color:var(--good)':'background:var(--brassSoft);border-color:#e6cf9f;color:#7a5a1f'}"><b>${submission.status==='closed'?'Closed — fully paid.':'Balance still owed.'}</b> ${money(submission.amountPaid)} paid in total for ${year}${submission.dateSubmitted?' (last payment '+esc(submission.dateSubmitted)+')':''}.${submission.payments&&submission.payments.length>1?' ('+submission.payments.length+' payments recorded.)':''}${submission.note?' Note: '+esc(submission.note):''}</div>
+ ${submission.status!=='closed'?`<button class="btn accent full" onclick="markTaxSubmission(${year})">Add Another Payment</button>`:''}
+ <button class="btn danger full" onclick="unmarkTaxSubmission('${submission.id}')">Remove This Record</button>`
+  : `<div class="notice">Not yet marked as submitted for ${year}.</div><button class="btn accent full" onclick="markTaxSubmission(${year})">Record a Tax Payment for ${year}</button>`}
  <h3 style="font-size:14px;margin-top:18px">Submission History</h3>
  <div class="list" id="taxHistoryList"></div>`;
  const allSubs=await all('taxSubmissions');
  let histRows='';
  for(let y=2026;y<=curYear;y++){
   const s=allSubs.find(x=>x.year===y);
-  histRows+=`<div class="row-item"><div><b>${y}</b></div><div class="row-right">${s?(s.paymentStatus==='partial'?`<span class="stamp due">Balance owing ${money(s.balanceRemaining||0)}</span>`:`<span class="stamp paid">Submitted ${esc(s.dateSubmitted)}</span>`):`<span class="stamp overdue">Not submitted</span>`}</div></div>`;
+  histRows+=`<div class="row-item"><div><b>${y}</b></div><div class="row-right">${s?(s.status==='closed'?`<span class="stamp paid">Closed — ${money(s.amountPaid)}</span>`:`<span class="stamp duesoon">Balance owed — ${money(s.amountPaid)} paid</span>`):`<span class="stamp overdue">Not submitted</span>`}</div></div>`;
  }
  taxHistoryList.innerHTML=histRows;
 }
-async function showMarkTaxSubmission(year){
+async function markTaxSubmission(year){
  const existing=(await all('taxSubmissions')).find(t=>t.year===year);
- openModal(`<h2>Mark ${year} as Submitted</h2>
- <div class="field"><label>Amount paid to government</label><input id="tsAmount" type="number" min="0" value="${existing?existing.amountPaid:0}"></div>
- <div class="field"><label>Date submitted</label><input id="tsDate" type="date" value="${existing?existing.dateSubmitted:new Date().toISOString().slice(0,10)}"></div>
- <div class="field"><label>Payment status ${hb("Is this the full amount owed for the year, or was this a part-payment with more still due to FIRS/LIRS?")}</label><select id="tsStatus" onchange="toggleTaxBalanceField()">
-  <option value="closed" ${!existing||existing.paymentStatus!=='partial'?'selected':''}>Closed — fully paid</option>
-  <option value="partial" ${existing&&existing.paymentStatus==='partial'?'selected':''}>Balance still owing</option>
- </select></div>
- <div class="field" id="tsBalanceField" style="display:none"><label>Balance remaining</label><input id="tsBalance" type="number" min="0" value="${existing?existing.balanceRemaining||0:0}"></div>
- <div class="field"><label>Note (optional)</label><input id="tsNote" value="${esc(existing&&existing.note?existing.note:'')}" placeholder="Reference number, etc."></div>
- <button class="btn primary full" onclick="saveTaxSubmission(${year})">Save</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- toggleTaxBalanceField();
-}
-function toggleTaxBalanceField(){tsBalanceField.style.display = tsStatus.value==='partial' ? 'block' : 'none';}
-async function saveTaxSubmission(year){
- const amount=Number(tsAmount.value)||0;
- const date=tsDate.value||new Date().toISOString().slice(0,10);
- const status=tsStatus.value;
- const balanceRemaining=status==='partial'?(Number(tsBalance.value)||0):0;
- const note=tsNote.value.trim();
- const existing=(await all('taxSubmissions')).find(t=>t.year===year);
- const rec={id:existing?existing.id:crypto.randomUUID(), year, amountPaid:amount, dateSubmitted:date, note, paymentStatus:status, balanceRemaining};
+ const amt=prompt('Amount paid to government for '+year+':');
+ if(amt===null)return;
+ const amount=Number(amt)||0;
+ const date=prompt('Date paid (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+ if(!date)return;
+ const note=prompt('Optional note (reference number, etc.):')||'';
+ const closed=confirm('Is this tax payment now fully closed for '+year+' — no balance remaining?\n\nOK = Yes, closed.\nCancel = No, a balance is still owed.');
+ // Carry forward any prior payments (including from the old single-amount format) so partial payments add up rather than overwrite.
+ const payments = existing
+   ? (existing.payments ? existing.payments.slice() : (existing.amountPaid ? [{id:crypto.randomUUID(), amount:existing.amountPaid, date:existing.dateSubmitted||date, note:existing.note||''}] : []))
+   : [];
+ payments.push({id:crypto.randomUUID(), amount, date, note});
+ const totalPaid = payments.reduce((a,p)=>a+p.amount,0);
+ const rec={id:existing?existing.id:crypto.randomUUID(), year, payments, amountPaid:totalPaid, dateSubmitted:date, note, status: closed?'closed':'partial'};
  await put('taxSubmissions',rec);
- closeModal();
+ alert((closed ? 'Marked closed for '+year+'. ' : 'Payment recorded — balance still open for '+year+'. ') + money(amount) + ' deducted from your combined bank balance. Total paid so far: ' + money(totalPaid));
  await loadTaxReport(); await refresh();
 }
 async function unmarkTaxSubmission(id){
- if(!confirm('Remove this submission record? This adds the amount back into your bank balance.'))return;
+ if(!confirm('Remove this entire submission record? This adds all recorded payments for the year back into your bank balance.'))return;
  await del('taxSubmissions',id);
  await loadTaxReport(); await refresh();
 }
@@ -1669,30 +1456,12 @@ async function exportTaxReportCSV(){
   const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
   const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0);
-  const allBizInvsCSV=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void');
-  const fullyPaidIdsCSV=new Set(allBizInvsCSV.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
-  const bizInvIdsThisYearCSV=new Set(invs.map(i=>i.id));
-  const commissionPaidCSV=(await all('commissions')).filter(c=>c.businessId===b.id && c.status!=='void' && fullyPaidIdsCSV.has(c.invoiceId) && bizInvIdsThisYearCSV.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
-  rows.push([b.name,b.type==='salary'?'Salary':(b.legalForm==='limited'?'Limited':'Business Name'),b.currency||'NGN',rev,expTotal+commissionPaidCSV,rev-expTotal-commissionPaidCSV]);
-  if(commissionPaidCSV) rows.push([`${b.name} — Commission paid out`,'','','',commissionPaidCSV,'Included in Expenses column above']);
+  rows.push([b.name,b.type==='salary'?'Salary':(b.legalForm==='limited'?'Limited':'Business Name'),b.currency||'NGN',rev,expTotal,rev-expTotal]);
  }
  rows.push([]);
- for(const b of businesses){
-  const ob=Number(b.openingBalance)||0, obYear=b.openingAsOfDate?Number(b.openingAsOfDate.slice(0,4)):null, obStatus=b.openingBalanceTaxStatus||'';
-  if(ob!==0 && obYear===year) rows.push([`${b.name} — Balance brought forward`,'','',ob,'',obStatus==='untaxed'?'Included as income (not previously taxed)':(obStatus==='taxed'?'Excluded (already taxed)':'Excluded (not yet answered — see Opening Balances)')]);
- }
  rows.push(['Personal Expenses','','','','',(await all('expenses')).filter(e=>e.kind==='personal'&&e.date>=from&&e.date<=to).reduce((a,e)=>a+e.amount,0)]);
  rows.push(['Other Income (taxable)','','','','',(await all('otherIncome')).filter(e=>e.date>=from&&e.date<=to&&e.taxable).reduce((a,e)=>a+e.amount,0)]);
  rows.push(['Other Income (not taxable)','','','','',(await all('otherIncome')).filter(e=>e.date>=from&&e.date<=to&&!e.taxable).reduce((a,e)=>a+e.amount,0)]);
- const yearReturnsCSV=(await all('investmentMovements')).filter(m=>m.type==='return' && m.date>=from && m.date<=to);
- const investAccountsCSV=await all('investmentAccounts');
- for(const m of yearReturnsCSV){
-  const yieldAmt=Number(m.yieldAmount)||0; if(yieldAmt===0) continue;
-  const acc=investAccountsCSV.find(a=>a.id===m.accountId);
-  const label=yieldAmt>0 ? `${acc?acc.name:'Investment'} — Yield` : `${acc?acc.name:'Investment'} — Loss`;
-  const status=yieldAmt>0 ? (m.taxable?'Included (taxable)':'Excluded (not taxable)') : (m.deductible?'Deducted (marked deductible)':'Excluded (not deductible)');
-  rows.push([label,'','',Math.abs(yieldAmt),'',status]);
- }
  downloadCSV(rows,'tax-report-'+year+'.csv');
 }
 async function downloadTaxReportPDF(){
@@ -1709,266 +1478,149 @@ async function runAudit(){
  const businesses=await all('business');
  const allInvoices=await all('invoices');
  const allExpenses=await all('expenses');
- const allCommissions=await all('commissions');
- const allInvestAccounts=await all('investmentAccounts');
- const allInvestMoves=await all('investmentMovements');
- const today=new Date().toISOString().slice(0,10);
- const push=(category,severity,business,description)=>findings.push({id:crypto.randomUUID(),category,severity,business,description});
  for(const b of businesses){
   const invs=allInvoices.filter(i=>i.businessId===b.id);
   const activeInvs=invs.filter(i=>i.status!=='void');
   const exps=allExpenses.filter(e=>e.kind!=='personal'&&e.businessId===b.id);
   const nums=activeInvs.map(i=>i.number).filter(n=>/^\d+$/.test(n)).map(Number).sort((a,c)=>a-c);
   for(let k=1;k<nums.length;k++){
-   if(nums[k]-nums[k-1]>1) push('Invoice Numbering','medium',b.name,`Gap in invoice numbers for ${b.name}: jumps from ${nums[k-1]} to ${nums[k]} — ${nums[k]-nums[k-1]-1} number(s) missing.`);
-  }
-  // Internal tracking reference: assigned to every invoice regardless of
-  // numbering mode, so it catches gaps a non-serial manual numbering scheme
-  // would otherwise hide entirely (the check above only works when the
-  // visible number happens to be plain digits).
-  const refNums=activeInvs.map(i=>i.internalRef).filter(Boolean).map(r=>{const m=String(r).match(/-(\d+)$/);return m?Number(m[1]):null;}).filter(n=>n!==null).sort((a,c)=>a-c);
-  for(let k=1;k<refNums.length;k++){
-   if(refNums[k]-refNums[k-1]>1) push('Document Sequence','medium',b.name,`${b.name}: internal document tracking shows a gap of ${refNums[k]-refNums[k-1]-1} record(s) between sequence ${refNums[k-1]} and ${refNums[k]} — worth confirming nothing was deleted or lost, especially since this tracks true document count independent of the visible invoice number.`);
+   if(nums[k]-nums[k-1]>1) findings.push({id:crypto.randomUUID(),category:'Invoice Numbering',severity:'medium',business:b.name,description:`Gap in invoice numbers for ${b.name}: jumps from ${nums[k-1]} to ${nums[k]} — ${nums[k]-nums[k-1]-1} number(s) missing.`});
   }
   const amounts=exps.map(e=>e.amount).sort((a,c)=>a-c);
   const median=amounts.length?amounts[Math.floor(amounts.length/2)]:0;
   for(const e of exps){
-   if(median>0 && e.amount>median*3 && (!e.description||!e.description.trim())) push('Large Expense','high',b.name,`${b.name}: expense of ${money(e.amount)} on ${e.date} (${e.category||'uncategorized'}) has no description, and is unusually large relative to your typical expenses.`);
+   if(median>0 && e.amount>median*3 && (!e.description||!e.description.trim())) findings.push({id:crypto.randomUUID(),category:'Large Expense',severity:'high',business:b.name,description:`${b.name}: expense of ${money(e.amount)} on ${e.date||'an unknown date'} (${e.category||'uncategorized'}) has no description, and is unusually large relative to your typical expenses.`});
   }
   for(const i of activeInvs){
    const subtotal=(i.items||[]).reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0);
-   if(subtotal>0 && (i.discount||0)>subtotal*0.3) push('Large Discount','medium',b.name,`${b.name}: invoice ${i.number} for ${esc(i.customer)} has a discount of ${money(i.discount)}, over 30% of the ${money(subtotal)} subtotal.`);
+   if(subtotal>0 && (i.discount||0)>subtotal*0.3) findings.push({id:crypto.randomUUID(),category:'Large Discount',severity:'medium',business:b.name,description:`${b.name}: invoice ${i.number} for ${esc(i.customer)} has a discount of ${money(i.discount)}, over 30% of the ${money(subtotal)} subtotal.`});
   }
+  const today=new Date().toISOString().slice(0,10);
   for(const i of activeInvs){
    const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0);
    if(paid<i.total && i.dueDate && i.dueDate<today){
     const daysLate=Math.floor((new Date(today)-new Date(i.dueDate))/86400000);
-    if(daysLate>60) push('Receivables Risk','medium',b.name,`${b.name}: invoice ${i.number} for ${esc(i.customer)} is ${daysLate} days overdue with ${money(i.total-paid)} outstanding.`);
+    if(daysLate>60) findings.push({id:crypto.randomUUID(),category:'Receivables Risk',severity:'medium',business:b.name,description:`${b.name}: invoice ${i.number} for ${esc(i.customer)} is ${daysLate} days overdue with ${money(i.total-paid)} outstanding.`});
    }
   }
   for(const i of invs.filter(x=>x.status==='void')){
-   if(i.total>0) push('Void Invoice','low',b.name,`${b.name}: invoice ${i.number} (${money(i.total)}) was voided. Confirm this wasn't a completed sale.`);
+   if(i.total>0) findings.push({id:crypto.randomUUID(),category:'Void Invoice',severity:'low',business:b.name,description:`${b.name}: invoice ${i.number} (${money(i.total)}) was voided. Confirm this wasn't a completed sale.`});
   }
   const uncategorized=exps.filter(e=>!e.category||!e.category.trim());
-  if(uncategorized.length) push('Record Keeping','low',b.name,`${b.name}: ${uncategorized.length} expense(s) have no category assigned.`);
-
-  // Commission intelligence: an unusually large cut, and commission stuck
-  // pending because the invoice behind it still hasn't been paid.
-  const commissionsForBiz=allCommissions.filter(c=>c.businessId===b.id && c.status!=='void');
-  for(const c of commissionsForBiz){
-   const inv=invs.find(i=>i.id===c.invoiceId); if(!inv) continue;
-   if(inv.total>0 && c.amount>inv.total*0.3) push('Commission','high',b.name,`${b.name}: commission of ${money(c.amount)} to ${esc(c.recipientName)} on invoice ${inv.number} is over 30% of the ${money(inv.total)} invoice total.`);
-   const paid=(inv.payments||[]).reduce((a,p)=>a+p.amount,0);
-   if(paid<inv.total){
-    const daysOpen=Math.floor((new Date(today)-new Date(inv.date))/86400000);
-    if(daysOpen>60) push('Commission','low',b.name,`${b.name}: commission of ${money(c.amount)} to ${esc(c.recipientName)} is still pending — invoice ${inv.number} has been unpaid for ${daysOpen} days.`);
-   }
+  if(uncategorized.length) findings.push({id:crypto.randomUUID(),category:'Record Keeping',severity:'low',business:b.name,description:`${b.name}: ${uncategorized.length} expense(s) have no category assigned.`});
+  const bizComm=(await all('commissions')).filter(c=>c.businessId===b.id);
+  const unpaidCommission=bizComm.filter(c=>{
+   if(c.paid) return false;
+   const inv=activeInvs.find(x=>x.id===c.invoiceId);
+   if(!inv) return false;
+   const paidAmt=(inv.payments||[]).reduce((a,p)=>a+p.amount,0);
+   return paidAmt>=inv.total && inv.total>0;
+  });
+  if(unpaidCommission.length){const total=unpaidCommission.reduce((a,c)=>a+c.amount,0);findings.push({id:crypto.randomUUID(),category:'Commission Owed',severity:'medium',business:b.name,description:`${b.name}: ${unpaidCommission.length} commission(s) totalling ${money(total)} are ready to pay (invoice fully paid) but not yet marked disbursed.`});}
+  for(const c of bizComm){
+   const inv=invs.find(x=>x.id===c.invoiceId);
+   if(inv && inv.total>0 && c.amount>inv.total*0.5) findings.push({id:crypto.randomUUID(),category:'Large Commission',severity:'medium',business:b.name,description:`${b.name}: commission of ${money(c.amount)} to ${esc(c.personName)} is over half the value of invoice ${inv.number} (${money(inv.total)}). Confirm this is intentional.`});
   }
-
-  // Tax-status gaps: opening balances (cash or investment) with no answer
-  // on whether they were already taxed feed directly into Tax Report
-  // uncertainty, so they're worth surfacing here too.
-  if((Number(b.openingBalance)||0)!==0 && !b.openingBalanceTaxStatus) push('Tax Compliance','high',b.name,`${b.name}: ${money(b.openingBalance)} cash balance brought forward has no tax status answered — see Opening Balances.`);
-  for(const acc of allInvestAccounts.filter(a=>a.kind==='business'&&a.businessId===b.id)){
-   if((Number(acc.openingBalance)||0)!==0 && !acc.openingBalanceTaxStatus) push('Tax Compliance','medium',b.name,`${b.name}: investment account "${esc(acc.name)}" has a ${money(acc.openingBalance)} opening balance with no tax status answered.`);
-  }
-
-  // Year-over-year margin trend, commission-adjusted, same basis as the Tax Report.
-  const curYear=new Date().getFullYear();
-  const marginForYear=(y)=>{
-   const from=y+'-01-01', to=y+'-12-31';
-   const yInvs=invs.filter(i=>i.status!=='void'&&i.date>=from&&i.date<=to);
-   const yExps=exps.filter(e=>e.date>=from&&e.date<=to);
-   const rev=yInvs.reduce((a,i)=>a+i.total,0), exp=yExps.reduce((a,e)=>a+e.amount,0);
-   const fullyPaidIds=new Set(activeInvs.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
-   const yInvIds=new Set(yInvs.map(i=>i.id));
-   const comm=commissionsForBiz.filter(c=>fullyPaidIds.has(c.invoiceId)&&yInvIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
-   return rev>0?((rev-exp-comm)/rev)*100:null;
-  };
-  const thisMargin=marginForYear(curYear), lastMargin=marginForYear(curYear-1);
-  if(thisMargin!==null && lastMargin!==null && lastMargin-thisMargin>15) push('Margin Decline','medium',b.name,`${b.name}: profit margin fell from ${lastMargin.toFixed(1)}% in ${curYear-1} to ${thisMargin.toFixed(1)}% in ${curYear} — a drop of ${(lastMargin-thisMargin).toFixed(1)} points.`);
-
-  // Cash vs. accrual profit consistency — a classic audit red flag: profit
-  // that only exists on paper because it's sitting in unpaid invoices.
-  const bf=await businessFinancials(b.id);
-  if(bf && bf.lifetimeProfit>0 && bf.outstanding>bf.lifetimeProfit*0.5 && bf.bankBalance<bf.lifetimeProfit*0.3){
-   push('Cash Flow','medium',b.name,`${b.name}: reported lifetime profit of ${money(bf.lifetimeProfit)} is far higher than the ${money(bf.bankBalance)} actually in cash — largely tied up in ${money(bf.outstanding)} of unpaid invoices.`);
+  if(b.type==='business' && b.legalForm==='limited' && !b.fixedAssets && activeInvs.length>0){
+   findings.push({id:crypto.randomUUID(),category:'Tax Data Gap',severity:'medium',business:b.name,description:`${b.name}: no Fixed Assets figure entered in Business Settings. The small-company Company Income Tax exemption check needs this to be accurate.`});
   }
  }
-
- // Investment: realized losses worth a second look, regardless of business.
- for(const m of (await all('investmentMovements')).filter(x=>x.type==='return')){
-  const yieldAmt=Number(m.yieldAmount)||0;
-  if(yieldAmt<0 && Math.abs(yieldAmt)>Number(m.amount||0)*0.2){
-   const acc=allInvestAccounts.find(a=>a.id===m.accountId);
-   push('Investment Loss','medium',acc?(acc.kind==='personal'?'Personal':(businesses.find(b=>b.id===acc.businessId)||{}).name||'—'):'—',`${acc?esc(acc.name):'Investment account'}: a loss of ${money(-yieldAmt)} on the ${esc(m.date)} return is over 20% of the amount returned — worth understanding why.`);
-  }
- }
-
  const personalExp=allExpenses.filter(e=>e.kind==='personal');
  const byMonth={};
- for(const e of personalExp){const m=e.date.slice(0,7);byMonth[m]=(byMonth[m]||0)+e.amount;}
+ for(const e of personalExp){const m=(e.date||'').slice(0,7);if(!m)continue;byMonth[m]=(byMonth[m]||0)+e.amount;}
  const monthVals=Object.values(byMonth);
  if(monthVals.length>=3){
   const avg=monthVals.reduce((a,v)=>a+v,0)/monthVals.length;
   for(const [m,v] of Object.entries(byMonth)){
-   if(avg>0 && v>avg*2.5) push('Personal Spend','low','Personal',`Personal spending in ${m} (${money(v)}) is well above your typical monthly average of ${money(avg)}.`);
+   if(avg>0 && v>avg*2.5) findings.push({id:crypto.randomUUID(),category:'Personal Spend',severity:'low',business:'Personal',description:`Personal spending in ${m} (${money(v)}) is well above your typical monthly average of ${money(avg)}.`});
   }
  }
- // Owner draw sustainability: personal spending eating most or all of business profit.
- const totalLifetimeProfit=(await allBusinessFinancials()).reduce((a,f)=>a+f.lifetimeProfit,0);
- const totalPersonalExp=personalExp.reduce((a,e)=>a+e.amount,0);
- if(totalLifetimeProfit>0 && totalPersonalExp>totalLifetimeProfit*0.8) push('Owner Draw','medium','Personal',`Personal spending (${money(totalPersonalExp)}) is ${((totalPersonalExp/totalLifetimeProfit)*100).toFixed(0)}% of combined lifetime business profit (${money(totalLifetimeProfit)}) — little margin left to reinvest or absorb a bad month.`);
-
  const curYear=new Date().getFullYear();
  const subs=await all('taxSubmissions');
  for(let y=2026;y<curYear;y++){
-  if(!subs.some(s=>s.year===y)) push('Tax Compliance','high','All',`No government submission has been recorded for ${y}.`);
+  if(!subs.some(s=>s.year===y)) findings.push({id:crypto.randomUUID(),category:'Tax Compliance',severity:'high',business:'All',description:`No government submission has been recorded for ${y}.`});
  }
+ const openInvestments=(await all('investments')).filter(inv=>inv.status==='open');
+ const todayForDormancy=new Date();
+ for(const inv of openInvestments){
+  const withdrawn=(inv.withdrawals||[]).reduce((a,w)=>a+w.amount,0);
+  if(withdrawn>0) findings.push({id:crypto.randomUUID(),category:'Investment',severity:'low',business:'Personal',description:`Investment "${inv.name}" has ${money(withdrawn)} withdrawn so far but is still open — final profit/loss isn't determined until it's closed.`});
+  if(inv.dateInvested && !inv.preExisting){
+   const monthsOpen=(todayForDormancy-new Date(inv.dateInvested))/(1000*60*60*24*30);
+   if(monthsOpen>12 && (inv.withdrawals||[]).length===0) findings.push({id:crypto.randomUUID(),category:'Investment',severity:'low',business:'Personal',description:`Investment "${inv.name}" has had no withdrawals recorded in over 12 months. Confirm it's still active and being tracked.`});
+  }
+ }
+ const globalBalance=await getGlobalBankBalance();
+ if(globalBalance<0) findings.push({id:crypto.randomUUID(),category:'Cash Position',severity:'high',business:'All',description:`Your combined Cash & Bank Balance across all businesses is currently negative (${money(globalBalance)}). This usually means either income hasn't been fully recorded, or expenses/commission/tax payments have been overstated somewhere — worth a closer look before this report is finalized.`});
  return findings;
 }
-async function computeAuditRatios(){
- const perBiz=await allBusinessFinancials();
- const globalBalance=await getGlobalBankBalance();
- const totalRevenue=perBiz.reduce((a,f)=>a+f.sales,0);
- const totalExpenses=perBiz.reduce((a,f)=>a+f.expenses,0);
- const totalProfit=perBiz.reduce((a,f)=>a+f.lifetimeProfit,0);
- const totalCommissionPaid=perBiz.reduce((a,f)=>a+(f.commissionPaidTotal||0),0);
- const totalCommissionPending=perBiz.reduce((a,f)=>a+(f.commissionPendingTotal||0),0);
- const totalOutstanding=perBiz.reduce((a,f)=>a+Math.max(0,f.outstanding),0);
- const grossMargin=totalRevenue>0?(totalProfit/totalRevenue)*100:null;
- const expenseRatio=totalRevenue>0?(totalExpenses/totalRevenue)*100:null;
- const commissionRatio=totalRevenue>0?(totalCommissionPaid/totalRevenue)*100:null;
- const collectionRatio=totalRevenue>0?((totalRevenue-totalOutstanding)/totalRevenue)*100:null;
- const allEx=(await all('expenses')).filter(e=>e.kind!=='personal');
- const byMonth={};
- for(const e of allEx){const m=e.date.slice(0,7);byMonth[m]=(byMonth[m]||0)+e.amount;}
- const months=Object.keys(byMonth).sort().slice(-6);
- const avgMonthlyExpense=months.length?months.reduce((a,m)=>a+byMonth[m],0)/months.length:0;
- const cashRunwayMonths=avgMonthlyExpense>0?(globalBalance/avgMonthlyExpense):null;
- const personalExpTotal=(await all('expenses')).filter(e=>e.kind==='personal').reduce((a,e)=>a+e.amount,0);
- const personalDrawRatio=totalProfit>0?(personalExpTotal/totalProfit)*100:null;
- return {totalRevenue,totalExpenses,totalProfit,totalCommissionPaid,totalCommissionPending,totalOutstanding,globalBalance,grossMargin,expenseRatio,commissionRatio,collectionRatio,avgMonthlyExpense,cashRunwayMonths,personalExpTotal,personalDrawRatio};
-}
-function fmtPct(v){return v===null||v===undefined||isNaN(v)?'—':v.toFixed(1)+'%'}
-function fmtMonths(v){return v===null||v===undefined||isNaN(v)?'—':v.toFixed(1)+' mo'}
-function generateExecutiveSummary(findings,ratios){
- const high=findings.filter(f=>f.severity==='high').length, med=findings.filter(f=>f.severity==='medium').length, low=findings.filter(f=>f.severity==='low').length;
- const riskLevel=high>0?'Elevated':med>2?'Moderate':'Low';
- let s=`This self-audit reviewed ${money(ratios.totalRevenue)} in lifetime revenue across all businesses against ${money(ratios.totalExpenses)} in business expenses and ${money(ratios.totalCommissionPaid)} in commission paid out, for a combined lifetime profit of ${money(ratios.totalProfit)} (a gross margin of ${fmtPct(ratios.grossMargin)}). `;
- s+=`Cash on hand across all businesses stands at ${money(ratios.globalBalance)}${ratios.cashRunwayMonths!==null?`, roughly ${fmtMonths(ratios.cashRunwayMonths)} of average monthly business expenses`:''}. `;
- s+=`The scan surfaced ${findings.length} finding(s): ${high} high-severity, ${med} medium-severity, and ${low} low-severity — an overall risk assessment of <b>${riskLevel}</b>.`;
- return s;
-}
-function generateConclusion(findings,ratios){
- const high=findings.filter(f=>f.severity==='high');
- const unexplained=findings.filter(f=>!f.explanation||!f.explanation.trim());
- if(high.length===0 && findings.length===0) return 'No findings were raised in this review. Records appear internally consistent, invoice numbering is unbroken, and no tax compliance gaps were detected. Continue current record-keeping practices.';
- let s='';
- if(high.length>0) s+=`${high.length} high-severity item(s) warrant prompt attention, particularly around ${[...new Set(high.map(f=>f.category))].join(', ')}. `;
- else s+='No high-severity items were found. ';
- if(unexplained.length>0) s+=`${unexplained.length} finding(s) still have no management explanation recorded — add one before treating this audit as complete. `;
- s+='This remains a rules-based self-review, not a substitute for a licensed external auditor, but every figure in it is drawn directly from your own transaction records rather than summarized or estimated after the fact.';
- return s;
-}
 async function showAudit(){
- const findings=await runAudit();
- window.auditFindings=findings;
- const highCount=findings.filter(f=>f.severity==='high').length, medCount=findings.filter(f=>f.severity==='medium').length, lowCount=findings.filter(f=>f.severity==='low').length;
- openModal(`<h2>Audit of Me ${hb("A rules-based scan across every business: numbering gaps, unusual expenses and commission, receivables risk, margin trends, cash-vs-profit consistency, investment losses, and tax compliance gaps.")}</h2>${brandStrip()}
- <div class="notice">Scanned invoices, expenses, commission, investments, and tax records across all businesses. ${findings.length} item(s) found — ${highCount} high, ${medCount} medium, ${lowCount} low. Add a short explanation for each before generating the final report.</div>
- <div>${findings.map((f,n)=>`
-  <div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
-   <div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(f.category)}</b><span class="stamp ${f.severity==='high'?'overdue':f.severity==='medium'?'duesoon':'paid'}">${esc(f.severity)}</span></div>
-   <small>${esc(f.description)}</small>
-   <textarea placeholder="Your explanation (optional but recommended)..." oninput="auditFindings[${n}].explanation=this.value" style="min-height:50px;padding:8px;border:1.4px solid var(--line);border-radius:8px;font-size:13px"></textarea>
-  </div>`).join('') || '<div class="empty">No issues found — clean scan.</div>'}
- </div>
- <button class="btn primary full" onclick="generateAuditReport()">Generate Final Audit Report</button>
- <button class="btn secondary full" onclick="showAuditHistory()">Past Audits</button>
- <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ try{
+  const findings=await runAudit();
+  window.auditFindings=findings;
+  openModal(`<h2>Audit of Me ${hb("A rules-based scan of your records for the kinds of things a real audit checks: numbering gaps, unexplained large expenses, overdue receivables, and missing tax submissions.")}</h2>
+  <div class="notice">A rules-based scan of your invoices, expenses, and tax records — not a substitute for a professional auditor, but a first pass flagging the kinds of things a real audit would ask about. ${findings.length} item(s) found. Add a short explanation for each before generating the final report.</div>
+  <div>${findings.map((f,n)=>`
+   <div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(f.category)}</b><span class="stamp ${f.severity==='high'?'overdue':f.severity==='medium'?'duesoon':'paid'}">${esc(f.severity)}</span></div>
+    <small>${esc(f.description)}</small>
+    <textarea placeholder="Your explanation (optional but recommended)..." oninput="auditFindings[${n}].explanation=this.value" style="min-height:50px;padding:8px;border:1.4px solid var(--line);border-radius:8px;font-size:13px"></textarea>
+   </div>`).join('') || '<div class="empty">No issues found — clean scan.</div>'}
+  </div>
+  <button class="btn primary full" onclick="generateAuditReport()">Generate Final Audit Report</button>
+  <button class="btn secondary full" onclick="showAuditHistory()">Past Audits</button>
+  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ }catch(e){
+  console.error('Audit scan failed', e);
+  alert('Could not run the audit scan.\n\nDetails: '+(e&&e.message?e.message:e));
+ }
 }
 async function generateAuditReport(){
- const findings=window.auditFindings||[];
- const perBiz=await allBusinessFinancials();
- const globalBalance=await getGlobalBankBalance();
- const globalInvestment=await getGlobalInvestmentBalance();
- const ratios=await computeAuditRatios();
- const record={
-  id:crypto.randomUUID(), createdAt:new Date().toISOString(), status:'draft',
-  findings:findings.map(f=>({category:f.category,severity:f.severity,business:f.business,description:f.description,explanation:f.explanation||''})),
-  snapshot:{perBusiness:perBiz.map(f=>({name:f.business.name,currency:f.business.currency,sales:f.sales,expenses:f.expenses,commissionPaid:f.commissionPaidTotal||0,profit:f.lifetimeProfit,bankBalance:f.bankBalance,outstanding:f.outstanding})),globalBankBalance:globalBalance,globalInvestmentBalance:globalInvestment,ratios}
- };
- await put('auditRecords',record);
- closeModal();
- await showAuditReportPreview(record.id);
-}
-function auditRecommendation(category){
- const map={
-  'Invoice Numbering':'Investigate the missing number(s) — confirm whether an invoice was deleted, misnumbered, or simply skipped, and document the reason.',
-  'Large Expense':'Add a description to this expense and confirm the amount and category are correct.',
-  'Large Discount':'Confirm the discount was authorized and reflects the agreed terms with the customer.',
-  'Receivables Risk':'Follow up with the customer on payment, or consider a formal collection step if it remains unpaid.',
-  'Void Invoice':'Confirm the void was intentional and not a completed sale that should still be collected.',
-  'Record Keeping':'Assign a category to keep expense reporting and tax figures accurate.',
-  'Commission':'Confirm the commission amount and recipient are correct, and that it reflects the actual agreement for this job.',
-  'Tax Compliance':'Resolve the tax status or submission gap before your next filing to avoid over- or under-declaring income.',
-  'Margin Decline':'Review pricing, costs, and commission on recent jobs to identify what is driving the lower margin.',
-  'Cash Flow':'Prioritize collecting outstanding invoices — reported profit is not usable until it is actually in the bank.',
-  'Investment Loss':'Confirm the loss and its cause, and decide with a tax adviser whether any part of it is deductible.',
-  'Personal Spend':'Review what drove the higher spending that month and confirm it was intentional.',
-  'Owner Draw':'Consider whether current personal spending leaves enough profit reinvested in the business.'
- };
- return map[category]||'Review and confirm this item.';
+ try{
+  const findings=window.auditFindings||[];
+  const perBiz=await allBusinessFinancials();
+  const globalBalance=await getGlobalBankBalance();
+  const record={
+   id:crypto.randomUUID(), createdAt:new Date().toISOString(), status:'draft',
+   findings:findings.map(f=>({category:f.category,severity:f.severity,business:f.business,description:f.description,explanation:f.explanation||''})),
+   snapshot:{perBusiness:perBiz.map(f=>({name:f.business.name,currency:f.business.currency,sales:f.sales,expenses:f.expenses,profit:f.lifetimeProfit,bankBalance:f.bankBalance})),globalBankBalance:globalBalance}
+  };
+  await put('auditRecords',record);
+  closeModal();
+  await showAuditReportPreview(record.id);
+ }catch(e){
+  console.error('Generating audit report failed', e);
+  alert('Could not generate the audit report.\n\nDetails: '+(e&&e.message?e.message:e));
+ }
 }
 async function showAuditReportPreview(id){
  const rec=(await all('auditRecords')).find(x=>x.id===id);
  const highCount=rec.findings.filter(f=>f.severity==='high').length;
+ const mediumCount=rec.findings.filter(f=>f.severity==='medium').length;
+ const lowCount=rec.findings.filter(f=>f.severity==='low').length;
  const unexplained=rec.findings.filter(f=>!f.explanation||!f.explanation.trim()).length;
- const r=rec.snapshot.ratios||{};
- const severityOrder={high:0,medium:1,low:2};
- const sortedFindings=[...rec.findings].sort((a,b)=>severityOrder[a.severity]-severityOrder[b.severity]);
- const totalSales=rec.snapshot.perBusiness.reduce((a,p)=>a+p.sales,0);
- const totalExp=rec.snapshot.perBusiness.reduce((a,p)=>a+p.expenses,0);
- const totalComm=rec.snapshot.perBusiness.reduce((a,p)=>a+(p.commissionPaid||0),0);
- const totalProfit=rec.snapshot.perBusiness.reduce((a,p)=>a+p.profit,0);
- openModal(`<h2>Audit Report — ${new Date(rec.createdAt).toLocaleDateString()}</h2>${brandStrip()}
+ const balancePositive=rec.snapshot.globalBankBalance>=0;
+ const verdict = highCount>0
+   ? 'Attention needed — one or more high-severity items should be resolved before this audit is treated as final.'
+   : mediumCount>0
+     ? 'Generally sound, with some medium-priority items worth reviewing.'
+     : 'Clean — no significant issues found in this scan.';
+ openModal(`<h2>Audit Report — ${new Date(rec.createdAt).toLocaleDateString()}</h2>
  <div class="invoicePreview" id="auditPdfTarget">
-  <h1 style="font-size:20px">Internal Audit &amp; Analytical Report</h1>
-  <div style="font-size:12px;color:#555">Generated ${new Date(rec.createdAt).toLocaleString()} · Scope: all businesses, lifetime records to date · Prepared by: Ledger Vault Analytical Engine (self-audit)</div>
-
-  <b style="margin-top:16px;display:block">Executive Summary</b>
-  <div style="font-size:12.5px;line-height:1.6;margin-top:4px">${generateExecutiveSummary(rec.findings,r)}</div>
-
-  <b style="margin-top:16px;display:block">Scope &amp; Methodology</b>
-  <div style="font-size:12px;line-height:1.5;margin-top:4px;color:#444">This review covers every business, personal record, investment account, and commission entry in Ledger Vault. It applies rule-based checks used in real audit practice — sequence testing on invoice numbers, materiality thresholds on expenses and commission relative to their base amount, receivables aging, period-over-period margin comparison, cash-versus-accrual consistency, and tax-submission coverage — directly against the underlying transaction records, not a manually prepared summary.</div>
-
-  <b style="margin-top:16px;display:block">Financial Position</b>
-  <table><tr><th>Business</th><th>Sales</th><th>Expenses</th><th>Commission</th><th>Profit</th><th>Cash</th></tr>
-  ${rec.snapshot.perBusiness.map(p=>`<tr><td>${esc(p.name)}</td><td class="r">${money(p.sales)}</td><td class="r">${money(p.expenses)}</td><td class="r">${money(p.commissionPaid||0)}</td><td class="r">${money(p.profit)}</td><td class="r">${money(p.bankBalance)}</td></tr>`).join('')}
-  <tr style="font-weight:bold"><td>Combined</td><td class="r">${money(totalSales)}</td><td class="r">${money(totalExp)}</td><td class="r">${money(totalComm)}</td><td class="r">${money(totalProfit)}</td><td class="r">${money(rec.snapshot.globalBankBalance)}</td></tr>
+  <h1 style="font-size:20px">Internal Audit Report</h1>
+  <div style="font-size:12px;color:#555">Generated ${new Date(rec.createdAt).toLocaleString()}</div>
+  <b>Executive Summary</b>
+  <div style="font-size:12.5px;line-height:1.6;margin-top:4px">${verdict} ${rec.findings.length} item(s) reviewed: ${highCount} high, ${mediumCount} medium, ${lowCount} low severity.${unexplained>0?' '+unexplained+' item(s) have no explanation on file yet.':' All items have an explanation on file.'} Combined Cash &amp; Bank Balance across all businesses is ${money(rec.snapshot.globalBankBalance)}, which is ${balancePositive?'positive':'negative — worth resolving before treating this as final'}.</div>
+  <b style="margin-top:14px;display:block">Financial Summary</b>
+  <table><tr><th>Business</th><th>Currency</th><th>Sales</th><th>Expenses</th><th>Profit</th></tr>
+  ${rec.snapshot.perBusiness.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.currency)}</td><td class="r">${money(p.sales)}</td><td class="r">${money(p.expenses)}</td><td class="r">${money(p.profit)}</td></tr>`).join('')}
   </table>
   <div class="totalRow grand" style="margin-top:10px"><span>Combined Bank Balance (all businesses)</span><b>${money(rec.snapshot.globalBankBalance)}</b></div>
-  ${rec.snapshot.globalInvestmentBalance?`<div class="totalRow" style="margin-top:4px"><span>Combined Investment Balance</span><b>${money(rec.snapshot.globalInvestmentBalance)}</b></div>`:''}
-
-  <b style="margin-top:16px;display:block">Ratio Analysis</b>
-  <table><tr><th>Metric</th><th>Value</th><th>Reads as</th></tr>
-  <tr><td>Gross Margin</td><td class="r">${fmtPct(r.grossMargin)}</td><td style="font-size:11px">Profit as a share of revenue</td></tr>
-  <tr><td>Expense Ratio</td><td class="r">${fmtPct(r.expenseRatio)}</td><td style="font-size:11px">Business expenses as a share of revenue</td></tr>
-  <tr><td>Commission Ratio</td><td class="r">${fmtPct(r.commissionRatio)}</td><td style="font-size:11px">Commission paid as a share of revenue</td></tr>
-  <tr><td>Collection Ratio</td><td class="r">${fmtPct(r.collectionRatio)}</td><td style="font-size:11px">Revenue actually collected vs. invoiced</td></tr>
-  <tr><td>Cash Runway</td><td class="r">${fmtMonths(r.cashRunwayMonths)}</td><td style="font-size:11px">Months of average expenses covered by cash on hand</td></tr>
-  <tr><td>Personal Draw Ratio</td><td class="r">${fmtPct(r.personalDrawRatio)}</td><td style="font-size:11px">Personal spending as a share of lifetime profit</td></tr>
-  </table>
-
-  <b style="margin-top:16px;display:block">Findings &amp; Recommendations (${rec.findings.length})</b>
-  ${sortedFindings.map(f=>`<div style="margin-top:8px;padding:8px;background:#f7f7f5;border-radius:6px"><b>${esc(f.category)} (${esc(f.severity)})</b> — ${esc(f.business)}<div style="font-size:12px;margin-top:2px">${esc(f.description)}</div><div style="font-size:12px;margin-top:4px;color:#2F7A5D">Recommendation: ${esc(auditRecommendation(f.category))}</div><div style="font-size:12px;margin-top:4px;font-style:italic;color:#555">Management response: ${f.explanation?esc(f.explanation):'— not provided —'}</div></div>`).join('') || '<div>No findings — clean scan.</div>'}
-
-  <b style="margin-top:16px;display:block">Conclusion</b>
-  <div style="font-size:12.5px;line-height:1.6;margin-top:4px">${generateConclusion(rec.findings,r)}</div>
-
+  <b style="margin-top:16px;display:block">Findings (${rec.findings.length})</b>
+  ${rec.findings.map(f=>`<div style="margin-top:8px;padding:8px;background:#f7f7f5;border-radius:6px"><b>${esc(f.category)} (${esc(f.severity)})</b> — ${esc(f.business)}<div style="font-size:12px;margin-top:2px">${esc(f.description)}</div><div style="font-size:12px;margin-top:4px;font-style:italic;color:#555">Explanation: ${f.explanation?esc(f.explanation):'— not provided —'}</div></div>`).join('') || '<div>No findings — clean scan.</div>'}
   ${rec.status==='stamped' ? `<div style="margin-top:20px;text-align:center"><div class="stamp paid" style="font-size:16px;padding:10px 24px;transform:rotate(-6deg);display:inline-block">AUDITED &amp; SUBMITTED — ${new Date(rec.stampedAt).toLocaleDateString()}</div></div>` : ''}
  </div>
+ <div class="notice">This is a rules-based scan of your own records, not an opinion from a licensed auditor — treat it as a strong first pass that surfaces what a real audit would ask about, not a replacement for one.</div>
  ${rec.status!=='stamped' ? `<div class="notice">${unexplained>0?unexplained+' finding(s) still have no explanation. ':''}${highCount>0?highCount+' high-severity finding(s).':'No high-severity findings.'}</div><button class="btn accent full" onclick="stampAudit('${id}')">Stamp Done &amp; Submitted</button>` : ''}
  <button class="btn secondary full" onclick="downloadAuditPDF('${id}')">Save PDF</button>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
@@ -1992,27 +1644,116 @@ async function showAuditHistory(){
  openModal(`<h2>Past Audits</h2><div class="list">${recs.map(r=>`<div class="row-item"><div><b>${new Date(r.createdAt).toLocaleDateString()}</b><small>${r.findings.length} finding(s)</small></div><div class="row-right">${r.status==='stamped'?'<span class="stamp paid">Stamped</span>':'<span class="stamp due">Draft</span>'}<button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="showAuditReportPreview('${r.id}')">View</button></div></div>`).join('')||'<div class="empty">No audits yet.</div>'}</div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
 }
 
+/* ---------------- Commissions ---------------- */
+async function showCommissions(){
+ const comms=await bizCommissions(), invoices=await bizInvoices();
+ openModal(`<h2>Commissions ${hb("Money owed to whoever facilitated a job — separate from business expenses, never shown on the customer invoice, and only payable once that invoice is fully paid.")}</h2>
+ <div class="notice">Ready to Pay means the linked invoice has been paid in full. Pending means the customer hasn't fully paid yet — commission isn't due until they do.</div>
+ <div class="list" id="commList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.commCache=comms.map(c=>({...c,invoice:invoices.find(i=>i.id===c.invoiceId)}));
+ drawCommissions();
+}
+function drawCommissions(){
+ commList.innerHTML=commCache.sort((a,b)=>(b.paidDate||'').localeCompare(a.paidDate||'')).map(c=>{
+  const inv=c.invoice;
+  const invPaid=inv?((inv.payments||[]).reduce((a,p)=>a+p.amount,0)>=inv.total && inv.total>0):false;
+  const status=c.paid?{cls:'paid',label:'Paid'}:invPaid?{cls:'duesoon',label:'Ready to pay'}:{cls:'due',label:'Pending invoice payment'};
+  return `<div class="row-item"><div><b>${esc(c.personName)}</b><small>${inv?esc(inv.number):'Invoice removed'}</small></div><div class="row-right"><strong class="money">${money(c.amount)}</strong><span class="stamp ${status.cls}">${status.label}</span>${(!c.paid&&invPaid)?`<button class="btn accent" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="markCommissionPaid('${c.id}')">Mark Paid</button>`:''}</div></div>`;
+ }).join('') || '<div class="empty">No commissions recorded.</div>';
+}
+async function markCommissionPaid(id){
+ const c=(await all('commissions')).find(x=>x.id===id); if(!c)return;
+ c.paid=true; c.paidDate=new Date().toISOString().slice(0,10);
+ await put('commissions',c);
+ closeModal(); await showCommissions(); await refresh();
+}
+
+/* ---------------- Investments ---------------- */
+async function showInvestments(){
+ const invs=await all('investments');
+ openModal(`<h2>Investments ${hb("Track money moved into and out of investments. Each one is its own account — new investments reduce your bank balance when you invest, withdrawals add back to it when returned.")}</h2>
+ <div class="notice">Personal, shared across all your businesses. Withdrawals can be added multiple times as money returns — each one asks whether the investment is now fully closed.</div>
+ <button class="btn accent full" onclick="addInvestment()">＋ New Investment</button>
+ <div class="list" id="invList" style="margin-top:12px"></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.investCache=invs;
+ drawInvestments();
+}
+function drawInvestments(){
+ invList.innerHTML=investCache.sort((a,b)=>(b.dateInvested||'').localeCompare(a.dateInvested||'')).map(inv=>{
+  const withdrawn=(inv.withdrawals||[]).reduce((a,w)=>a+w.amount,0);
+  const pl=withdrawn-(Number(inv.amountInvested)||0);
+  const cls=inv.status==='closed'?(pl>=0?'paid':'overdue'):'duesoon';
+  const label=inv.status==='closed'?(pl>=0?'Profit '+money(pl):'Loss '+money(Math.abs(pl))):'Open';
+  return `<div class="row-item"><div><b>${esc(inv.name)}</b><small>${inv.preExisting?'Pre-existing · ':''}Invested ${money(inv.amountInvested||0)} · Returned ${money(withdrawn)}</small></div><div class="row-right"><span class="stamp ${cls}">${label}</span><button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="openInvestment('${inv.id}')">Open</button></div></div>`;
+ }).join('') || '<div class="empty">No investments yet.</div>';
+}
+async function addInvestment(){
+ const name=prompt('Name this investment/account:');
+ if(!name||!name.trim())return;
+ const preExisting=confirm('Was this investment already in place before you started using this app?\n\nOK = Yes, pre-existing.\nCancel = No, investing fresh money now.');
+ let amountInvested=0, dateInvested=new Date().toISOString().slice(0,10);
+ if(preExisting){
+  const known=prompt('If you know the original amount invested, enter it now (used for profit/loss tracking later). Leave blank if unknown:');
+  amountInvested=Number(known)||0;
+ } else {
+  const amt=prompt('Amount being invested now (this will be deducted from your bank balance):');
+  if(amt===null)return;
+  amountInvested=Number(amt)||0;
+  const d=prompt('Date invested (YYYY-MM-DD):', dateInvested);
+  if(d)dateInvested=d;
+ }
+ const inv={id:crypto.randomUUID(), name:name.trim(), preExisting, amountInvested, dateInvested, withdrawals:[], status:'open'};
+ await put('investments',inv);
+ closeModal(); await showInvestments(); await refresh();
+}
+async function openInvestment(id){
+ const inv=(await all('investments')).find(x=>x.id===id); if(!inv)return;
+ const withdrawn=(inv.withdrawals||[]).reduce((a,w)=>a+w.amount,0);
+ const pl=withdrawn-(Number(inv.amountInvested)||0);
+ openModal(`<h2>${esc(inv.name)}</h2>
+ <div class="totalBox"><div class="totalRow"><span>Amount invested</span><b>${money(inv.amountInvested||0)}</b></div><div class="totalRow"><span>Total returned</span><b>${money(withdrawn)}</b></div><div class="totalRow grand"><span>${inv.status==='closed'?(pl>=0?'Final Profit':'Final Loss'):'Unrealized Gain/Loss'}</span><b>${money(pl)}</b></div></div>
+ ${inv.status==='open'?`<button class="btn accent full" onclick="addInvestmentWithdrawal('${id}')">Record a Return / Withdrawal</button>`:`<div class="notice">This investment is closed.</div>`}
+ <h3 style="font-size:14px;margin-top:16px">Withdrawal history</h3>
+ <div class="list">${(inv.withdrawals||[]).map(w=>`<div class="row-item"><div><b>${esc(w.date)}</b>${w.note?`<small>${esc(w.note)}</small>`:''}</div><strong class="money">${money(w.amount)}</strong></div>`).join('')||'<div class="empty">No withdrawals yet.</div>'}</div>
+ <button class="btn danger full" onclick="deleteInvestment('${id}')">Delete Investment</button>
+ <button class="btn secondary full" onclick="showInvestments()">Back</button>`);
+}
+async function addInvestmentWithdrawal(id){
+ const inv=(await all('investments')).find(x=>x.id===id); if(!inv)return;
+ const amt=prompt('Amount returned to bank from "'+inv.name+'":');
+ if(amt===null)return;
+ const amount=Number(amt)||0;
+ const date=prompt('Date (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+ if(!date)return;
+ const note=prompt('Optional note:')||'';
+ const closed=confirm('Is this investment now fully closed — no more money left in it?\n\nOK = Yes, close it (this finalizes profit/loss).\nCancel = No, still open, more may come later.');
+ inv.withdrawals=inv.withdrawals||[];
+ inv.withdrawals.push({id:crypto.randomUUID(), amount, date, note});
+ if(closed){inv.status='closed'; inv.closedAt=new Date().toISOString();}
+ await put('investments',inv);
+ await openInvestment(id); await refresh();
+}
+async function deleteInvestment(id){
+ if(!confirm('Delete this investment record? This cannot be undone.'))return;
+ await del('investments',id);
+ await showInvestments(); await refresh();
+}
+
 /* ---------------- Reports ---------------- */
 
+
 async function showReports(){
- const biz=await getBusiness();
- openModal(`<h2>Reports ${hb("Revenue, expense, personal, and commission reports cover every business by default, so nothing is hidden by whichever business you're currently viewing. Business P&L is the one exception — it's scoped to your active business, for a day-to-day read on just that one.")}</h2>${brandStrip()}
- <div class="list">
-  <div class="row-item"><div><b>Business P&amp;L</b><small>Sales vs expenses for ${esc(biz.name)}, any date range</small></div><button class="btn secondary" onclick="showBusinessPL()">Open</button></div>
-  <div class="row-item"><div><b>All Revenue</b><small>Every business, every sale</small></div><button class="btn secondary" onclick="showRevenueReport()">Open</button></div>
-  <div class="row-item"><div><b>Revenue vs Expenses vs Commission</b><small>Net profit after every real cost</small></div><button class="btn secondary" onclick="showRevExpCommReport()">Open</button></div>
-  <div class="row-item"><div><b>All Expenses</b><small>By category, business vs personal</small></div><button class="btn secondary" onclick="showExpensesReport()">Open</button></div>
-  <div class="row-item"><div><b>Personal</b><small>Your own spending, income &amp; investments</small></div><button class="btn secondary" onclick="showPersonalReport()">Open</button></div>
-  <div class="row-item"><div><b>All Commission Paid</b><small>By recipient, business &amp; status</small></div><button class="btn secondary" onclick="showCommissionReport()">Open</button></div>
- </div>
- <button class="btn secondary full" onclick="closeModal()">Close</button>`);
-}
-async function showBusinessPL(){
  const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>Business P&amp;L</h2>${brandStrip()}<div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div><button class="btn primary full" onclick="calculateReport()">Calculate Report</button><div id="reportResult"></div>
- <h3 style="font-size:14px;margin-top:18px">Export</h3>
- <div class="row2"><button class="btn secondary full" onclick="exportInvoicesCSV()">Invoices CSV</button><button class="btn secondary full" onclick="exportExpensesCSV()">Expenses CSV</button></div>
- <button class="btn secondary full" onclick="showReports()">Back</button>`);
+ openModal(`<h2>Reports ${hb("Pull the exact report you need — revenue, expenses, commission, or personal — instead of one fixed view.")}</h2>
+ <div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div>
+ <button class="btn primary full" onclick="calculateReport()">Calculate Summary</button><div id="reportResult"></div>
+ <h3 style="font-size:14px;margin-top:18px">Pull a Report</h3>
+ <div class="notice">Each button below builds that specific report as a downloadable CSV, for the date range above.</div>
+ <div class="row2"><button class="btn secondary full" onclick="exportInvoicesCSV()">All Revenue (Invoices)</button><button class="btn secondary full" onclick="exportRevenueVsExpenseCSV()">Revenue vs Expenses vs Commission</button></div>
+ <div class="row2"><button class="btn secondary full" onclick="exportExpensesCSV()">All Business Expenses</button><button class="btn secondary full" onclick="exportPersonalReportCSV()">All Personal (Expenses + Income)</button></div>
+ <button class="btn secondary full" onclick="exportCommissionReportCSV()">All Commission Paid</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
  await calculateReport();
 }
 async function calculateReport(){
@@ -2024,28 +1765,50 @@ async function calculateReport(){
  const received=filteredInv.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+(Number(p.amount)||0),0),0);
  const linked=filteredEx.filter(e=>e.invoiceId).reduce((a,e)=>a+(Number(e.amount)||0),0);
  const other=filteredEx.filter(e=>!e.invoiceId).reduce((a,e)=>a+(Number(e.amount)||0),0);
+ const filteredComm=(await bizCommissions()).filter(c=>ids.has(c.invoiceId));
+ const commTotal=filteredComm.reduce((a,c)=>a+c.amount,0);
  const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0;
  const allTimeSales=inv.reduce((a,i)=>a+(Number(i.total)||0),0), allTimeExp=ex.reduce((a,e)=>a+(Number(e.amount)||0),0);
  const lifetimeProfit=(openRev+allTimeSales)-(openExp+allTimeExp);
- reportResult.innerHTML=`<div class="stats" style="grid-template-columns:1fr 1fr;margin-top:14px"><div class="stat"><div class="lbl">Sales</div><div class="val">${money(sales)}</div></div><div class="stat"><div class="lbl">Received</div><div class="val">${money(received)}</div></div><div class="stat"><div class="lbl">Outstanding</div><div class="val">${money(sales-received)}</div></div><div class="stat accent"><div class="lbl">Job Expenses</div><div class="val">${money(linked)}</div></div></div><div class="totalBox"><div class="totalRow"><span>Sales</span><b>${money(sales)}</b></div><div class="totalRow"><span>Invoice-linked expenses</span><b>${money(linked)}</b></div><div class="totalRow"><span>Other business expenses</span><b>${money(other)}</b></div><div class="totalRow grand"><span>Estimated Profit (this period)</span><b>${money(sales-linked-other)}</b></div></div><div class="notice">Neither type of expense is printed on the customer invoice. Personal and voided items are excluded from this report.</div>
+ reportResult.innerHTML=`<div class="stats" style="grid-template-columns:1fr 1fr;margin-top:14px"><div class="stat"><div class="lbl">Sales</div><div class="val">${money(sales)}</div></div><div class="stat"><div class="lbl">Received</div><div class="val">${money(received)}</div></div><div class="stat"><div class="lbl">Outstanding</div><div class="val">${money(sales-received)}</div></div><div class="stat accent"><div class="lbl">Job Expenses</div><div class="val">${money(linked)}</div></div></div><div class="totalBox"><div class="totalRow"><span>Sales</span><b>${money(sales)}</b></div><div class="totalRow"><span>Invoice-linked expenses</span><b>${money(linked)}</b></div><div class="totalRow"><span>Other business expenses</span><b>${money(other)}</b></div><div class="totalRow"><span>Commission (this period)</span><b>${money(commTotal)}</b></div><div class="totalRow grand"><span>Estimated Profit (this period)</span><b>${money(sales-linked-other-commTotal)}</b></div></div><div class="notice">Neither expenses nor commission are printed on the customer invoice. Personal and voided items are excluded from this report.</div>
  ${(openRev||openExp)?`<h3 style="font-size:14px;margin-top:18px">Lifetime Profit &amp; Loss</h3><div class="totalBox"><div class="totalRow"><span>Revenue brought forward (as of ${esc(b.openingAsOfDate||'—')})</span><b>${money(openRev)}</b></div><div class="totalRow"><span>Expenses brought forward</span><b>${money(openExp)}</b></div><div class="totalRow"><span>All-time sales since (this app)</span><b>${money(allTimeSales)}</b></div><div class="totalRow"><span>All-time business expenses (this app)</span><b>${money(allTimeExp)}</b></div><div class="totalRow grand"><span>Lifetime Profit</span><b>${money(lifetimeProfit)}</b></div></div>`:''}`;
 }
-function csvEscape(v){
- v=String(v??'');
- // Guard against CSV/Excel "formula injection": a cell that starts with
- // =, +, -, or @ can be interpreted as a formula by Excel/Sheets when the
- // file is opened, which is a known risk for any export containing
- // user-typed text (recipient names, categories, descriptions, etc.).
- // Prefixing with a straight quote neutralizes it while keeping the value readable.
- if(/^[=+\-@\t\r]/.test(v)) v="'"+v;
- return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
-}
+function csvEscape(v){v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
 function downloadCSV(rows,filename){const text=rows.map(r=>r.map(csvEscape).join(',')).join('\r\n');const blob=new Blob([text],{type:'text/csv'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click()}
 async function exportInvoicesCSV(){
  const inv=await bizInvoices();
- const rows=[['Invoice Number','Internal Ref','Date','Due Date','Customer','Status','Total','Paid','Balance']];
- for(const i of inv){const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0);rows.push([i.number,i.internalRef||'',i.date,i.dueDate||'',i.customer||'',i.status==='void'?'Void':(paid>=i.total?'Paid':'Unpaid'),i.total,paid,i.total-paid]);}
- downloadCSV(rows,'invoices.csv');
+ const rows=[['Invoice Number','Date','Due Date','Customer','Status','Total','Paid','Balance']];
+ for(const i of inv){const paid=(i.payments||[]).reduce((a,p)=>a+p.amount,0);rows.push([i.number,i.date,i.dueDate||'',i.customer||'',i.status==='void'?'Void':(paid>=i.total?'Paid':'Unpaid'),i.total,paid,i.total-paid]);}
+ downloadCSV(rows,'all-revenue.csv');
+}
+async function exportRevenueVsExpenseCSV(){
+ const from=rf?.value||'', to=rt?.value||'';
+ const inv=(await bizInvoices()).filter(i=>i.status!=='void' && (!from||i.date>=from) && (!to||i.date<=to));
+ const exps=(await businessExpenses()).filter(e=>(!from||e.date>=from) && (!to||e.date<=to));
+ const comms=(await bizCommissions()).filter(c=>{const i=inv.find(x=>x.id===c.invoiceId);return !!i;});
+ const rows=[['Type','Date','Description','Amount']];
+ for(const i of inv) rows.push(['Revenue', i.date, 'Invoice '+i.number+' — '+(i.customer||''), i.total]);
+ for(const e of exps) rows.push(['Expense', e.date, (e.category||'')+' — '+(e.description||''), -Math.abs(e.amount)]);
+ for(const c of comms) rows.push(['Commission', '', c.personName+' — Invoice '+(inv.find(i=>i.id===c.invoiceId)?.number||''), -Math.abs(c.amount)]);
+ downloadCSV(rows,'revenue-vs-expense-vs-commission.csv');
+}
+async function exportPersonalReportCSV(){
+ const exps=(await all('expenses')).filter(e=>e.kind==='personal');
+ const income=await all('otherIncome');
+ const rows=[['Type','Date','Category','Description','Amount']];
+ for(const e of exps) rows.push(['Personal Expense', e.date, e.category||'', e.description||'', -Math.abs(e.amount)]);
+ for(const i of income) rows.push(['Other Income', i.date, i.category||'', i.description||'', i.amount]);
+ downloadCSV(rows,'personal-report.csv');
+}
+async function exportCommissionReportCSV(){
+ const comms=await bizCommissions(), invoices=await bizInvoices();
+ const rows=[['Person','Invoice Number','Amount','Invoice Paid?','Commission Status','Paid Date']];
+ for(const c of comms){
+  const inv=invoices.find(i=>i.id===c.invoiceId);
+  const invPaid=inv?((inv.payments||[]).reduce((a,p)=>a+p.amount,0)>=inv.total && inv.total>0):false;
+  rows.push([c.personName, inv?inv.number:'—', c.amount, invPaid?'Yes':'No', c.paid?'Paid':'Unpaid', c.paidDate||'']);
+ }
+ downloadCSV(rows,'commission-report.csv');
 }
 async function exportExpensesCSV(){
  const ex=await businessExpenses();
@@ -2054,290 +1817,13 @@ async function exportExpensesCSV(){
  downloadCSV(rows,'expenses.csv');
 }
 
-/* ---------------- Reports: All Revenue ---------------- */
-async function showRevenueReport(){
- const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>All Revenue ${hb("Every sale across every business, voided invoices excluded. Grouped by business and by month, using each invoice's own date.")}</h2>${brandStrip()}
- <div class="row2"><div class="field"><label>From</label><input id="revFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="revTo" type="date" value="${today}"></div></div>
- <button class="btn primary full" onclick="calculateRevenueReport()">Calculate</button>
- <div id="revenueResult"></div>
- <button class="btn secondary full" onclick="exportRevenueCSV()">Export CSV</button>
- <button class="btn secondary full" onclick="showReports()">Back</button>`);
- await calculateRevenueReport();
-}
-async function calculateRevenueReport(){
- const from=revFrom.value, to=revTo.value;
- const businesses=await all('business');
- const allInvoices=(await all('invoices')).filter(i=>i.status!=='void' && i.date>=from && i.date<=to);
- let bizRows='', totalSales=0, totalReceived=0;
- const monthly={};
- for(const b of businesses){
-  const invs=allInvoices.filter(i=>i.businessId===b.id);
-  const sales=invs.reduce((a,i)=>a+i.total,0);
-  const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
-  totalSales+=sales; totalReceived+=received;
-  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')} · ${invs.length} invoice(s)</small></div><div class="row-right"><strong class="money">${money(sales)}</strong><small>Received ${money(received)}</small></div></div>`;
-  for(const i of invs){ const m=i.date.slice(0,7); monthly[m]=(monthly[m]||0)+i.total; }
- }
- const monthRows=Object.entries(monthly).sort((a,b)=>a[0].localeCompare(b[0])).map(([m,v])=>`<div class="totalRow"><span>${m}</span><b>${money(v)}</b></div>`).join('');
- const currencies=new Set(businesses.map(b=>b.currency||'NGN'));
- revenueResult.innerHTML=`
- ${currencies.size>1?`<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">Businesses use different currencies (${[...currencies].join(', ')}) — combined totals below add these directly. Treat per-business figures as the accurate ones.</div>`:''}
- <h3 style="font-size:14px;margin-top:14px">By Business</h3>
- <div class="list">${bizRows||'<div class="empty">No sales in this period.</div>'}</div>
- <h3 style="font-size:14px;margin-top:16px">By Month</h3>
- <div class="totalBox">${monthRows||'<div class="empty" style="padding:8px 0">No sales in this period.</div>'}</div>
- <div class="totalBox" style="margin-top:12px"><div class="totalRow"><span>Total Sales</span><b>${money(totalSales)}</b></div><div class="totalRow grand"><span>Total Received</span><b>${money(totalReceived)}</b></div></div>`;
- window.revenueReportData={from,to,businesses,invoices:allInvoices};
-}
-async function exportRevenueCSV(){
- const d=window.revenueReportData; if(!d)return;
- const rows=[['Business','Invoice','Date','Customer','Total','Received']];
- for(const i of d.invoices){const b=d.businesses.find(x=>x.id===i.businessId);const received=(i.payments||[]).reduce((a,p)=>a+p.amount,0);rows.push([b?b.name:'',i.number,i.date,i.customer||'',i.total,received]);}
- downloadCSV(rows,`revenue-${d.from}-to-${d.to}.csv`);
-}
-
-/* ---------------- Reports: Revenue vs Expenses vs Commission ---------------- */
-async function showRevExpCommReport(){
- const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>Revenue vs Expenses vs Commission ${hb("Net profit after every real cost: business expenses plus commission actually paid out. Pending commission — invoices not yet fully paid — isn't included, matching how it hits your Cash & Bank Balance.")}</h2>${brandStrip()}
- <div class="row2"><div class="field"><label>From</label><input id="recFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="recTo" type="date" value="${today}"></div></div>
- <button class="btn primary full" onclick="calculateRevExpCommReport()">Calculate</button>
- <div id="recResult"></div>
- <button class="btn secondary full" onclick="showReports()">Back</button>`);
- await calculateRevExpCommReport();
-}
-async function calculateRevExpCommReport(){
- const from=recFrom.value, to=recTo.value;
- const businesses=await all('business');
- let rows='', totalRev=0, totalExp=0, totalComm=0, totalProfit=0;
- for(const b of businesses){
-  const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
-  const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===b.id && e.date>=from && e.date<=to);
-  const rev=invs.reduce((a,i)=>a+i.total,0), exp=exps.reduce((a,e)=>a+e.amount,0);
-  const allBizInvs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void');
-  const fullyPaidIds=new Set(allBizInvs.filter(i=>{const p=(i.payments||[]).reduce((a,pp)=>a+pp.amount,0);return p>=i.total&&i.total>0}).map(i=>i.id));
-  const invIdsThisRange=new Set(invs.map(i=>i.id));
-  const comm=(await all('commissions')).filter(c=>c.businessId===b.id && c.status!=='void' && fullyPaidIds.has(c.invoiceId) && invIdsThisRange.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
-  const profit=rev-exp-comm;
-  if(!rev && !exp && !comm) continue;
-  totalRev+=rev; totalExp+=exp; totalComm+=comm; totalProfit+=profit;
-  const margin=rev>0?((profit/rev)*100).toFixed(1)+'%':'—';
-  rows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>Margin: ${margin}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} − Exp ${money(exp)} − Comm ${money(comm)}</small></div></div>`;
- }
- const overallMargin=totalRev>0?((totalProfit/totalRev)*100).toFixed(1)+'%':'—';
- recResult.innerHTML=`
- <div class="list" style="margin-top:14px">${rows||'<div class="empty">No activity in this period.</div>'}</div>
- <div class="totalBox" style="margin-top:14px">
-  <div class="totalRow"><span>Revenue</span><b>${money(totalRev)}</b></div>
-  <div class="totalRow"><span>Business Expenses</span><b>-${money(totalExp)}</b></div>
-  <div class="totalRow"><span>Commission Paid</span><b>-${money(totalComm)}</b></div>
-  <div class="totalRow grand"><span>Net Profit</span><b>${money(totalProfit)}</b></div>
- </div>
- <div class="notice">Overall margin: ${overallMargin} of revenue.</div>`;
-}
-
-/* ---------------- Reports: All Expenses ---------------- */
-async function showExpensesReport(){
- const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>All Expenses ${hb("Every recorded business and personal expense, grouped by category and by business.")}</h2>${brandStrip()}
- <div class="row2"><div class="field"><label>From</label><input id="expFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="expTo" type="date" value="${today}"></div></div>
- <button class="btn primary full" onclick="calculateExpensesReport()">Calculate</button>
- <div id="expResult"></div>
- <button class="btn secondary full" onclick="exportAllExpensesCSV()">Export CSV</button>
- <button class="btn secondary full" onclick="showReports()">Back</button>`);
- await calculateExpensesReport();
-}
-async function calculateExpensesReport(){
- const from=expFrom.value, to=expTo.value;
- const allEx=(await all('expenses')).filter(e=>e.date>=from && e.date<=to);
- const bizEx=allEx.filter(e=>e.kind!=='personal'), persEx=allEx.filter(e=>e.kind==='personal');
- const businesses=await all('business');
- const byBizCat=groupByCategory(bizEx);
- const byPersCat=groupByCategory(persEx);
- const byBusiness={};
- for(const e of bizEx){const b=businesses.find(x=>x.id===e.businessId);const name=b?b.name:'Unknown';byBusiness[name]=(byBusiness[name]||0)+e.amount;}
- const bizTotal=bizEx.reduce((a,e)=>a+e.amount,0), persTotal=persEx.reduce((a,e)=>a+e.amount,0);
- expResult.innerHTML=`
- <div class="totalBox" style="margin-top:14px"><div class="totalRow"><span>Business Expenses</span><b>${money(bizTotal)}</b></div><div class="totalRow grand"><span>Personal Expenses</span><b>${money(persTotal)}</b></div></div>
- <h3 style="font-size:14px;margin-top:16px">Business — By Category</h3>
- <div class="totalBox">${byBizCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}</div>
- <h3 style="font-size:14px;margin-top:16px">Business — By Business</h3>
- <div class="totalBox">${Object.entries(byBusiness).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="totalRow"><span>${esc(n)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}</div>
- <h3 style="font-size:14px;margin-top:16px">Personal — By Category</h3>
- <div class="totalBox">${byPersCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}</div>`;
- window.expensesReportData={from,to,allEx,businesses};
-}
-async function exportAllExpensesCSV(){
- const d=window.expensesReportData; if(!d)return;
- const rows=[['Type','Business','Date','Category','Description','Amount']];
- for(const e of d.allEx){const b=d.businesses.find(x=>x.id===e.businessId);rows.push([e.kind==='personal'?'Personal':'Business',b?b.name:'',e.date,e.category||'',e.description||'',e.amount]);}
- downloadCSV(rows,`expenses-${d.from}-to-${d.to}.csv`);
-}
-
-/* ---------------- Reports: Personal ---------------- */
-async function showPersonalReport(){
- const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>Personal ${hb("Your own spending, income, and investment balances — shared across all businesses rather than tied to any one of them.")}</h2>${brandStrip()}
- <div class="row2"><div class="field"><label>From</label><input id="persFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="persTo" type="date" value="${today}"></div></div>
- <button class="btn primary full" onclick="calculatePersonalReport()">Calculate</button>
- <div id="persResult"></div>
- <button class="btn secondary full" onclick="showReports()">Back</button>`);
- await calculatePersonalReport();
-}
-async function calculatePersonalReport(){
- const from=persFrom.value, to=persTo.value;
- const persEx=(await all('expenses')).filter(e=>e.kind==='personal' && e.date>=from && e.date<=to);
- const persExTotal=persEx.reduce((a,e)=>a+e.amount,0);
- const byCat=groupByCategory(persEx);
- const otherInc=(await all('otherIncome')).filter(e=>e.date>=from && e.date<=to);
- const otherIncTotal=otherInc.reduce((a,e)=>a+e.amount,0);
- const otherIncTaxable=otherInc.filter(e=>e.taxable).reduce((a,e)=>a+e.amount,0);
- const personalInvestAccs=(await all('investmentAccounts')).filter(a=>a.kind==='personal');
- const allMoves=await all('investmentMovements');
- const investBalance=personalInvestAccs.reduce((a,acc)=>a+investmentAccountBalance(acc,allMoves),0);
- const netPersonal=otherIncTotal-persExTotal;
- persResult.innerHTML=`
- <div class="totalBox" style="margin-top:14px">
-  <div class="totalRow"><span>Other Income (this period)</span><b>${money(otherIncTotal)}</b></div>
-  <div class="totalRow"><span>&nbsp;&nbsp;— of which taxable</span><b>${money(otherIncTaxable)}</b></div>
-  <div class="totalRow"><span>Personal Expenses (this period)</span><b>-${money(persExTotal)}</b></div>
-  <div class="totalRow grand"><span>Net Personal Cash Flow</span><b>${money(netPersonal)}</b></div>
- </div>
- <h3 style="font-size:14px;margin-top:16px">Personal Expenses — By Category</h3>
- <div class="totalBox">${byCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}</div>
- <h3 style="font-size:14px;margin-top:16px">Personal Investment Accounts</h3>
- <div class="totalBox">${personalInvestAccs.map(acc=>`<div class="totalRow"><span>${esc(acc.name)}</span><b>${money(investmentAccountBalance(acc,allMoves))}</b></div>`).join('')||'<div class="empty" style="padding:8px 0">None.</div>'}${personalInvestAccs.length?`<div class="totalRow grand"><span>Total Personal Investment Balance</span><b>${money(investBalance)}</b></div>`:''}</div>`;
-}
-
-/* ---------------- Reports: All Commission Paid ---------------- */
-async function showCommissionReport(){
- const today=new Date().toISOString().slice(0,10);
- openModal(`<h2>All Commission Paid ${hb("Every commission across every business, grouped by recipient — who's owed what, and who's already been paid. Filters by the linked invoice's date.")}</h2>${brandStrip()}
- <div class="row2"><div class="field"><label>From</label><input id="commFrom" type="date" value="${new Date(new Date().getFullYear(),0,1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="commTo" type="date" value="${today}"></div></div>
- <button class="btn primary full" onclick="calculateCommissionReport()">Calculate</button>
- <div id="commResult"></div>
- <button class="btn secondary full" onclick="exportCommissionCSV()">Export CSV</button>
- <button class="btn secondary full" onclick="showReports()">Back</button>`);
- await calculateCommissionReport();
-}
-async function calculateCommissionReport(){
- const from=commFrom.value, to=commTo.value;
- const businesses=await all('business');
- const allInvoices=await all('invoices');
- const allCommissions=await all('commissions');
- const rows=[];
- for(const c of allCommissions){
-  const inv=allInvoices.find(i=>i.id===c.invoiceId);
-  if(!inv || inv.date<from || inv.date>to) continue;
-  const b=businesses.find(x=>x.id===c.businessId);
-  const paid=(inv.payments||[]).reduce((a,p)=>a+p.amount,0);
-  const isFullyPaid=paid>=inv.total&&inv.total>0;
-  const status=c.status==='void'?'void':(isFullyPaid?'paid':'pending');
-  rows.push({...c, businessName:b?b.name:'Unknown', invoiceNumber:inv.number, customer:inv.customer, status});
- }
- const active=rows.filter(r=>r.status!=='void');
- const byRecipient={};
- for(const r of active) byRecipient[r.recipientName]=byRecipient[r.recipientName]||{paid:0,pending:0};
- for(const r of active) byRecipient[r.recipientName][r.status]+=Number(r.amount)||0;
- const totalPaid=active.filter(r=>r.status==='paid').reduce((a,r)=>a+r.amount,0);
- const totalPending=active.filter(r=>r.status==='pending').reduce((a,r)=>a+r.amount,0);
- commResult.innerHTML=`
- <div class="totalBox" style="margin-top:14px"><div class="totalRow"><span>Paid Out</span><b>${money(totalPaid)}</b></div><div class="totalRow grand"><span>Pending</span><b>${money(totalPending)}</b></div></div>
- <h3 style="font-size:14px;margin-top:16px">By Recipient</h3>
- <div class="list">${Object.entries(byRecipient).sort((a,b)=>(b[1].paid+b[1].pending)-(a[1].paid+a[1].pending)).map(([name,v])=>`<div class="row-item"><div><b>${esc(name)}</b><small>Paid ${money(v.paid)} · Pending ${money(v.pending)}</small></div><strong class="money">${money(v.paid+v.pending)}</strong></div>`).join('')||'<div class="empty">No commission in this period.</div>'}</div>
- <h3 style="font-size:14px;margin-top:16px">All Records</h3>
- <div class="list">${rows.map(r=>`<div class="row-item"><div><b>${esc(r.recipientName)}</b><small>${esc(r.businessName)} · ${esc(r.invoiceNumber)} · ${esc(r.customer||'')}</small></div><div class="row-right"><strong class="money">${money(r.amount)}</strong><span class="stamp ${r.status==='paid'?'paid':r.status==='void'?'void':'due'}">${r.status==='paid'?'Paid':r.status==='void'?'Void':'Pending'}</span></div></div>`).join('')||'<div class="empty">No commission in this period.</div>'}</div>`;
- window.commissionReportData=rows;
-}
-async function exportCommissionCSV(){
- const rows=window.commissionReportData||[];
- const out=[['Recipient','Business','Invoice','Customer','Amount','Status']];
- for(const r of rows) out.push([r.recipientName,r.businessName,r.invoiceNumber,r.customer||'',r.amount,r.status]);
- downloadCSV(out,'commission-report.csv');
-}
-
 /* ---------------- Preview / PDF ---------------- */
-async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2>${brandStrip()}<div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div><div class="poweredBy">Powered by Moborex Ledger Vault${b.invoiceMode==='manual'&&i.internalRef?` · Ref: ${esc(i.internalRef)}`:''}</div></div>
-<div class="notice" style="margin-top:14px">Choose the layout that matches your printer — A4 for a regular office/home printer, Receipt for an 80mm POS/thermal printer.</div>
-<div class="pdfActions"><button class="btn secondary" onclick="printInvoice('${esc(i.number)}')">Print (A4)</button><button class="btn accent" onclick="downloadInvoicePDF('${esc(i.number)}')">Save PDF (A4)</button></div>
-<div class="pdfActions receiptActions"><button class="btn secondary" onclick="printReceipt('${id}')">Print (Receipt / POS)</button><button class="btn accent" onclick="downloadReceiptPDF('${id}')">Save PDF (Receipt)</button></div>
-<button class="btn secondary full" onclick="closeModal()">Close</button>`);}
-function buildReceiptHTML(i,b){
- const lineRow=x=>{const lineTotal=(Number(x.qty)||0)*(Number(x.price)||0);return `<div class="receiptRow"><span class="desc">${esc(x.description)} x${x.qty}</span><span class="amt">${money(lineTotal)}</span></div>`;};
- return `<div class="receiptHead"><h1>${esc(b.name)}</h1>${b.address?`<div>${esc(b.address)}</div>`:''}${b.phone?`<div>${esc(b.phone)}</div>`:''}${b.taxId?`<div>Tax ID: ${esc(b.taxId)}</div>`:''}</div>
- <div class="receiptRow"><span>Invoice #</span><span>${esc(i.number)}</span></div>
- <div class="receiptRow"><span>Date</span><span>${esc(i.date)}</span></div>
- ${i.dueDate?`<div class="receiptRow"><span>Due</span><span>${esc(i.dueDate)}</span></div>`:''}
- <div class="receiptRule"></div>
- <div class="receiptRow"><span>Bill To</span><span>${esc(i.customer||'')}</span></div>
- ${i.phone?`<div class="receiptRow"><span>Phone</span><span>${esc(i.phone)}</span></div>`:''}
- ${i.vehicleDetails?`<div class="receiptRow"><span>Job</span><span>${esc(i.vehicleDetails)}</span></div>`:''}
- <div class="receiptRule"></div>
- <div class="receiptItems">${i.items.map(lineRow).join('')}</div>
- <div class="receiptRule"></div>
- ${i.discount?`<div class="receiptRow"><span>Discount</span><span>-${money(i.discount)}</span></div>`:''}
- <div class="receiptRow receiptTotal"><span>TOTAL</span><span>${money(i.total)}</span></div>
- <div class="receiptRule"></div>
- ${(b.bankName||b.bankAccount)?`<div class="receiptRow"><span>Bank</span><span>${esc(b.bankName||'')}</span></div><div class="receiptRow"><span>Acct</span><span>${esc(b.bankAccount||'')}</span></div><div class="receiptRule"></div>`:''}
- <div class="receiptFoot">${esc(b.footerComment||'Thank you for your business.')}</div>
- <div style="text-align:center;font-size:8px;color:#999;margin-top:8px">Powered by Moborex Ledger Vault${b.invoiceMode==='manual'&&i.internalRef?` · Ref: ${esc(i.internalRef)}`:''}</div>`;
-}
-async function printReceipt(id){
- const i=(await all('invoices')).find(x=>x.id===id), b=await getBusiness();
- const target=document.getElementById('pdfTarget'); if(!target) return;
- const origHTML=target.innerHTML, origClass=target.className;
- target.className='invoicePreview receiptMode';
- target.innerHTML=buildReceiptHTML(i,b);
- const pageStyle=document.createElement('style');
- pageStyle.id='dynamicPageSize';
- pageStyle.textContent='@page{size:80mm auto;margin:4mm 3mm}';
- document.head.appendChild(pageStyle);
- const prevTitle=document.title;
- const safeName=(i.number||'Receipt').toString().trim().replace(/[\\/:*?"<>|]+/g,'-')||'Receipt';
- document.title=safeName;
- const restore=()=>{ document.title=prevTitle; target.innerHTML=origHTML; target.className=origClass; pageStyle.remove(); window.removeEventListener('afterprint',restore); };
- window.addEventListener('afterprint',restore);
- window.print();
- setTimeout(restore,4000);
-}
-async function downloadReceiptPDF(id){
- const i=(await all('invoices')).find(x=>x.id===id), b=await getBusiness();
- if(!window.jspdf || !window.html2canvas){
-  alert('The PDF file writer needs to load from the internet the first time — no connection right now, so this will fall back to the Print dialog. Choose "Save as PDF" there and pick your receipt/POS printer.');
-  return printReceipt(id);
- }
- const target=document.getElementById('pdfTarget'); if(!target) return;
- const origHTML=target.innerHTML, origClass=target.className;
- target.className='invoicePreview receiptMode';
- target.innerHTML=buildReceiptHTML(i,b);
- const safeName=(i.number||'Receipt').toString().trim().replace(/[\\/:*?"<>|]+/g,'-')||'Receipt';
- try{
-  const { jsPDF } = window.jspdf;
-  // 80mm wide, dynamic length based on actual rendered content — receipts
-  // don't have a fixed page length the way A4 does.
-  const heightMm=Math.max(60, (target.scrollHeight/target.clientWidth)*80 + 10);
-  const doc=new jsPDF({ unit:'mm', format:[80, heightMm] });
-  await doc.html(target, { x:2, y:2, width:76, windowWidth:target.clientWidth||302 });
-  doc.save(safeName+'-receipt.pdf');
-  target.innerHTML=origHTML; target.className=origClass;
-  setTimeout(()=>{ if(confirm('Saved. Print this receipt on your POS printer now?')) printReceipt(id); }, 300);
-  return;
- }catch(e){
-  alert('Could not generate the receipt PDF ('+(e&&e.message?e.message:'unknown error')+'). Falling back to Print — choose "Save as PDF" there.');
-  target.innerHTML=origHTML; target.className=origClass;
-  return printReceipt(id);
- }
-}
+async function previewInvoice(id){let i=(await all('invoices')).find(x=>x.id===id),b=await getBusiness();openModal(`<h2>Invoice Preview</h2><div class="invoicePreview" id="pdfTarget"><div class="sampleTop"><div class="sampleCompany">${b.logo?`<div class="sampleLogo"><img class="logo" src="${b.logo}"></div>`:''}<div><h1>${esc(b.name)}</h1><div>${esc(b.address||'')}</div><div>${esc(b.phone||'')}</div><div>${esc(b.email||'')}</div><div>${b.taxId?'Tax ID: '+esc(b.taxId):''}${b.taxId&&b.bn?' · ':''}${b.bn?'BN: '+esc(b.bn):''}</div></div></div><div class="metaRight"><b>INVOICE #</b><strong>${esc(i.number)}</strong><b>DATE</b><span>${esc(i.date)}</span>${i.dueDate?`<b>DUE DATE</b><span>${esc(i.dueDate)}</span>`:''}</div></div><div class="sampleMeta"><div><b>BILL TO</b><strong>${esc(i.customer)}</strong><span>${esc(i.phone||'')}</span><span>${esc(i.address||'')}</span></div></div>${i.vehicleDetails?`<div class="vehicleBand"><b>JOB DETAILS</b><strong>${esc(i.vehicleDetails)}</strong></div>`:''}${i.headerComment?`<div class="comment">${esc(i.headerComment)}</div>`:''}<table><tr><th>Description</th><th>QTY</th><th>Price</th><th>Amount</th></tr>${i.items.map(x=>`<tr><td><b>${esc(x.description)}</b>${x.comment?`<div class="comment">${esc(x.comment)}</div>`:''}</td><td>${x.qty}</td><td>${money(x.price)}</td><td class="r">${money((Number(x.qty)||0)*(Number(x.price)||0))}</td></tr>`).join('')}</table>${i.salesComment?`<div class="comment">${esc(i.salesComment)}</div>`:''}<div class="paymentTotal"><div><b>PAYMENT / BANK DETAILS</b><div>${esc(b.bankName||'')}</div><div>${esc(b.bankAccount||'')}</div></div><div class="totalPill"><span>TOTAL</span><b>${money(i.total)}</b></div></div><div style="margin-top:18px"><b>Terms & Conditions / Notes</b><div>${esc(b.footerComment||'Thanks for your business.')}</div></div></div><div class="pdfActions"><button class="btn secondary" onclick="printInvoice('${esc(i.number)}')">Print Only</button><button class="btn accent" onclick="downloadInvoicePDF('${esc(i.number)}')">Save PDF</button></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);}
 function printInvoice(number){
   const prevTitle=document.title;
   const safeName=(number||'Invoice').toString().trim().replace(/[\\/:*?"<>|]+/g,'-')||'Invoice';
   document.title=safeName;
-  const pageStyle=document.createElement('style');
-  pageStyle.id='dynamicPageSize';
-  pageStyle.textContent='@page{size:A4;margin:14mm}';
-  document.head.appendChild(pageStyle);
-  const restore=()=>{document.title=prevTitle;pageStyle.remove();window.removeEventListener('afterprint',restore)};
+  const restore=()=>{document.title=prevTitle;window.removeEventListener('afterprint',restore)};
   window.addEventListener('afterprint',restore);
   window.print();
   setTimeout(restore,4000); // fallback in case afterprint doesn't fire (some mobile browsers)
@@ -2354,7 +1840,7 @@ async function downloadInvoicePDF(number){
   try{
     await doc.html(target, { x:24, y:24, width:547, windowWidth:800 });
     doc.save(safeName+'.pdf');
-    setTimeout(()=>{ if(confirm('Saved. Print this A4 copy now?')) printInvoice(number); }, 300);
+    setTimeout(()=>{ if(confirm('Saved. Print it now on your POS printer?')) printInvoice(number); }, 300);
   }catch(e){
     console.error(e);
     alert('Could not build the PDF file directly — opening the Print dialog instead. Choose "Save as PDF" there.');
@@ -2371,6 +1857,29 @@ function showCloudSync(){
        ? '<b>Simple mode.</b> Backed up to your Google account\'s private app folder — no PIN needed, nothing to remember.'
        : '<b>PIN-protected mode.</b> Your data is encrypted on this device with your Sync PIN before it reaches Google — Google itself can\'t read it.')
    : '';
+ let accountSyncModeLine, serverStatusHtml, serverActionsHtml;
+ if(!ServerAccount.configured){
+   accountSyncModeLine = 'This is the account-based option — sign up once, log into the same account on every phone, all synced automatically, no PIN needed. Not connected to a server yet.';
+   serverStatusHtml = 'Not available yet';
+   serverActionsHtml = '';
+ } else if(ServerAccount.token && ServerAccount.tenant) {
+   const lastServerPush=localStorage.getItem('moborex_server_last_push'), lastServerPull=localStorage.getItem('moborex_server_last_pull');
+   accountSyncModeLine = `<b>${esc(ServerAccount.tenant.name)}</b> — status: ${esc(ServerAccount.tenant.status)}${ServerAccount.tenant.status==='trialing'&&ServerAccount.tenant.trialEndsAt?' (trial ends '+esc(new Date(ServerAccount.tenant.trialEndsAt).toLocaleDateString())+')':''}. Unlike Google Drive sync, this data is stored on the server as-is — protected by your account login, not end-to-end encrypted.`;
+   serverStatusHtml = `<div class="cloudLast">Last sent: ${lastServerPush?new Date(lastServerPush).toLocaleString():'Never'} · Last received: ${lastServerPull?new Date(lastServerPull).toLocaleString():'Never'}</div>`;
+   serverActionsHtml = `<button class="btn secondary full" onclick="ServerAccount.push()">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
+ } else {
+   accountSyncModeLine = 'Sign up once, then log into the same account on every phone — all synced automatically, no PIN to remember. Separate from the free Google Drive option above.';
+   serverStatusHtml = `
+    <div class="field"><label>Business/Account name</label><input id="saName" placeholder="e.g. Moborex Service Hub"></div>
+    <div class="field"><label>Email</label><input id="saEmail" type="email"></div>
+    <div class="field"><label>Password (8+ characters)</label><input id="saPassword" type="password"></div>
+    <button class="btn accent full" onclick="doServerSignup()">Create Account</button>
+    <h3 style="font-size:13px;margin-top:14px">Already have an account?</h3>
+    <div class="field"><label>Email</label><input id="saLoginEmail" type="email"></div>
+    <div class="field"><label>Password</label><input id="saLoginPassword" type="password"></div>
+    <button class="btn secondary full" onclick="doServerLogin()">Log In</button>`;
+   serverActionsHtml = '';
+ }
  openModal(`<h2>☁ Backup</h2>
  <div class="notice"><b>Automatic — nothing to set up.</b> Once a day, this app quietly saves a backup file to your phone's Downloads folder by itself. If your phone has Google's "back up Downloads to Drive" setting turned on (most newer Android phones do, or can), that file reaches your Google Drive automatically too — no sign-in inside this app needed.</div>
  <div class="cloudLast">Last automatic save: ${autoDate?new Date(autoDate).toLocaleDateString():'Not yet — happens once data exists'}</div>
@@ -2388,6 +1897,13 @@ function showCloudSync(){
  <button class="btn primary full" onclick="Sync.connected?Sync.resumeSession():Sync.connect()">${Sync.connected?'Resume Sync on This Device':'Connect Google Account (advanced)'}</button>
  ${Sync.connected?`<button class="btn secondary full" onclick="Sync.push()">Sync Now</button><button class="btn danger full" onclick="Sync.disconnect();closeModal();showCloudSync()">Disconnect</button>`:''}
  <small>Use the same Google account on every device (phone, tablet, laptop) you want kept in sync${Sync.connected&&!Sync.plainMode?' — and the same Sync PIN':''}.</small>
+ </div>
+
+ <h3 style="font-size:14px;margin-top:22px">Advanced: Account Sync (multi-device, multi-business account)</h3>
+ <div class="notice">${accountSyncModeLine}</div>
+ <div class="cloudBox">
+ <div id="serverStatus">${serverStatusHtml}</div>
+ ${serverActionsHtml}
  </div>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
  Sync.paintStatus();
@@ -2480,71 +1996,20 @@ window.addEventListener('DOMContentLoaded', ()=>{
 });
 
 if('serviceWorker' in navigator){
-  let swRefreshed=false, swRegistration=null;
-  let updateDismissCount=0, updateEscalateTimer=null, updateReprompt=null;
-
+  let swRefreshed=false;
   navigator.serviceWorker.addEventListener('controllerchange', ()=>{
-    if(swRefreshed) return; swRefreshed=true;
-    localStorage.removeItem('moborex_update_pending_since');
-    window.location.reload();
+    if(swRefreshed) return; swRefreshed=true; window.location.reload();
   });
-
-  function armUpdatePrompt(){
-    // First sighting of a waiting worker for this update.
-    if(!localStorage.getItem('moborex_update_pending_since')) localStorage.setItem('moborex_update_pending_since', String(Date.now()));
-    updateBar.classList.add('show');
-    if(!updateReprompt) updateReprompt=setInterval(()=>{ updateBar.classList.add('show'); }, 10*60*1000); // re-surface every 10 min if dismissed
-    if(!updateEscalateTimer) updateEscalateTimer=setInterval(checkForceEscalation, 60*1000);
-    checkForceEscalation();
-  }
-  function checkForceEscalation(){
-    const since=Number(localStorage.getItem('moborex_update_pending_since'))||Date.now();
-    const minutesPending=(Date.now()-since)/60000;
-    if(updateDismissCount>=3 || minutesPending>=60) forceUpdateCover();
-  }
-  function forceUpdateCover(){
-    updateBar.classList.remove('show');
-    updateCover.classList.add('show');
-  }
-  function dismissUpdateBar(){
-    updateBar.classList.remove('show');
-    updateDismissCount++;
-    checkForceEscalation();
-  }
-  window.dismissUpdateBar=dismissUpdateBar;
-  window.applyUpdate=function(){
-    if(swRegistration && swRegistration.waiting){
-      swRegistration.waiting.postMessage({type:'SKIP_WAITING'});
-    } else {
-      window.location.reload();
-    }
-  };
-
   window.addEventListener('load', ()=>{
-    // updateViaCache:'none' is the key fix for installed/standalone apps —
-    // without it, the browser can keep serving sw.js (and this update-check
-    // logic) from HTTP cache even when we explicitly call reg.update(), so
-    // an installed app can silently never see it noticed a new version.
-    navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>{
-      swRegistration=reg;
-      // A worker already sitting in "waiting" (e.g. from an earlier session that didn't update).
-      if(reg.waiting && reg.active) armUpdatePrompt();
-      else localStorage.removeItem('moborex_update_pending_since'); // fully up to date — clear any stale timer
-      reg.addEventListener('updatefound', ()=>{
-        const nw=reg.installing;
-        if(!nw) return;
-        nw.addEventListener('statechange', ()=>{
-          if(nw.state==='installed' && navigator.serviceWorker.controller) armUpdatePrompt();
-        });
-      });
-      // Standalone/installed PWAs don't always get a fresh update check on
-      // launch, so actively ask the browser to check — on load, whenever the
-      // app regains focus or resumes from background, and every 30 minutes
-      // while it's open.
-      reg.update().catch(()=>{});
-      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') reg.update().catch(()=>{}); });
-      window.addEventListener('pageshow', ()=>{ reg.update().catch(()=>{}); }); // covers standalone apps resuming from the background/app switcher
-      setInterval(()=>reg.update().catch(()=>{}), 30*60*1000);
+    navigator.serviceWorker.register('./sw.js').then(reg=>{
+      // Installed apps resumed from the background (tapping the home-screen icon
+      // again) don't always trigger a fresh navigation, so the browser's normal
+      // "check for updates" moment never fires. Force a check ourselves whenever
+      // the app comes back to the foreground.
+      const checkForUpdate=()=>{ if(reg) reg.update().catch(()=>{}); };
+      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') checkForUpdate(); });
+      window.addEventListener('focus', checkForUpdate);
+      checkForUpdate();
     }).catch(()=>{});
   });
 }
