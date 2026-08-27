@@ -216,7 +216,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 34;
+const APP_VERSION = 35;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -695,7 +695,7 @@ function logoutServerAccount(){
 <aside class="sidebar">
   <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Moborex Ledger Vault</div><div class="tagline">Beyond Invoicing — to Reports &amp; Tax.</div><button class="bizname bizSwitch" style="font-size:15px" onclick="showBusinessSwitcher()"><span id="bizNameWide">Business</span> <span class="chev">▾</span></button></div></div>
   <button class="navbtn" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
-  <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> Invoices</button>
+  <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button>
   <button class="navbtn" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
   <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
   <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
@@ -763,7 +763,7 @@ function logoutServerAccount(){
 <div class="overlay" id="drawerOverlay" onclick="closeDrawer(event)"><aside class="drawer" onclick="event.stopPropagation()">
 <div class="dhead"><div class="dtitle">Menu</div><button class="iconbtn" onclick="closeDrawer()">×</button></div>
 <button class="navbtn" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
-<button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> Invoices</button>
+<button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> <span id="navInvoicesLabelDrawer">Invoices &amp; Sales</span></button>
 <button class="navbtn" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
 <button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
 <button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
@@ -817,6 +817,8 @@ async function refresh(){
  if(navProductsLabel)navProductsLabel.textContent=prodLabel; if(navProductsLabelDrawer)navProductsLabelDrawer.textContent=prodLabel;
  if(navCustomersLabel)navCustomersLabel.textContent=custLabel; if(navCustomersLabelDrawer)navCustomersLabelDrawer.textContent=custLabel;
  if(navNewInvoiceLabel){navNewInvoiceLabel.textContent=isSalary?'Log Salary':'New Invoice';navNewInvoiceSub.textContent=isSalary?'Add a salary payment':'Create a customer invoice';}
+ const invMenuLabel=isSalary?'Salary & Wages':'Invoices & Sales';
+ if(navInvoicesLabel)navInvoicesLabel.textContent=invMenuLabel; if(navInvoicesLabelDrawer)navInvoicesLabelDrawer.textContent=invMenuLabel;
  let openRev=Number(b.openingRevenue)||0;
  let sales=inv.reduce((a,i)=>a+i.total,0),paid=inv.reduce((a,i)=>a+i.payments.reduce((x,p)=>x+p.amount,0),0);
  let personalExpenses=personalEx.reduce((a,e)=>a+e.amount,0);
@@ -1218,7 +1220,8 @@ async function duplicateInvoice(id){
 }
 async function showInvoices(){
  let inv=await bizInvoices();
- openModal(`<h2>Invoices ${hb("Every invoice you've created for this business. Search by number or customer, or filter by paid/unpaid/overdue status.")}</h2><div class="toolbar"><input id="iq" placeholder="Search invoice number or customer" oninput="drawInvoiceSearch()"></div>
+ const b=await getBusiness(), isSalary=b.type==='salary', title=isSalary?'Salary & Wages':'Invoices & Sales';
+ openModal(`<h2>${title} ${hb("Every invoice you've created for this business. Search by number or customer, or filter by paid/unpaid/overdue status.")}</h2><div class="toolbar"><input id="iq" placeholder="Search invoice number or customer" oninput="drawInvoiceSearch()"></div>
  <div class="row2"><div class="field"><label>Status</label><select id="ifStatus" onchange="drawInvoiceSearch()"><option value="">All</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="overdue">Overdue</option><option value="void">Void</option></select></div><div class="field"><label>From date</label><input id="ifFrom" type="date" onchange="drawInvoiceSearch()"></div></div>
  <div id="ilist"></div>`);
  window.invoiceCache=inv;drawInvoiceSearch();
@@ -1339,7 +1342,8 @@ async function showOpeningBalances(){
  <div class="field"><label>As of date</label><input id="oDate" type="date" value="${b.openingAsOfDate||new Date().toISOString().slice(0,10)}"></div>
  <div class="field"><label>Revenue brought forward ${hb("Total sales this business made before you started using this app — so your lifetime totals include your real history.")}</label><input id="oRev" type="number" min="0" value="${b.openingRevenue||0}"></div>
  <div class="field"><label>Total expenses brought forward ${hb("Total business expenses before you started using this app, matching Revenue brought forward.")}</label><input id="oExp" type="number" min="0" value="${b.openingExpenses||0}"></div>
- <div class="field"><label>Cash / bank balance brought forward ${hb("The actual money you had in the bank on the date above — this feeds directly into your dashboard's Cash & Bank Balance.")}</label><input id="oBal" type="number" value="${b.openingBalance||0}"></div>
+ <div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)"><b>Important:</b> the field below is NOT calculated from Revenue minus Expenses above — those two only affect Lifetime Profit and the Tax Report. If you want your Cash &amp; Bank Balance to show a specific figure, type that exact number into the field below directly.</div>
+ <div class="field"><label>Cash / bank balance brought forward ${hb("The actual money you had in the bank on the date above — this feeds directly into your dashboard's Cash & Bank Balance. This is entered separately and is NOT automatically calculated from Revenue minus Expenses above.")}</label><input id="oBal" type="number" value="${b.openingBalance||0}"></div>
  <div class="field"><label>Has tax already been paid on this brought-forward revenue? ${hb("If yes, it's excluded from the Tax Report's taxable income estimate, since counting it again would double-tax money already declared. If no, it's included as taxable income — treated as income that still needs declaring, now that it's on record here.")}</label><select id="oTaxPaid"><option value="1">Yes — already declared/taxed previously</option><option value="0">No — not yet taxed, should count as taxable income</option></select></div>
  <div class="notice">Revenue and expenses brought forward feed into Lifetime Profit &amp; Loss on the Reports screen and the Tax Report. The cash/bank balance feeds directly into the Cash &amp; Bank Balance figure on your dashboard. Whether tax was already paid on the revenue decides whether the Tax Report counts it toward your estimated tax bill.</div>
  <button class="btn primary full" onclick="saveOpeningBalances()">Save Opening Balances</button><button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
