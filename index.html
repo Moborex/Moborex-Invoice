@@ -189,6 +189,11 @@ button{font-family:var(--font-body);cursor:pointer}
 
 .lockScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:200;align-items:center;justify-content:center;padding:24px}
 .forceUpdateScreen{display:none;position:fixed;inset:0;background:var(--ink);z-index:250;align-items:center;justify-content:center;padding:24px}
+body.staffMode .ownerOnly{display:none!important}
+.staffModeBanner{display:none;position:fixed;top:0;left:0;right:0;z-index:82;background:var(--brass);color:#fff;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;letter-spacing:.03em}
+body.staffMode .staffModeBanner{display:flex;align-items:center;justify-content:center;gap:8px}
+body.staffMode .topbar{margin-top:34px}
+@media(min-width:900px){body.staffMode .sidebar{margin-top:34px}}
 .forceUpdateScreen.show{display:flex}
 .updateBanner{display:none;position:fixed;left:0;right:0;bottom:0;z-index:81;background:var(--brass);color:#fff;padding:12px 14px;align-items:center;gap:10px;box-shadow:0 -6px 20px rgba(0,0,0,.18);font-size:12.5px}
 .updateBanner.show{display:flex}
@@ -216,7 +221,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 36;
+const APP_VERSION = 37;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -255,7 +260,7 @@ document.addEventListener('click',e=>{
 /* ---------------- IndexedDB core ---------------- */
 const DB_NAME='MoborexInvoiceDB', DB_VERSION=28;
 let idb;
-const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0}};
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0,staffPinHash:''}};
 function deriveInitials(name){
  return (name||'').trim().split(/\s+/).map(w=>w[0]).filter(Boolean).join('').toUpperCase().slice(0,4) || 'INV';
 }
@@ -331,7 +336,7 @@ async function businessFinancials(bizId){
   const exps=(await all('expenses')).filter(e=>e.kind!=='personal' && e.businessId===bizId);
   const loans=(await all('loans')).filter(l=>l.businessId===bizId);
   const stockPurchases=(await all('stockPurchases')).filter(sp=>sp.businessId===bizId);
-  const returns=(await all('returns')).filter(r=>r.businessId===bizId);
+  const returns=(await all('returns')).filter(r=>r.businessId===bizId && (r.status||'approved')==='approved');
   const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openBal=Number(b.openingBalance)||0;
   const sales=invs.reduce((a,i)=>a+i.total,0);
   const received=invs.reduce((a,i)=>a+(i.payments||[]).reduce((x,p)=>x+p.amount,0),0);
@@ -668,6 +673,7 @@ function logoutServerAccount(){
   </div>
 </div>
 <div class="helpBubble" id="helpBubble"></div>
+<div class="staffModeBanner" id="staffModeBanner">🔑 Staff Mode — sales &amp; quotations only</div>
 <div class="updateBanner" id="updateBanner">
   <span>A new version is ready.</span>
   <button class="btn primary" style="padding:8px 14px;font-size:12.5px;background:var(--ink)" onclick="doAppUpdate()">Update Now</button>
@@ -698,27 +704,30 @@ function logoutServerAccount(){
   <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button>
   <button class="navbtn" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
   <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
-  <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
-  <button class="navbtn" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
-  <button class="navbtn" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
-  <button class="navbtn" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
-  <button class="navbtn" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
-  <button class="navbtn" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
-  <button class="navbtn" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
-  <button class="navbtn" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
+  <button class="navbtn ownerOnly" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
+  <button class="navbtn ownerOnly" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
+  <button class="navbtn ownerOnly" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
+  <button class="navbtn ownerOnly" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
+  <button class="navbtn ownerOnly" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
+  <button class="navbtn ownerOnly" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
+  <button class="navbtn ownerOnly" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
+  <button class="navbtn ownerOnly" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
   <button class="navbtn" onclick="showReturns()"><span class="ic">↩</span> Returns</button>
-  <button class="navbtn" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
-  <button class="navbtn" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
-  <button class="navbtn" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
-  <button class="navbtn" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
-  <button class="navbtn" onclick="showReports()"><span class="ic">▥</span> Reports</button>
-  <button class="navbtn" onclick="showTaxReport()"><span class="ic">🏛</span> Tax Report</button>
-  <button class="navbtn" onclick="showAudit()"><span class="ic">🔍</span> Audit of Me</button>
+  <button class="navbtn ownerOnly" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
+  <button class="navbtn ownerOnly" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
+  <button class="navbtn ownerOnly" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
+  <button class="navbtn ownerOnly" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
+  <button class="navbtn ownerOnly" onclick="showReports()"><span class="ic">▥</span> Reports</button>
+  <button class="navbtn ownerOnly" onclick="showTaxReport()"><span class="ic">🏛</span> Tax Report</button>
+  <button class="navbtn ownerOnly" onclick="showAudit()"><span class="ic">🔍</span> Audit of Me</button>
   <div style="flex:1"></div>
-  <button class="navbtn" onclick="showBusinessSwitcher()"><span class="ic">🏢</span> Switch Business</button>
-  <button class="navbtn" onclick="showCloudSync()"><span class="ic">☁</span> Sync & Backup</button>
-  <button class="navbtn" onclick="showSettings()"><span class="ic">⚙</span> Business Settings</button>
-  <button class="navbtn" onclick="showAppLockSettings()"><span class="ic">🔒</span> App Lock</button>
+  <button class="navbtn ownerOnly" onclick="showBusinessSwitcher()"><span class="ic">🏢</span> Switch Business</button>
+  <button class="navbtn ownerOnly" onclick="showCloudSync()"><span class="ic">☁</span> Sync & Backup</button>
+  <button class="navbtn ownerOnly" onclick="showSettings()"><span class="ic">⚙</span> Business Settings</button>
+  <button class="navbtn ownerOnly" onclick="showAppLockSettings()"><span class="ic">🔒</span> App Lock</button>
+  <button class="navbtn ownerOnly" onclick="showStaffAccessSettings()"><span class="ic">🧑‍💼</span> Staff Access</button>
+  <button class="navbtn" onclick="promptEnterStaffMode()" id="enterStaffModeBtn"><span class="ic">🔑</span> Enter Staff Mode</button>
+  <button class="navbtn" onclick="exitStaffMode()" id="exitStaffModeBtn" style="display:none"><span class="ic">🔓</span> Exit Staff Mode</button>
 </aside>
 
 <header class="topbar">
@@ -730,7 +739,7 @@ function logoutServerAccount(){
 </header>
 
 <main class="main">
-<div class="heroBalance">
+<div class="heroBalance ownerOnly">
   <div class="lbl">Cash &amp; Bank Balance — All Businesses</div>
   <div class="val" id="bankBalance">—</div>
   <div class="heroSplit">
@@ -738,7 +747,7 @@ function logoutServerAccount(){
   </div>
   <div class="sub">Combined across every business, minus personal spend &amp; recorded tax payments — same figure in every business view. Unpaid invoices don't count until marked paid.</div>
 </div>
-<div class="stats">
+<div class="stats ownerOnly">
 <div class="stat"><div class="lbl">Total Sales</div><div class="val" id="sales">—</div></div>
 <div class="stat"><div class="lbl">Received</div><div class="val" id="received">—</div></div>
 <div class="stat"><div class="lbl">Outstanding</div><div class="val" id="outstanding">—</div></div>
@@ -766,26 +775,29 @@ function logoutServerAccount(){
 <button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> <span id="navInvoicesLabelDrawer">Invoices &amp; Sales</span></button>
 <button class="navbtn" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
 <button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
-<button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
-<button class="navbtn" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
-<button class="navbtn" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
-<button class="navbtn" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
-<button class="navbtn" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
-<button class="navbtn" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
-<button class="navbtn" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
-<button class="navbtn" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
+<button class="navbtn ownerOnly" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
+<button class="navbtn ownerOnly" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
+<button class="navbtn ownerOnly" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
+<button class="navbtn ownerOnly" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
+<button class="navbtn ownerOnly" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
+<button class="navbtn ownerOnly" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
+<button class="navbtn ownerOnly" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
+<button class="navbtn ownerOnly" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
 <button class="navbtn" onclick="showReturns();closeDrawer()"><span class="ic">↩</span> Returns</button>
-<button class="navbtn" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
-<button class="navbtn" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
-<button class="navbtn" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
-<button class="navbtn" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
-<button class="navbtn" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
-<button class="navbtn" onclick="showTaxReport();closeDrawer()"><span class="ic">🏛</span> Tax Report</button>
-<button class="navbtn" onclick="showAudit();closeDrawer()"><span class="ic">🔍</span> Audit of Me</button>
-<button class="navbtn" onclick="showBusinessSwitcher();closeDrawer()"><span class="ic">🏢</span> Switch Business</button>
-<button class="navbtn" onclick="showCloudSync();closeDrawer()"><span class="ic">☁</span> Sync & Backup</button>
-<button class="navbtn" onclick="showSettings();closeDrawer()"><span class="ic">⚙</span> Business Settings</button>
-<button class="navbtn" onclick="showAppLockSettings();closeDrawer()"><span class="ic">🔒</span> App Lock</button>
+<button class="navbtn ownerOnly" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
+<button class="navbtn ownerOnly" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
+<button class="navbtn ownerOnly" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
+<button class="navbtn ownerOnly" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
+<button class="navbtn ownerOnly" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
+<button class="navbtn ownerOnly" onclick="showTaxReport();closeDrawer()"><span class="ic">🏛</span> Tax Report</button>
+<button class="navbtn ownerOnly" onclick="showAudit();closeDrawer()"><span class="ic">🔍</span> Audit of Me</button>
+<button class="navbtn ownerOnly" onclick="showBusinessSwitcher();closeDrawer()"><span class="ic">🏢</span> Switch Business</button>
+<button class="navbtn ownerOnly" onclick="showCloudSync();closeDrawer()"><span class="ic">☁</span> Sync & Backup</button>
+<button class="navbtn ownerOnly" onclick="showSettings();closeDrawer()"><span class="ic">⚙</span> Business Settings</button>
+<button class="navbtn ownerOnly" onclick="showAppLockSettings();closeDrawer()"><span class="ic">🔒</span> App Lock</button>
+<button class="navbtn ownerOnly" onclick="showStaffAccessSettings();closeDrawer()"><span class="ic">🧑‍💼</span> Staff Access</button>
+<button class="navbtn" onclick="promptEnterStaffMode();closeDrawer()" id="enterStaffModeBtnDrawer"><span class="ic">🔑</span> Enter Staff Mode</button>
+<button class="navbtn" onclick="exitStaffMode();closeDrawer()" id="exitStaffModeBtnDrawer" style="display:none"><span class="ic">🔓</span> Exit Staff Mode</button>
 </aside></div>
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 
@@ -896,7 +908,77 @@ async function promptSetAppLockPin(){
 }
 function turnOffAppLock(){if(!confirm('Turn off App Lock?'))return;localStorage.removeItem('moborex_applock_hash');closeModal();}
 
+/* ---------------- Staff Mode ----------------
+   A restricted mode for staff who need to capture sales without seeing
+   money figures or being able to touch anything permanent. Gated by its
+   own PIN, separate from App Lock. Staff Mode resets to OFF every time
+   the app is freshly opened — it never stays unlocked in the background. ---------------- */
+function isStaffMode(){ return !!window.staffModeActive; }
+function requireOwnerMode(actionLabel){
+ if(isStaffMode()){ alert((actionLabel||'This action')+' is not available in Staff Mode.'); return false; }
+ return true;
+}
+async function showStaffAccessSettings(){
+ if(!requireOwnerMode('Managing Staff Access'))return;
+ const b=await getBusiness();
+ const enabled=!!b.staffPinHash;
+ openModal(`<h2>Staff Access ${hb("A separate PIN for staff who only need to capture sales and quotations — they never see balances, reports, or anything permanent, and refunds they start need your approval first.")}</h2>
+ <div class="notice">${enabled?'A Staff PIN is set for this business.':'No Staff PIN set yet. Set one to let staff use a restricted version of the app.'} A staff member with this PIN can: create invoices, quotations, and request refunds. They cannot: see balances or reports, void or delete anything, or change settings. Refunds they start wait for your approval before anything actually changes.</div>
+ ${enabled?`<button class="btn danger full" onclick="turnOffStaffAccess()">Turn Off Staff Access</button><button class="btn secondary full" onclick="promptSetStaffPin()">Change Staff PIN</button>`:`<button class="btn accent full" onclick="promptSetStaffPin()">Set a Staff PIN</button>`}
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function promptSetStaffPin(){
+ const p1=prompt('Enter a new Staff PIN (4+ characters):');
+ if(!p1)return;
+ const p2=prompt('Confirm PIN:');
+ if(p1!==p2){alert('PINs did not match.');return;}
+ if(p1.length<4){alert('Use at least 4 characters.');return;}
+ const b=await getBusiness();
+ b.staffPinHash=await sha256Hex(p1);
+ await put('business',b);
+ alert('Staff PIN set.');
+ closeModal();showStaffAccessSettings();
+}
+async function turnOffStaffAccess(){
+ if(!confirm('Turn off Staff Access for this business? The current Staff PIN will stop working.'))return;
+ const b=await getBusiness();
+ b.staffPinHash='';
+ await put('business',b);
+ closeModal();
+}
+async function promptEnterStaffMode(){
+ const b=await getBusiness();
+ if(!b.staffPinHash){ alert('No Staff PIN has been set up for this business yet. An owner needs to set one first under Staff Access.'); return; }
+ const pin=prompt('Enter Staff PIN:');
+ if(pin===null)return;
+ const hash=await sha256Hex(pin);
+ if(hash!==b.staffPinHash){ alert('Incorrect PIN.'); return; }
+ window.staffModeActive=true;
+ applyStaffModeUI();
+ alert('Staff Mode is on. Sales, invoices, and quotations only — balances and reports are hidden until you exit.');
+ await refresh();
+}
+async function exitStaffMode(){
+ const p1=prompt('Enter the App Lock PIN to exit Staff Mode (or the Staff PIN itself if App Lock isn\'t set):');
+ if(p1===null)return;
+ const hash=await sha256Hex(p1);
+ const appLockHash=localStorage.getItem('moborex_applock_hash');
+ const b=await getBusiness();
+ if(hash!==appLockHash && hash!==b.staffPinHash){ alert('Incorrect PIN.'); return; }
+ window.staffModeActive=false;
+ applyStaffModeUI();
+ await refresh();
+}
+function applyStaffModeUI(){
+ document.body.classList.toggle('staffMode', isStaffMode());
+ if(staffModeBanner) staffModeBanner.style.display = isStaffMode() ? 'flex' : 'none';
+ const showEls=[enterStaffModeBtn,enterStaffModeBtnDrawer], hideEls=[exitStaffModeBtn,exitStaffModeBtnDrawer];
+ for(const el of showEls) if(el) el.style.display = isStaffMode() ? 'none' : '';
+ for(const el of hideEls) if(el) el.style.display = isStaffMode() ? '' : 'none';
+}
+
 /* ---------------- Business Settings ---------------- */
+
 async function showSettings(){
  let b=await getBusiness();
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
@@ -1162,7 +1244,7 @@ async function openInvoice(id){
  <div class="sectionhead"><h3>Commission ${hb("Paid to whoever facilitated this job. Never shown on the customer's invoice, never counted as a business expense — tracked separately, and only payable once this invoice is fully paid.")}</h3></div>
  <div class="row2"><div class="field"><label>Person</label><input id="fCommissionPerson" value="${esc(commission?.personName||'')}" ${isVoid?'disabled':''}></div><div class="field"><label>Amount</label><input id="fCommissionAmount" type="number" min="0" value="${commission?.amount||0}" ${isVoid?'disabled':''}></div></div>
  <div class="totalBox"><div class="totalRow"><span>Sales</span><b id="lineTotal">—</b></div><div class="totalRow"><span>Discount</span><b id="discTotal">—</b></div><div class="totalRow"><span>Job expenses</span><b id="invExpTotal">—</b></div><div class="totalRow grand"><span>Customer total</span><b id="grandTotal">—</b></div></div>
- ${isVoid?'':'<button class="btn primary full" onclick="saveInvoice()">Save Invoice</button>'}${id?`<button class="btn secondary full" onclick="payments('${id}')">Payments</button><button class="btn secondary full" onclick="previewInvoice('${id}')">Preview & PDF</button><button class="btn secondary full" onclick="duplicateInvoice('${id}')">Duplicate</button>${isVoid?`<button class="btn secondary full" onclick="restoreInvoice('${id}')">Restore (Un-void)</button>`:`<button class="btn danger full" onclick="voidInvoiceConfirm('${id}')">Void Invoice</button>`}`:''}<button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ ${isVoid?'':'<button class="btn primary full" onclick="saveInvoice()">Save Invoice</button>'}${id?`<button class="btn secondary full" onclick="payments('${id}')">Payments</button><button class="btn secondary full" onclick="previewInvoice('${id}')">Preview & PDF</button><button class="btn secondary full" onclick="duplicateInvoice('${id}')">Duplicate</button>${isVoid?`<button class="btn secondary full ownerOnly" onclick="restoreInvoice('${id}')">Restore (Un-void)</button>`:`<button class="btn danger full ownerOnly" onclick="voidInvoiceConfirm('${id}')">Void Invoice</button>`}`:''}<button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
  window.selectedCustomerId=inv.customerId||'';if(fCustomerSelect)fCustomerSelect.value=window.selectedCustomerId;if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();updateInvoiceTotal();
 }
 async function selectCustomer(id){window.selectedCustomerId=id;const cs=await bizCustomers(),c=cs.find(x=>x.id===id);fPhone.value=c?.phone||'';fAddress.value=c?.address||'';}
@@ -1203,6 +1285,7 @@ async function saveInvoice(){
  closeModal();await refresh();
 }
 async function voidInvoiceConfirm(id){
+ if(!requireOwnerMode('Voiding an invoice'))return;
  if(!confirm('Void this invoice? It will stay in your records for numbering and history, but be removed from sales, profit, and reports. Any linked commission will be removed too, and any deducted stock will be restored.'))return;
  const inv=(await all('invoices')).find(x=>x.id===id);
  if(inv.status!=='void') await applyStockDelta(inv.items||[], +1);
@@ -1211,7 +1294,7 @@ async function voidInvoiceConfirm(id){
  if(comm)await del('commissions',comm.id);
  closeModal();await refresh();
 }
-async function restoreInvoice(id){const inv=(await all('invoices')).find(x=>x.id===id);await applyStockDelta(inv.items||[], -1);inv.status='active';await put('invoices',inv);closeModal();await openInvoice(id);}
+async function restoreInvoice(id){if(!requireOwnerMode('Restoring a voided invoice'))return;const inv=(await all('invoices')).find(x=>x.id===id);await applyStockDelta(inv.items||[], -1);inv.status='active';await put('invoices',inv);closeModal();await openInvoice(id);}
 async function duplicateInvoice(id){
  const src=(await all('invoices')).find(x=>x.id===id); if(!src) return;
  const newNumber=await nextNo();
@@ -2274,7 +2357,7 @@ async function deleteStockPurchase(id){
    cancelling the invoice itself. Restores stock and issues a refund. ---------------- */
 async function showReturns(){
  const returns=await bizReturns();
- openModal(`<h2>Returns ${hb("A customer returning something they bought — defective, wrong item, or doesn't match. Restores stock and records a refund, without touching the original invoice.")}</h2>
+ openModal(`<h2>Returns ${hb("A customer returning something they bought — defective, wrong item, or doesn't match. In Staff Mode, a return is only requested here — it waits for owner approval before stock or the refund actually change anything.")}</h2>
  <button class="btn accent full" onclick="startNewReturn()">＋ New Return</button>
  <div class="list" id="returnsList" style="margin-top:12px"></div>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
@@ -2282,7 +2365,22 @@ async function showReturns(){
  drawReturnsList();
 }
 function drawReturnsList(){
- returnsList.innerHTML=returnsCache.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(r=>`<div class="row-item"><div><b>${esc(r.productName)}</b><small>${r.journalNumber?esc(r.journalNumber)+' · ':''}${esc(r.date)} · ${esc(r.invoiceNumber||'—')} · ${esc(r.reason)}</small></div><div class="row-right"><strong class="money">${money(r.refundAmount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="deleteReturn('${r.id}')">Delete</button></div></div>`).join('') || '<div class="empty">No returns recorded.</div>';
+ returnsList.innerHTML=returnsCache.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(r=>{
+  const status=r.status||'approved';
+  const stamp=status==='pending'?{cls:'duesoon',label:'Awaiting Approval'}:status==='rejected'?{cls:'overdue',label:'Rejected'}:{cls:'paid',label:'Approved'};
+  const canDelete = status!=='approved' || !isStaffMode();
+  return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
+   <div style="display:flex;justify-content:space-between"><b>${esc(r.productName)}</b><span class="stamp ${stamp.cls}">${stamp.label}</span></div>
+   <small>${r.journalNumber?esc(r.journalNumber)+' · ':''}${esc(r.date)} · ${esc(r.invoiceNumber||'—')} · ${esc(r.reason)}</small>
+   <div style="display:flex;justify-content:space-between;align-items:center">
+    <strong class="money">${money(r.refundAmount)}</strong>
+    <span style="display:flex;gap:6px">
+     ${status==='pending'?`<button class="btn accent ownerOnly" style="padding:5px 9px;font-size:11px" onclick="approveReturn('${r.id}')">Approve</button><button class="btn secondary ownerOnly" style="padding:5px 9px;font-size:11px" onclick="rejectReturn('${r.id}')">Reject</button>`:''}
+     ${canDelete?`<button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteReturn('${r.id}')">Delete</button>`:''}
+    </span>
+   </div>
+  </div>`;
+ }).join('') || '<div class="empty">No returns recorded.</div>';
 }
 async function startNewReturn(){
  const trackedIds=new Set((await bizProducts()).filter(p=>p.trackStock).map(p=>p.id));
@@ -2292,7 +2390,7 @@ async function startNewReturn(){
  const invoices=allInvoices.filter(i=>{ const paidAmt=(i.payments||[]).reduce((a,p)=>a+p.amount,0); return i.total>0 && paidAmt>=i.total; });
  if(!invoices.length){ alert(allInvoices.length ? 'None of the invoices with stock-tracked products have been paid in full yet — returns can only be processed against a fully paid invoice.' : 'No invoices with stock-tracked products to return from yet.'); return; }
  openModal(`<h2>New Return</h2>
- <div class="notice">Only fully-paid invoices, and only line items for products with stock tracking turned on, can be returned — a return can't exceed what was actually sold and paid for.</div>
+ <div class="notice">Only fully-paid invoices, and only line items for products with stock tracking turned on, can be returned — a return can't exceed what was actually sold and paid for.${isStaffMode()?' This request will wait for the owner\'s approval before anything actually changes.':''}</div>
  <div class="field"><label>Invoice</label><select id="rtInvoice" onchange="loadReturnInvoiceLines()"><option value="">Select invoice</option>${invoices.sort((a,b)=>b.date.localeCompare(a.date)).map(i=>`<option value="${i.id}">${esc(i.number)} — ${esc(i.customer||'')} (${i.date})</option>`).join('')}</select></div>
  <div id="rtLineFields"></div>
  <button class="btn secondary full" onclick="showReturns()">Cancel</button>`);
@@ -2301,12 +2399,13 @@ async function loadReturnInvoiceLines(){
  const inv=(await all('invoices')).find(x=>x.id===rtInvoice.value);
  if(!inv){ rtLineFields.innerHTML=''; return; }
  const trackedIds=new Set((await bizProducts()).filter(p=>p.trackStock).map(p=>p.id));
- const priorReturns=(await all('returns')).filter(r=>r.invoiceId===inv.id);
+ // Both approved AND pending returns claim their quantity, so the same units can't be requested twice while one request awaits approval.
+ const priorReturns=(await all('returns')).filter(r=>r.invoiceId===inv.id && r.status!=='rejected');
  const lineOpts=(inv.items||[]).map((x,n)=>{
   if(!x.productId || !trackedIds.has(x.productId)) return '';
   const alreadyReturned=priorReturns.filter(r=>r.productId===x.productId).reduce((a,r)=>a+(Number(r.qty)||0),0);
   const remaining=(Number(x.qty)||0)-alreadyReturned;
-  if(remaining<=0) return ''; // fully returned already — can't return the same units twice
+  if(remaining<=0) return ''; // fully returned/claimed already — can't return the same units twice
   return `<option value="${n}" data-remaining="${remaining}" data-price="${x.price}">${esc(x.description)} (sold ${x.qty}, ${remaining} returnable @ ${money(x.price)})</option>`;
  }).join('');
  rtLineFields.innerHTML=`
@@ -2314,7 +2413,7 @@ async function loadReturnInvoiceLines(){
  <div class="row2"><div class="field"><label>Quantity returned</label><input id="rtQty" type="number" min="0" oninput="prefillReturnAmount()"></div><div class="field"><label>Refund amount</label><input id="rtRefund" type="number" min="0" oninput="capReturnRefund()"></div></div>
  <div class="field"><label>Reason</label><select id="rtReason"><option value="Defective">Defective</option><option value="Doesn't match description">Doesn't match description</option><option value="Wrong item">Wrong item</option><option value="Other">Other</option></select></div>
  <div class="field"><label>Date</label><input id="rtDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
- <button class="btn accent full" onclick="saveReturn()">Save Return</button>`;
+ <button class="btn accent full" onclick="saveReturn()">${isStaffMode()?'Submit for Approval':'Save Return'}</button>`;
  prefillReturnAmount();
 }
 function prefillReturnAmount(){
@@ -2342,19 +2441,41 @@ async function saveReturn(){
  const maxRefund=qty*Number(rtLine.selectedOptions[0].dataset.price||0);
  if(refundAmount>maxRefund+0.01)return alert('Refund amount can\'t exceed what was actually charged for this quantity ('+money(maxRefund)+').');
  const bizId=await getActiveBusinessId();
- if(line.productId) await applyStockDelta([{productId:line.productId, qty}], +1);
+ const pending=isStaffMode();
+ // Only apply the real stock/refund effect immediately for an owner-created return.
+ // A staff-created one stays inert until approved.
+ if(!pending && line.productId) await applyStockDelta([{productId:line.productId, qty}], +1);
  const journalNumber=await nextJournalNo();
- const rec={id:crypto.randomUUID(), businessId:bizId, invoiceId:inv.id, invoiceNumber:inv.number, productId:line.productId||'', productName:line.description, qty, reason:rtReason.value, refundAmount, date:rtDate.value, journalNumber};
+ const rec={id:crypto.randomUUID(), businessId:bizId, invoiceId:inv.id, invoiceNumber:inv.number, productId:line.productId||'', productName:line.description, qty, reason:rtReason.value, refundAmount, date:rtDate.value, journalNumber, status:pending?'pending':'approved'};
  await put('returns',rec);
  closeModal(); await showReturns(); await refresh();
 }
-async function deleteReturn(id){
- if(!confirm('Delete this return? Stock and the refund total will be reversed.'))return;
+async function approveReturn(id){
+ if(!requireOwnerMode('Approving a return'))return;
+ const r=(await all('returns')).find(x=>x.id===id); if(!r || r.status!=='pending')return;
+ if(!confirm('Approve this return? Stock will be restored and the refund will count against your bank balance now.'))return;
+ if(r.productId) await applyStockDelta([{productId:r.productId, qty:r.qty}], +1);
+ r.status='approved';
+ await put('returns',r);
+ closeModal(); await showReturns(); await refresh();
+}
+async function rejectReturn(id){
+ if(!requireOwnerMode('Rejecting a return'))return;
+ if(!confirm('Reject this return request? Nothing will change — it stays on record as rejected.'))return;
  const r=(await all('returns')).find(x=>x.id===id); if(!r)return;
- if(r.productId) await applyStockDelta([{productId:r.productId, qty:r.qty}], -1);
+ r.status='rejected';
+ await put('returns',r);
+ closeModal(); await showReturns(); await refresh();
+}
+async function deleteReturn(id){
+ const r=(await all('returns')).find(x=>x.id===id); if(!r)return;
+ if(r.status==='approved' && !requireOwnerMode('Deleting an approved return'))return;
+ if(!confirm(r.status==='approved'?'Delete this return? Stock and the refund total will be reversed.':'Delete this return request?'))return;
+ if(r.status==='approved' && r.productId) await applyStockDelta([{productId:r.productId, qty:r.qty}], -1);
  await del('returns',id);
  returnsCache=returnsCache.filter(x=>x.id!==id); drawReturnsList(); refresh();
 }
+
 
 /* ---------------- Product Movement Report ---------------- */
 async function showProductMovementReport(){
@@ -2370,7 +2491,7 @@ async function getProductMovementRows(productId){
  for(const inv of (await bizInvoices()).filter(i=>i.status!=='void')){
   for(const item of (inv.items||[])) if(item.productId===productId) sales.push({date:inv.date, type:'Sale (Out)', qty:-(Number(item.qty)||0), ref:inv.number});
  }
- const returns=(await bizReturns()).filter(r=>r.productId===productId).map(r=>({date:r.date, type:'Return (In)', qty:r.qty, ref:r.journalNumber||''}));
+ const returns=(await bizReturns()).filter(r=>r.productId===productId && (r.status||'approved')==='approved').map(r=>({date:r.date, type:'Return (In)', qty:r.qty, ref:r.journalNumber||''}));
  const rows=[...purchases,...sales,...returns].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
  let running=0;
  for(const r of rows){ running+=r.qty; r.balance=running; }
@@ -2581,6 +2702,7 @@ async function restoreBackup(ev){
   r.readAsText(f);
 }
 
+applyStaffModeUI(); // ensure nav/dashboard visibility matches the (default: off) state before any data loads
 openDB().then(migrateBusinessScopeIfNeeded).then(autoGenerateSalaryIfDue).then(refresh).then(autoDownloadBackupIfDue).catch(err=>{
   console.error('App startup failed', err);
   let msg;
