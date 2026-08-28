@@ -221,7 +221,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 37;
+const APP_VERSION = 38;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -260,7 +260,7 @@ document.addEventListener('click',e=>{
 /* ---------------- IndexedDB core ---------------- */
 const DB_NAME='MoborexInvoiceDB', DB_VERSION=28;
 let idb;
-const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0,staffPinHash:''}};
+const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0,staffMembers:[]}};
 function deriveInitials(name){
  return (name||'').trim().split(/\s+/).map(w=>w[0]).filter(Boolean).join('').toUpperCase().slice(0,4) || 'INV';
 }
@@ -704,7 +704,7 @@ function logoutServerAccount(){
   <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button>
   <button class="navbtn" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
   <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
-  <button class="navbtn ownerOnly" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
+  <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
   <button class="navbtn ownerOnly" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
   <button class="navbtn ownerOnly" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
   <button class="navbtn ownerOnly" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
@@ -718,6 +718,7 @@ function logoutServerAccount(){
   <button class="navbtn ownerOnly" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn ownerOnly" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
   <button class="navbtn ownerOnly" onclick="showReports()"><span class="ic">▥</span> Reports</button>
+  <button class="navbtn ownerOnly" onclick="showTransactionReport()"><span class="ic">📋</span> Transaction Report</button>
   <button class="navbtn ownerOnly" onclick="showTaxReport()"><span class="ic">🏛</span> Tax Report</button>
   <button class="navbtn ownerOnly" onclick="showAudit()"><span class="ic">🔍</span> Audit of Me</button>
   <div style="flex:1"></div>
@@ -760,8 +761,8 @@ function logoutServerAccount(){
 <div class="actions">
 <button class="action primary" onclick="openInvoice()"><div class="ico">＋</div><strong id="navNewInvoiceLabel">New Invoice</strong><span id="navNewInvoiceSub">Create a customer invoice</span></button>
 <button class="action" onclick="showInvoices()"><div class="ico">▤</div><strong>Invoices</strong><span>Find & manage</span></button>
-<button class="action" onclick="showExpenses()"><div class="ico">◈</div><strong>Expenses</strong><span>Record spending</span></button>
-<button class="action" onclick="showReports()"><div class="ico">▥</div><strong>Reports</strong><span>Sales & profit</span></button>
+<button class="action ownerOnly" onclick="showExpenses()"><div class="ico">◈</div><strong>Expenses</strong><span>Record spending</span></button>
+<button class="action ownerOnly" onclick="showReports()"><div class="ico">▥</div><strong>Reports</strong><span>Sales & profit</span></button>
 </div>
 
 <div class="sectionhead"><h3>Recent invoices</h3><button class="linkbtn" onclick="showInvoices()">View all</button></div>
@@ -775,7 +776,7 @@ function logoutServerAccount(){
 <button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> <span id="navInvoicesLabelDrawer">Invoices &amp; Sales</span></button>
 <button class="navbtn" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
 <button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
-<button class="navbtn ownerOnly" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
+<button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
 <button class="navbtn ownerOnly" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
 <button class="navbtn ownerOnly" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
 <button class="navbtn ownerOnly" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
@@ -789,6 +790,7 @@ function logoutServerAccount(){
 <button class="navbtn ownerOnly" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
 <button class="navbtn ownerOnly" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
 <button class="navbtn ownerOnly" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
+<button class="navbtn ownerOnly" onclick="showTransactionReport();closeDrawer()"><span class="ic">📋</span> Transaction Report</button>
 <button class="navbtn ownerOnly" onclick="showTaxReport();closeDrawer()"><span class="ic">🏛</span> Tax Report</button>
 <button class="navbtn ownerOnly" onclick="showAudit();closeDrawer()"><span class="ic">🔍</span> Audit of Me</button>
 <button class="navbtn ownerOnly" onclick="showBusinessSwitcher();closeDrawer()"><span class="ic">🏢</span> Switch Business</button>
@@ -850,7 +852,7 @@ async function refresh(){
 }
 
 /* ---------------- Business Switcher ---------------- */
-async function showBusinessSwitcher(){
+async function showBusinessSwitcher(){ if(!requireOwnerMode('Switching business'))return;
  const list=await all('business'), activeId=await getActiveBusinessId();
  openModal(`<h2>Switch Business ${hb("Each business keeps its own invoices, customers, products, and settings, completely separate. Personal expenses stay shared across all of them.")}</h2>
  <div class="notice">Each business keeps its own invoices, customers, products, and settings — completely separate books. Personal expenses stay shared across all of them, since they're yours, not any one business's.</div>
@@ -890,6 +892,7 @@ async function deleteBusiness(id){
 /* ---------------- App Lock ---------------- */
 async function sha256Hex(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('')}
 function showAppLockSettings(){
+ if(!requireOwnerMode('App Lock settings'))return;
  const enabled=!!localStorage.getItem('moborex_applock_hash');
  openModal(`<h2>App Lock ${hb("A PIN that locks the whole app on this device. Separate from the Sync PIN — this one just keeps someone else from opening the app if they pick up your phone.")}</h2>
  <div class="notice">${enabled?'A PIN is required to open this app on this device.':'Add a PIN so this app can\'t be opened without it — useful if this device is shared with others.'}</div>
@@ -918,59 +921,81 @@ function requireOwnerMode(actionLabel){
  if(isStaffMode()){ alert((actionLabel||'This action')+' is not available in Staff Mode.'); return false; }
  return true;
 }
+function currentActorName(){ return isStaffMode() ? (window.currentStaffName||'Staff') : 'Owner'; }
 async function showStaffAccessSettings(){
  if(!requireOwnerMode('Managing Staff Access'))return;
  const b=await getBusiness();
- const enabled=!!b.staffPinHash;
- openModal(`<h2>Staff Access ${hb("A separate PIN for staff who only need to capture sales and quotations — they never see balances, reports, or anything permanent, and refunds they start need your approval first.")}</h2>
- <div class="notice">${enabled?'A Staff PIN is set for this business.':'No Staff PIN set yet. Set one to let staff use a restricted version of the app.'} A staff member with this PIN can: create invoices, quotations, and request refunds. They cannot: see balances or reports, void or delete anything, or change settings. Refunds they start wait for your approval before anything actually changes.</div>
- ${enabled?`<button class="btn danger full" onclick="turnOffStaffAccess()">Turn Off Staff Access</button><button class="btn secondary full" onclick="promptSetStaffPin()">Change Staff PIN</button>`:`<button class="btn accent full" onclick="promptSetStaffPin()">Set a Staff PIN</button>`}
+ const staff=b.staffMembers||[];
+ openModal(`<h2>Staff Access ${hb("Each staff member gets their own name and PIN, so every sale, invoice, or product they touch is attributed to them by name — useful for fact-finding later. They never see balances or reports, and deleting a product or approving a refund needs your sign-off first.")}</h2>
+ <div class="notice">Each staff member below gets their own PIN. Whatever they create — invoices, quotations, returns, new products — is recorded under their name. They cannot see balances or reports, void or delete an invoice, delete a product without your approval, or change settings.</div>
+ <button class="btn accent full" onclick="promptAddStaffMember()">＋ Add Staff Member</button>
+ <div class="sectionhead" style="margin-top:16px"><h3>Staff members</h3></div>
+ <div class="list" id="staffList">${staff.map(s=>`<div class="row-item"><div><b>${esc(s.name)}</b></div><div class="row-right"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="promptChangeStaffPin('${s.id}')">Change PIN</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="removeStaffMember('${s.id}')">Remove</button></div></div>`).join('')||'<div class="empty">No staff members added yet.</div>'}</div>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
 }
-async function promptSetStaffPin(){
- const p1=prompt('Enter a new Staff PIN (4+ characters):');
+async function promptAddStaffMember(){
+ const name=prompt('Staff member\'s name:');
+ if(!name||!name.trim())return;
+ const p1=prompt('Set a PIN for '+name.trim()+' (4+ characters):');
  if(!p1)return;
  const p2=prompt('Confirm PIN:');
  if(p1!==p2){alert('PINs did not match.');return;}
  if(p1.length<4){alert('Use at least 4 characters.');return;}
  const b=await getBusiness();
- b.staffPinHash=await sha256Hex(p1);
+ b.staffMembers=b.staffMembers||[];
+ b.staffMembers.push({id:crypto.randomUUID(), name:name.trim(), pinHash:await sha256Hex(p1)});
  await put('business',b);
- alert('Staff PIN set.');
  closeModal();showStaffAccessSettings();
 }
-async function turnOffStaffAccess(){
- if(!confirm('Turn off Staff Access for this business? The current Staff PIN will stop working.'))return;
+async function promptChangeStaffPin(id){
  const b=await getBusiness();
- b.staffPinHash='';
+ const s=(b.staffMembers||[]).find(x=>x.id===id); if(!s)return;
+ const p1=prompt('New PIN for '+s.name+' (4+ characters):');
+ if(!p1)return;
+ const p2=prompt('Confirm PIN:');
+ if(p1!==p2){alert('PINs did not match.');return;}
+ if(p1.length<4){alert('Use at least 4 characters.');return;}
+ s.pinHash=await sha256Hex(p1);
  await put('business',b);
- closeModal();
+ closeModal();showStaffAccessSettings();
+}
+async function removeStaffMember(id){
+ if(!confirm('Remove this staff member? Their PIN will stop working immediately.'))return;
+ const b=await getBusiness();
+ b.staffMembers=(b.staffMembers||[]).filter(x=>x.id!==id);
+ await put('business',b);
+ closeModal();showStaffAccessSettings();
 }
 async function promptEnterStaffMode(){
  const b=await getBusiness();
- if(!b.staffPinHash){ alert('No Staff PIN has been set up for this business yet. An owner needs to set one first under Staff Access.'); return; }
- const pin=prompt('Enter Staff PIN:');
+ const staff=b.staffMembers||[];
+ if(!staff.length){ alert('No staff members have been added yet. An owner needs to add one first under Staff Access.'); return; }
+ const pin=prompt('Enter your Staff PIN:');
  if(pin===null)return;
  const hash=await sha256Hex(pin);
- if(hash!==b.staffPinHash){ alert('Incorrect PIN.'); return; }
+ const match=staff.find(s=>s.pinHash===hash);
+ if(!match){ alert('Incorrect PIN.'); return; }
  window.staffModeActive=true;
+ window.currentStaffName=match.name;
  applyStaffModeUI();
- alert('Staff Mode is on. Sales, invoices, and quotations only — balances and reports are hidden until you exit.');
+ alert('Staff Mode is on for '+match.name+'. Sales, invoices, quotations, and products only — balances and reports are hidden until you exit.');
  await refresh();
 }
 async function exitStaffMode(){
- const p1=prompt('Enter the App Lock PIN to exit Staff Mode (or the Staff PIN itself if App Lock isn\'t set):');
+ const p1=prompt('Enter the App Lock PIN to exit Staff Mode:');
  if(p1===null)return;
  const hash=await sha256Hex(p1);
  const appLockHash=localStorage.getItem('moborex_applock_hash');
- const b=await getBusiness();
- if(hash!==appLockHash && hash!==b.staffPinHash){ alert('Incorrect PIN.'); return; }
+ if(!appLockHash){ alert('No App Lock PIN is set on this device, so there\'s no owner PIN to verify against. Set one under App Lock first, or ask whoever set up Staff Mode to add one.'); return; }
+ if(hash!==appLockHash){ alert('Incorrect PIN.'); return; }
  window.staffModeActive=false;
+ window.currentStaffName='';
  applyStaffModeUI();
  await refresh();
 }
 function applyStaffModeUI(){
  document.body.classList.toggle('staffMode', isStaffMode());
+ if(staffModeBanner) staffModeBanner.textContent = isStaffMode() ? ('🔑 Staff Mode — '+(window.currentStaffName||'')+' — sales & quotations only') : '';
  if(staffModeBanner) staffModeBanner.style.display = isStaffMode() ? 'flex' : 'none';
  const showEls=[enterStaffModeBtn,enterStaffModeBtnDrawer], hideEls=[exitStaffModeBtn,exitStaffModeBtnDrawer];
  for(const el of showEls) if(el) el.style.display = isStaffMode() ? 'none' : '';
@@ -979,7 +1004,7 @@ function applyStaffModeUI(){
 
 /* ---------------- Business Settings ---------------- */
 
-async function showSettings(){
+async function showSettings(){ if(!requireOwnerMode('Business settings'))return;
  let b=await getBusiness();
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
  openModal(`<h2>Business Settings ${hb("Everything specific to this one business: its name, currency, invoice numbering, and how it's classified for tax purposes.")}</h2>
@@ -1019,7 +1044,7 @@ async function saveSettings(){
 }
 
 /* ---------------- Products / Services (or Salary Setup, for salary-type businesses) ---------------- */
-async function showProductsDispatch(){const b=await getBusiness();if(b.type==='salary')await showSalarySetup();else await showProducts();}
+async function showProductsDispatch(){const b=await getBusiness();if(b.type==='salary'){if(!requireOwnerMode('Salary Setup'))return;await showSalarySetup();}else await showProducts();}
 async function showSalarySetup(){
  const b=await getBusiness();
  openModal(`<h2>Salary Setup — ${esc(b.name)} ${hb("Set your monthly pay and turn on auto-generate to have this business log a salary payment every month automatically, without you doing anything.")}</h2>
@@ -1048,17 +1073,42 @@ async function showProducts(){let p=await bizProducts();window.editingProductId=
 window.pCache=p;drawProducts();toggleProductStockFields();}
 function toggleProductStockFields(){pStockFields.style.display=pTrack.value==='1'?'block':'none';}
 function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
- const stockLine = p.trackStock ? `<small>Stock: ${p.stockQty??0}${(Number(p.stockQty)||0)<0?' ⚠ negative':''}${p.costPrice?' · Cost '+money(p.costPrice):''}</small>` : '';
- return `<div class="row-item"><div><b>${esc(p.name)}</b>${stockLine}</div><div class="row-right"><strong class="money">${money(p.price)}</strong><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="editProduct('${p.id}')">Edit</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button></span></div></div>`;
+ const stockLine = p.trackStock ? `<small>Stock: ${p.stockQty??0}${(Number(p.stockQty)||0)<0?' ⚠ negative':''}${p.costPrice?' · Cost '+money(p.costPrice):''}${p.createdBy?' · Added by '+esc(p.createdBy):''}</small>` : (p.createdBy?`<small>Added by ${esc(p.createdBy)}</small>`:'');
+ const pendingBadge = p.pendingDelete ? `<span class="stamp duesoon" style="margin-left:6px">Deletion requested${p.pendingDeleteBy?' by '+esc(p.pendingDeleteBy):''}</span>` : '';
+ const deleteBtn = p.pendingDelete
+  ? `<span class="ownerOnly" style="display:flex;gap:6px"><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="approveProductDeletion('${p.id}')">Confirm Delete</button><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="cancelProductDeletion('${p.id}')">Cancel Request</button></span>`
+  : `<button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button>`;
+ return `<div class="row-item"><div><b>${esc(p.name)}</b>${pendingBadge}${stockLine}</div><div class="row-right"><strong class="money">${money(p.price)}</strong><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="editProduct('${p.id}')">Edit</button>${deleteBtn}</span></div></div>`;
 }).join('')||'<div class="empty">No products yet.</div>'}
 function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pTrack.value=p.trackStock?'1':'0';pCost.value=p.costPrice||0;pQty.value=p.stockQty||0;toggleProductStockFields();pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
 function cancelEditProduct(){window.editingProductId=null;pName.value='';pPrice.value='';pTrack.value='0';pCost.value='';pQty.value='';toggleProductStockFields();pSaveBtn.textContent='＋ Add Product';pCancelBtn.style.display='none'}
 async function saveProduct(){if(!pName.value.trim())return alert('Enter a product name.');
  const trackStock=pTrack.value==='1';
  if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;p.trackStock=trackStock;if(trackStock){p.costPrice=Number(pCost.value)||0;p.stockQty=Number(pQty.value)||0;}await put('products',p);}
- else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId(),trackStock,costPrice:trackStock?(Number(pCost.value)||0):0,stockQty:trackStock?(Number(pQty.value)||0):0};await put('products',p);pCache.push(p);}
+ else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId(),trackStock,costPrice:trackStock?(Number(pCost.value)||0):0,stockQty:trackStock?(Number(pQty.value)||0):0,createdBy:currentActorName()};await put('products',p);pCache.push(p);}
  cancelEditProduct();drawProducts()}
-async function deleteProduct(id){if(!confirm('Delete this product?'))return;await del('products',id);pCache=pCache.filter(x=>x.id!==id);drawProducts()}
+async function deleteProduct(id){
+ const p=pCache.find(x=>x.id===id); if(!p)return;
+ if(isStaffMode()){
+  if(!confirm('Request deletion of "'+p.name+'"? It stays visible until an owner confirms.'))return;
+  p.pendingDelete=true; p.pendingDeleteBy=currentActorName();
+  await put('products',p); drawProducts(); return;
+ }
+ if(!confirm('Delete this product?'))return;
+ await del('products',id);
+ pCache=pCache.filter(x=>x.id!==id); drawProducts();
+}
+async function approveProductDeletion(id){
+ if(!requireOwnerMode('Deleting a product'))return;
+ if(!confirm('Confirm deleting this product? This cannot be undone.'))return;
+ await del('products',id);
+ pCache=pCache.filter(x=>x.id!==id); drawProducts();
+}
+async function cancelProductDeletion(id){
+ const p=pCache.find(x=>x.id===id); if(!p)return;
+ p.pendingDelete=false; p.pendingDeleteBy='';
+ await put('products',p); drawProducts();
+}
 
 /* ---------------- Stock: quiet deduction/restoration hooked into invoice save/void/restore.
    Never touches the invoice screen itself — just the data underneath it. ---------------- */
@@ -1081,7 +1131,7 @@ async function addCustomer(){if(!cName.value.trim())return alert('Enter a custom
 async function deleteCustomer(id){if(!confirm('Delete this customer?'))return;await del('customers',id);cCache=cCache.filter(x=>x.id!==id);drawCustomers()}
 
 /* ---------------- Expense Types ---------------- */
-async function showExpenseTypes(){let t=await businessExpenseTypes();openModal(`<h2>Expense Types ${hb("Categories used when logging Business Expenses, e.g. Fuel, Rent, Tools. Keeps your Reports and Tax Report broken down by category.")}</h2><div class="notice">Categories for Business Expenses. For personal spending categories, use Personal Categories instead.</div><div class="field"><label>Type name</label><input id="tName" placeholder="Fuel, transport, tools..."></div><button class="btn accent full" onclick="addExpenseType()">＋ Add Type</button><div class="sectionhead" style="margin-top:18px"><h3>All types</h3></div><div class="list" id="tList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.tCache=t;drawExpenseTypes()}
+async function showExpenseTypes(){ if(!requireOwnerMode('Expense type settings'))return;let t=await businessExpenseTypes();openModal(`<h2>Expense Types ${hb("Categories used when logging Business Expenses, e.g. Fuel, Rent, Tools. Keeps your Reports and Tax Report broken down by category.")}</h2><div class="notice">Categories for Business Expenses. For personal spending categories, use Personal Categories instead.</div><div class="field"><label>Type name</label><input id="tName" placeholder="Fuel, transport, tools..."></div><button class="btn accent full" onclick="addExpenseType()">＋ Add Type</button><div class="sectionhead" style="margin-top:18px"><h3>All types</h3></div><div class="list" id="tList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.tCache=t;drawExpenseTypes()}
 function drawExpenseTypes(){tList.innerHTML=tCache.sort((a,b)=>a.name.localeCompare(b.name)).map(t=>`<div class="row-item"><div><b>${esc(t.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteExpenseType('${t.id}')">Delete</button></div>`).join('')||'<div class="empty">No expense types yet.</div>'}
 async function addExpenseType(){if(!tName.value.trim())return alert('Enter a type name.');let t={id:crypto.randomUUID(),name:tName.value.trim(),kind:'business',businessId:await getActiveBusinessId()};await put('expenseTypes',t);tCache.push(t);tName.value='';drawExpenseTypes()}
 async function deleteExpenseType(id){if(!confirm('Delete this expense type?'))return;await del('expenseTypes',id);tCache=tCache.filter(x=>x.id!==id);drawExpenseTypes()}
@@ -1130,7 +1180,7 @@ function drawQuoteSearch(){
 }
 async function openQuotation(id){
  let allQ=await bizQuotations(), q=id?allQ.find(x=>x.id===id):null, customers=await bizCustomers();
- q=q||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'draft',number:await nextQuoteNo(),date:new Date().toISOString().slice(0,10),validUntil:'',customerId:'',customer:'',phone:'',address:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],notes:'',headerComment:''};
+ q=q||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'draft',number:await nextQuoteNo(),date:new Date().toISOString().slice(0,10),validUntil:'',customerId:'',customer:'',phone:'',address:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],notes:'',headerComment:'',createdBy:currentActorName()};
  window.qEditing=q; window.qItems=(q.items||[]).map(x=>({...x}));
  const locked=q.status==='converted';
  const custOpts='<option value="">Select saved customer</option>'+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
@@ -1218,7 +1268,7 @@ async function nextNo(){let b=await getBusiness();if(b.invoiceMode!=='auto')retu
 async function previewNextNo(b){const prefix=b.numberPrefix||deriveInitials(b.name);return prefix+'-'+String(b.nextNumber||1).padStart(4,'0')}
 async function openInvoice(id){
  let b=await getBusiness(),allInv=await bizInvoices(),inv=id?allInv.find(x=>x.id===id):null,customers=await bizCustomers();
- inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:''};
+ inv=inv||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'active',number:await nextNo(),date:new Date().toISOString().slice(0,10),dueDate:'',customerId:'',customer:'',phone:'',address:'',vehicleDetails:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],payments:[],headerComment:'',salesComment:'',createdBy:currentActorName()};
  window.editing=inv;window.items=(inv.items||[]).map(x=>({...x}));window.invoiceExpenses=(await all('expenses')).filter(x=>x.invoiceId===inv.id);
  const commission = id ? (await all('commissions')).find(c=>c.invoiceId===id) : null;
  window.editingCommission = commission;
@@ -1329,7 +1379,7 @@ async function payments(id){let i=(await all('invoices')).find(x=>x.id===id),pai
 async function addPayment(id){let a=Number(pa.value||0);if(a<=0)return alert('Enter an amount.');let i=(await all('invoices')).find(x=>x.id===id);i.payments.push({id:crypto.randomUUID(),amount:a,date:pd.value,method:pm.value});await put('invoices',i);await payments(id);refresh()}
 
 /* ---------------- Expenses ---------------- */
-async function showExpenses(){
+async function showExpenses(){ if(!requireOwnerMode('Business expenses'))return;
  let ex=await businessExpenses();
  openModal(`<h2>Business Expenses ${hb("Add several expenses at once — each row becomes its own record with its own journal number, so you don't have to save and reopen this screen for every single entry.")}</h2>
  <div class="notice">These reduce business profit and count in Reports. For non-business spending, use Personal Expenses instead. Each saved expense gets a sequential journal number for your records.</div>
@@ -1356,7 +1406,7 @@ async function saveExpenseBatch(){
  const bizId=await getActiveBusinessId();
  for(const r of rows){
   const journalNumber=await nextJournalNo();
-  const e={id:crypto.randomUUID(),date:r.date,category:r.category,amount:Number(r.amount)||0,description:r.description,invoiceId:'',kind:'business',businessId:bizId,journalNumber};
+  const e={id:crypto.randomUUID(),date:r.date,category:r.category,amount:Number(r.amount)||0,description:r.description,invoiceId:'',kind:'business',businessId:bizId,journalNumber,createdBy:currentActorName()};
   await put('expenses',e); expCache.push(e);
  }
  window.expBatch=[{date:new Date().toISOString().slice(0,10),category:'',amount:0,description:''}];
@@ -1366,7 +1416,7 @@ function drawExpenses(){elist.innerHTML=expCache.sort((a,b)=>b.date.localeCompar
 async function deleteExpense(id){if(!confirm('Delete this expense?'))return;await del('expenses',id);expCache=expCache.filter(x=>x.id!==id);drawExpenses();refresh()}
 
 /* ---------------- Personal Expenses (kept separate from business books) ---------------- */
-async function showPersonalExpenses(){await ensurePersonalCategorySeed();let ex=(await all('expenses')).filter(e=>e.kind==='personal'),cats=(await all('expenseTypes')).filter(x=>x.kind==='personal').sort((a,b)=>a.name.localeCompare(b.name));const opts='<option value="">Select category</option>'+cats.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');openModal(`<h2>Personal Expenses</h2><div class="notice">Day-to-day personal spending — kept separate from business profit &amp; loss, but counted in your overall Cash &amp; Bank Balance on the dashboard.</div><div class="field"><label>Date</label><input id="ped" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="row2"><div class="field"><label>Category</label><select id="pec">${opts}</select></div><div class="field"><label>Amount</label><input id="pea" type="number"></div></div><div class="field"><label>Description</label><input id="pex"></div><button class="btn accent full" onclick="addPersonalExpense()">Save Expense</button><button class="btn secondary full" onclick="showPersonalCategories()">Manage Categories</button><h3 style="font-size:14px;margin-top:16px">Recorded personal expenses</h3><div id="pelist"></div>`);window.pexpCache=ex;drawPersonalExpenses()}
+async function showPersonalExpenses(){ if(!requireOwnerMode('Personal expenses'))return;await ensurePersonalCategorySeed();let ex=(await all('expenses')).filter(e=>e.kind==='personal'),cats=(await all('expenseTypes')).filter(x=>x.kind==='personal').sort((a,b)=>a.name.localeCompare(b.name));const opts='<option value="">Select category</option>'+cats.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');openModal(`<h2>Personal Expenses</h2><div class="notice">Day-to-day personal spending — kept separate from business profit &amp; loss, but counted in your overall Cash &amp; Bank Balance on the dashboard.</div><div class="field"><label>Date</label><input id="ped" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="row2"><div class="field"><label>Category</label><select id="pec">${opts}</select></div><div class="field"><label>Amount</label><input id="pea" type="number"></div></div><div class="field"><label>Description</label><input id="pex"></div><button class="btn accent full" onclick="addPersonalExpense()">Save Expense</button><button class="btn secondary full" onclick="showPersonalCategories()">Manage Categories</button><h3 style="font-size:14px;margin-top:16px">Recorded personal expenses</h3><div id="pelist"></div>`);window.pexpCache=ex;drawPersonalExpenses()}
 function drawPersonalExpenses(){pelist.innerHTML=pexpCache.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>`<div class="row-item"><div><b>${esc(e.category||'Expense')}</b><small>${e.date} · ${esc(e.description)}</small></div><div class="row-right"><strong class="money">${money(e.amount)}</strong><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deletePersonalExpense('${e.id}')">Delete</button></div></div>`).join('')||'<div class="empty">No personal expenses recorded.</div>'}
 async function addPersonalExpense(){let a=Number(pea.value||0);if(a<=0)return alert('Enter an amount.');if(!pec.value)return alert('Select a category.');let e={id:crypto.randomUUID(),date:ped.value,category:pec.value,amount:a,description:pex.value,invoiceId:'',kind:'personal'};await put('expenses',e);pexpCache.push(e);drawPersonalExpenses();refresh()}
 async function deletePersonalExpense(id){if(!confirm('Delete this expense?'))return;await del('expenses',id);pexpCache=pexpCache.filter(x=>x.id!==id);drawPersonalExpenses();refresh()}
@@ -1395,7 +1445,7 @@ function drawIncomeCategories(){itList.innerHTML=itCache.sort((a,b)=>a.name.loca
 async function addIncomeCategory(){if(!itName.value.trim())return alert('Enter a category name.');let t={id:crypto.randomUUID(),name:itName.value.trim(),kind:'income',taxable:itTaxable.value==='1'};await put('expenseTypes',t);itCache.push(t);itName.value='';drawIncomeCategories()}
 async function deleteIncomeCategory(id){if(!confirm('Delete this category?'))return;await del('expenseTypes',id);itCache=itCache.filter(x=>x.id!==id);drawIncomeCategories()}
 
-async function showOtherIncome(){
+async function showOtherIncome(){ if(!requireOwnerMode('Other income'))return;
  await ensureIncomeCategorySeed();
  let inc=await all('otherIncome'), cats=(await all('expenseTypes')).filter(x=>x.kind==='income').sort((a,b)=>a.name.localeCompare(b.name));
  const opts='<option value="">Select category</option>'+cats.map(c=>`<option value="${esc(c.name)}" data-taxable="${c.taxable?1:0}">${esc(c.name)}${c.taxable?'':' (not taxable)'}</option>`).join('');
@@ -1419,7 +1469,7 @@ async function deleteOtherIncome(id){if(!confirm('Delete this income record?'))r
 
 /* ---------------- Opening Balances (migrating pre-app history) ---------------- */
 
-async function showOpeningBalances(){
+async function showOpeningBalances(){ if(!requireOwnerMode('Opening balances'))return;
  let b=await getBusiness();
  openModal(`<h2>Opening Balances ${hb("One-time figures for the business you were already running before starting this app, so your totals reflect real history, not just what's been entered here.")}</h2><div class="notice">One-time figures for the business you were already running before this app — so your totals and profit/loss reflect your real history, not just what's been entered here. Leave any field at 0 if you're starting completely fresh.</div>
  <div class="field"><label>As of date</label><input id="oDate" type="date" value="${b.openingAsOfDate||new Date().toISOString().slice(0,10)}"></div>
@@ -1502,7 +1552,7 @@ async function saveTaxProfile(){
 }
 
 /* ---------------- Tax Report & Government Submissions ---------------- */
-async function showTaxReport(){
+async function showTaxReport(){ if(!requireOwnerMode('Tax reports'))return;
  const curYear=new Date().getFullYear();
  let yearOpts='';
  for(let y=2026;y<=curYear;y++) yearOpts+=`<option value="${y}" ${y===curYear?'selected':''}>${y}</option>`;
@@ -1773,7 +1823,7 @@ async function runAudit(){
  if(globalBalance<0) findings.push({id:crypto.randomUUID(),category:'Cash Position',severity:'high',business:'All',description:`Your combined Cash & Bank Balance across all businesses is currently negative (${money(globalBalance)}). This usually means either income hasn't been fully recorded, or expenses/commission/tax payments have been overstated somewhere — worth a closer look before this report is finalized.`});
  return findings;
 }
-async function showAudit(){
+async function showAudit(){ if(!requireOwnerMode('Audit'))return;
  try{
   const findings=await runAudit();
   window.auditFindings=findings;
@@ -1864,7 +1914,7 @@ async function showAuditHistory(){
 }
 
 /* ---------------- Commissions ---------------- */
-async function showCommissions(){
+async function showCommissions(){ if(!requireOwnerMode('Commissions'))return;
  const comms=await bizCommissions(), invoices=await bizInvoices();
  openModal(`<h2>Commissions ${hb("Money owed to whoever facilitated a job — separate from business expenses, never shown on the customer invoice, and only payable once that invoice is fully paid.")}</h2>
  <div class="notice">Ready to Pay means the linked invoice has been paid in full. Pending means the customer hasn't fully paid yet — commission isn't due until they do.</div>
@@ -1888,7 +1938,7 @@ async function markCommissionPaid(id){
 }
 
 /* ---------------- Investments ---------------- */
-async function showInvestments(){
+async function showInvestments(){ if(!requireOwnerMode('Investments'))return;
  const invs=await all('investments');
  openModal(`<h2>Investments ${hb("Track money moved into and out of investments. Each one is its own account — new investments reduce your bank balance when you invest, withdrawals add back to it when returned.")}</h2>
  <div class="notice">Personal, shared across all your businesses. Withdrawals can be added multiple times as money returns — each one asks whether the investment is now fully closed.</div>
@@ -1960,7 +2010,7 @@ async function deleteInvestment(id){
 }
 
 /* ---------------- Loans ---------------- */
-async function showLoans(){
+async function showLoans(){ if(!requireOwnerMode('Loans'))return;
  const loans=await bizLoans();
  openModal(`<h2>Loans ${hb("Money borrowed for this business, tracked separately from income — the amount you receive isn't taxable revenue, and repayments aren't a straight expense (only the interest portion is deductible).")}</h2>
  <div class="notice">Taking a loan increases your Cash &amp; Bank Balance without counting as sales. Repayments reduce it without counting as a full expense — only the interest portion you note (if any) is treated as a deductible cost.</div>
@@ -2042,7 +2092,7 @@ async function collectAppTransactions(bizId, from, to){
  }
  return out;
 }
-async function showReconciliation(){
+async function showReconciliation(){ if(!requireOwnerMode('Bank reconciliation'))return;
  openModal(`<h2>Bank Reconciliation ${hb("Upload a bank statement to compare against what's recorded here. Anything on the statement that doesn't match a record in the app gets flagged so you can explain it — like bank charges that never got entered.")}</h2>
  <div class="notice">The uploaded file is used only for this session and is never saved — only a short summary of what was found gets kept afterward.</div>
  <div class="field"><label>Bank statement (.xlsx, .xls, or .csv)</label><input type="file" id="reconFile" accept=".xlsx,.xls,.csv" onchange="parseReconciliationFile(event)"></div>
@@ -2311,7 +2361,7 @@ async function lockReconciliation(recordId){
    stock increases a product's on-hand quantity and reduces the bank
    balance as its own category, distinct from generic Business
    Expenses, the same way Commission and Loan interest already are. ---------------- */
-async function showStockPurchases(){
+async function showStockPurchases(){ if(!requireOwnerMode('Stock purchases'))return;
  const purchases=await bizStockPurchases(), products=(await bizProducts()).filter(p=>p.trackStock);
  openModal(`<h2>Stock Purchases ${hb("Buying more of a tracked product. Increases that product's stock quantity and counts as its own cost category — separate from generic Business Expenses — reducing your bank balance and profit.")}</h2>
  ${products.length ? `
@@ -2335,7 +2385,7 @@ async function saveStockPurchase(){
  const products=await bizProducts(), p=products.find(x=>x.id===productId);
  if(!p)return;
  const journalNumber=await nextJournalNo();
- const purchase={id:crypto.randomUUID(), businessId:await getActiveBusinessId(), productId, productName:p.name, qty, unitCost, totalCost:qty*unitCost, vendorName:spVendor.value.trim(), date:spDate.value, journalNumber};
+ const purchase={id:crypto.randomUUID(), businessId:await getActiveBusinessId(), productId, productName:p.name, qty, unitCost, totalCost:qty*unitCost, vendorName:spVendor.value.trim(), date:spDate.value, journalNumber, createdBy:currentActorName()};
  await put('stockPurchases',purchase);
  p.stockQty=(Number(p.stockQty)||0)+qty;
  if(unitCost>0) p.costPrice=unitCost; // keep the product's cost price current for next time
@@ -2446,7 +2496,7 @@ async function saveReturn(){
  // A staff-created one stays inert until approved.
  if(!pending && line.productId) await applyStockDelta([{productId:line.productId, qty}], +1);
  const journalNumber=await nextJournalNo();
- const rec={id:crypto.randomUUID(), businessId:bizId, invoiceId:inv.id, invoiceNumber:inv.number, productId:line.productId||'', productName:line.description, qty, reason:rtReason.value, refundAmount, date:rtDate.value, journalNumber, status:pending?'pending':'approved'};
+ const rec={id:crypto.randomUUID(), businessId:bizId, invoiceId:inv.id, invoiceNumber:inv.number, productId:line.productId||'', productName:line.description, qty, reason:rtReason.value, refundAmount, date:rtDate.value, journalNumber, status:pending?'pending':'approved', createdBy:currentActorName()};
  await put('returns',rec);
  closeModal(); await showReturns(); await refresh();
 }
@@ -2478,7 +2528,7 @@ async function deleteReturn(id){
 
 
 /* ---------------- Product Movement Report ---------------- */
-async function showProductMovementReport(){
+async function showProductMovementReport(){ if(!requireOwnerMode('Product movement reports'))return;
  const products=(await bizProducts()).filter(p=>p.trackStock);
  openModal(`<h2>Product Movement Report ${hb("Every stock purchase (in), sale (out), and return (in) for a product, in order, with a running balance — so you can see exactly why the current stock number is what it is.")}</h2>
  ${products.length?`<div class="field"><label>Product</label><select id="pmProduct" onchange="renderProductMovement()">${products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div><div id="pmBody"></div><button class="btn secondary full" onclick="exportProductMovementCSV()">Export CSV</button>`:'<div class="empty">No stock-tracked products yet.</div>'}
@@ -2509,6 +2559,54 @@ async function exportProductMovementCSV(){
  downloadCSV(csvRows, 'product-movement-'+productName.replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.csv');
 }
 
+/* ---------------- Transaction Report ----------------
+   Every transaction-generating record for this business, in one place,
+   attributed to whoever actually created it — for fact-finding on any
+   sale, expense, quotation, return, or stock purchase, any time. ---------------- */
+async function collectAllTransactions(bizId){
+ const out=[];
+ for(const i of (await all('invoices')).filter(x=>x.businessId===bizId)){
+  out.push({date:i.date, type:i.status==='void'?'Invoice (Void)':'Invoice', description:(i.number||'')+' — '+(i.customer||''), amount:i.total, createdBy:i.createdBy||'Owner'});
+ }
+ for(const e of (await all('expenses')).filter(x=>x.kind!=='personal' && x.businessId===bizId)){
+  out.push({date:e.date, type:'Expense', description:(e.category||'')+' — '+(e.description||''), amount:-Math.abs(e.amount), createdBy:e.createdBy||'Owner'});
+ }
+ for(const q of (await all('quotations')).filter(x=>x.businessId===bizId)){
+  out.push({date:q.date, type:'Quotation', description:(q.number||'')+' — '+(q.customer||''), amount:q.total, createdBy:q.createdBy||'Owner'});
+ }
+ for(const r of (await all('returns')).filter(x=>x.businessId===bizId)){
+  out.push({date:r.date, type:'Return ('+(r.status||'approved')+')', description:(r.productName||'')+' — '+(r.invoiceNumber||''), amount:-Math.abs(r.refundAmount), createdBy:r.createdBy||'Owner'});
+ }
+ for(const sp of (await all('stockPurchases')).filter(x=>x.businessId===bizId)){
+  out.push({date:sp.date, type:'Stock Purchase', description:(sp.productName||'')+' × '+sp.qty, amount:-Math.abs(sp.totalCost), createdBy:sp.createdBy||'Owner'});
+ }
+ return out.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+async function showTransactionReport(){ if(!requireOwnerMode('Transaction reports'))return;
+ const b=await getBusiness();
+ const staffNames=(b.staffMembers||[]).map(s=>s.name);
+ openModal(`<h2>Transaction Report ${hb("Every sale, expense, quotation, return, and stock purchase for this business, showing exactly who created each one — filter by date range or by a specific staff member.")}</h2>
+ <div class="row2"><div class="field"><label>From</label><input id="trFrom" type="date" onchange="renderTransactionReport()"></div><div class="field"><label>To</label><input id="trTo" type="date" onchange="renderTransactionReport()"></div></div>
+ <div class="field"><label>Staff</label><select id="trStaff" onchange="renderTransactionReport()"><option value="">All</option><option value="Owner">Owner</option>${staffNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div>
+ <div id="trBody"></div>
+ <button class="btn secondary full" onclick="exportTransactionReportCSV()">Export CSV</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.trAllTx=await collectAllTransactions(await getActiveBusinessId());
+ renderTransactionReport();
+}
+function renderTransactionReport(){
+ const from=trFrom.value, to=trTo.value, staff=trStaff.value;
+ const rows=window.trAllTx.filter(t=>(!from||t.date>=from)&&(!to||t.date<=to)&&(!staff||t.createdBy===staff));
+ trBody.innerHTML=`<div class="notice">${rows.length} transaction(s)${staff?' by '+esc(staff):''}.</div><div class="list">${rows.map(t=>`<div class="row-item"><div><b>${esc(t.type)}</b><small>${esc(t.date)} · ${esc(t.description)} · by ${esc(t.createdBy)}</small></div><strong class="money">${money(t.amount)}</strong></div>`).join('')||'<div class="empty">No transactions in this range.</div>'}</div>`;
+}
+function exportTransactionReportCSV(){
+ const from=trFrom.value, to=trTo.value, staff=trStaff.value;
+ const rows=window.trAllTx.filter(t=>(!from||t.date>=from)&&(!to||t.date<=to)&&(!staff||t.createdBy===staff));
+ const csvRows=[['Date','Type','Description','Amount','Created By']];
+ for(const t of rows) csvRows.push([t.date, t.type, t.description, t.amount, t.createdBy]);
+ downloadCSV(csvRows, 'transaction-report.csv');
+}
+
 /* ---------------- Reports ---------------- */
 
 
@@ -2516,7 +2614,8 @@ async function exportProductMovementCSV(){
 
 
 
-async function showReports(){
+
+async function showReports(){ if(!requireOwnerMode('Reports'))return;
  const today=new Date().toISOString().slice(0,10);
  openModal(`<h2>Reports ${hb("Pull the exact report you need — revenue, expenses, commission, or personal — instead of one fixed view.")}</h2>
  <div class="row2"><div class="field"><label>From</label><input id="rf" type="date" value="${new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10)}"></div><div class="field"><label>To</label><input id="rt" type="date" value="${today}"></div></div>
@@ -2623,6 +2722,7 @@ async function downloadInvoicePDF(number){
 
 /* ---------------- Backup / Sync UI ---------------- */
 function showCloudSync(){
+ if(!requireOwnerMode('Backup & sync settings'))return;
  const lastPush=localStorage.getItem('moborex_last_backup'), lastPull=localStorage.getItem('moborex_last_pull');
  const autoDate=localStorage.getItem('moborex_auto_backup_date');
  const modeLine = Sync.connected
