@@ -221,7 +221,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 38;
+const APP_VERSION = 39;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -1390,14 +1390,40 @@ async function showExpenses(){ if(!requireOwnerMode('Business expenses'))return;
  window.expCache=ex; window.expBatch=[{date:new Date().toISOString().slice(0,10),category:'',amount:0,description:''}];
  drawExpenseBatchRows(); drawExpenses();
 }
+/* ---------------- Expense tax-treatment hints (by name/category pattern) ----------------
+   Informational only — not a ruling. Flags the kinds of expenses that commonly need
+   special tax handling (non-deductible, restricted, or capital rather than expensed),
+   so the pattern gets caught at entry time rather than discovered at tax time. ---------------- */
+function suggestExpenseTaxNote(text){
+ const t=(text||'').toLowerCase();
+ if(!t.trim()) return null;
+ if(/\b(fine|penalt|traffic offen)/i.test(t)) return 'Fines and penalties are typically NOT tax-deductible, even though they\'re a real cost.';
+ if(/\b(entertain|hospitalit|client dinner|client lunch)/i.test(t)) return 'Entertainment expenses often have restricted or no deductibility — confirm before claiming in full.';
+ if(/\b(donat|charit)/i.test(t)) return 'Donations are usually only deductible if made to an approved organisation, often capped at a limited amount.';
+ if(/\b(capital|equipment|machinery|vehicle purchase|building|renovation|asset purchase|generator purchase)/i.test(t)) return 'This looks like a capital purchase — these usually aren\'t deducted in full the year of purchase; capital allowance/depreciation rules may apply instead.';
+ if(/\b(personal|family|domestic)/i.test(t)) return 'This sounds personal rather than business — consider logging it under Personal Expenses instead, since personal spending isn\'t a deductible business cost.';
+ return null;
+}
 function drawExpenseBatchRows(){
- expBatchRows.innerHTML=expBatch.map((r,n)=>`<div class="line" style="grid-template-columns:1fr 1fr .8fr 32px">
+ expBatchRows.innerHTML=expBatch.map((r,n)=>{
+  const hint=suggestExpenseTaxNote(r.category+' '+r.description);
+  return `<div class="line" style="grid-template-columns:1fr 1fr .8fr 32px">
    <input type="date" value="${r.date}" oninput="expBatch[${n}].date=this.value">
-   <input placeholder="Category" value="${esc(r.category)}" oninput="expBatch[${n}].category=this.value">
+   <input placeholder="Category" value="${esc(r.category)}" oninput="expBatch[${n}].category=this.value;updateExpenseBatchHint(${n})">
    <input type="number" min="0" placeholder="Amount" value="${r.amount||''}" oninput="expBatch[${n}].amount=Number(this.value)">
    <button class="btn danger" onclick="expBatch.splice(${n},1);drawExpenseBatchRows()">×</button>
-   <input class="comment" placeholder="Description" value="${esc(r.description)}" oninput="expBatch[${n}].description=this.value">
- </div>`).join('');
+   <input class="comment" placeholder="Description" value="${esc(r.description)}" oninput="expBatch[${n}].description=this.value;updateExpenseBatchHint(${n})">
+   <div class="notice" id="expHint${n}" style="grid-column:1/-1;padding:6px 8px;font-size:11px;background:var(--brassSoft);border-color:#e6cf9f;color:#7a5a1f;display:${hint?'block':'none'}">${hint?'⚠ '+esc(hint):''}</div>
+ </div>`;
+ }).join('');
+}
+function updateExpenseBatchHint(n){
+ // Update just this one row's hint text directly, without re-rendering the input fields —
+ // re-rendering on every keystroke would drop focus mid-type, which is exactly the wrong feel here.
+ const r=expBatch[n];
+ const hint=suggestExpenseTaxNote(r.category+' '+r.description);
+ const el=document.getElementById('expHint'+n);
+ if(el){ el.style.display = hint?'block':'none'; el.textContent = hint?('⚠ '+hint):''; }
 }
 function addExpenseBatchRow(){expBatch.push({date:new Date().toISOString().slice(0,10),category:'',amount:0,description:''});drawExpenseBatchRows()}
 async function saveExpenseBatch(){
@@ -1579,7 +1605,7 @@ async function loadTaxReport(){
  taxCurrencyWarning.innerHTML = currencies.size>1 ? `<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">Your businesses use different currencies (${[...currencies].join(', ')}) — the combined totals below add these together directly, which isn't meaningful across currencies. Treat the per-business figures as the accurate ones.</div>` : '';
  const taxProfile=await getTaxProfile();
 
- let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0, totalCommission=0;
+ let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0, totalCommission=0, totalStockPurchases=0, totalLoanInterest=0, totalReturns=0;
  let personalIncomeBase=0; // salary + business-name profit + taxable other income, feeds PIT
  let bizTaxSections='', broughtForwardRows='', broughtForwardUntaxedTotal=0;
  for(const b of businesses){
@@ -1588,9 +1614,11 @@ async function loadTaxReport(){
   const invIds=new Set(invs.map(i=>i.id));
   const commTotal=(await all('commissions')).filter(c=>c.businessId===b.id && invIds.has(c.invoiceId)).reduce((a,c)=>a+(Number(c.amount)||0),0);
   const stockTotal=(await all('stockPurchases')).filter(sp=>sp.businessId===b.id && sp.date>=from && sp.date<=to).reduce((a,sp)=>a+(Number(sp.totalCost)||0),0);
-  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal-commTotal-stockTotal;
-  totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit; totalCommission+=commTotal;
-  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}${commTotal?' · Comm '+money(commTotal):''}${stockTotal?' · Stock '+money(stockTotal):''}</small></div></div>`;
+  const loanInterestTotal=(await all('loans')).filter(l=>l.businessId===b.id).reduce((a,l)=>a+(l.repayments||[]).filter(r=>r.date>=from && r.date<=to).reduce((x,r)=>x+(Number(r.interestPortion)||0),0),0);
+  const returnsTotal=(await all('returns')).filter(r=>r.businessId===b.id && (r.status||'approved')==='approved' && r.date>=from && r.date<=to).reduce((a,r)=>a+(Number(r.refundAmount)||0),0);
+  const rev=invs.reduce((a,i)=>a+i.total,0), expTotal=exps.reduce((a,e)=>a+e.amount,0), profit=rev-expTotal-commTotal-stockTotal-loanInterestTotal-returnsTotal;
+  totalRevenue+=rev; totalExpenses+=expTotal; totalProfit+=profit; totalCommission+=commTotal; totalStockPurchases+=stockTotal; totalLoanInterest+=loanInterestTotal; totalReturns+=returnsTotal;
+  bizRows+=`<div class="row-item"><div><b>${esc(b.name)}</b><small>${esc(b.currency||'NGN')}${b.type==='salary'?' · Salary':b.legalForm==='limited'?' · Limited':' · Business Name'}</small></div><div class="row-right"><strong class="money">${money(profit)}</strong><small>Rev ${money(rev)} · Exp ${money(expTotal)}${commTotal?' · Comm '+money(commTotal):''}${stockTotal?' · Stock '+money(stockTotal):''}${loanInterestTotal?' · Loan int. '+money(loanInterestTotal):''}${returnsTotal?' · Returns '+money(returnsTotal):''}</small></div></div>`;
 
   const openRev=Number(b.openingRevenue)||0, openExp=Number(b.openingExpenses)||0, openNet=openRev-openExp;
   if(openRev||openExp){
@@ -1604,7 +1632,7 @@ async function loadTaxReport(){
   } else if(b.legalForm==='limited'){
    const cit=calculateNigeriaCIT(rev, b.fixedAssets, profit);
    bizTaxSections+=`<h3 style="font-size:13.5px;margin-top:14px">${esc(b.name)} — Company Income Tax (${year})</h3>
-   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div><div class="totalRow"><span>Business expenses</span><b>−${money(expTotal)}</b></div>${commTotal?`<div class="totalRow"><span>Commission (deductible)</span><b>−${money(commTotal)}</b></div>`:''}${stockTotal?`<div class="totalRow"><span>Stock purchases (deductible)</span><b>−${money(stockTotal)}</b></div>`:''}<div class="totalRow"><span>Assessable profit</span><b>${money(profit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
+   <div class="totalBox"><div class="totalRow"><span>Turnover</span><b>${money(rev)}</b></div><div class="totalRow"><span>Business expenses</span><b>−${money(expTotal)}</b></div>${commTotal?`<div class="totalRow"><span>Commission (deductible)</span><b>−${money(commTotal)}</b></div>`:''}${stockTotal?`<div class="totalRow"><span>Stock purchases (deductible)</span><b>−${money(stockTotal)}</b></div>`:''}${loanInterestTotal?`<div class="totalRow"><span>Loan interest (deductible)</span><b>−${money(loanInterestTotal)}</b></div>`:''}${returnsTotal?`<div class="totalRow"><span>Returns/refunds</span><b>−${money(returnsTotal)}</b></div>`:''}<div class="totalRow"><span>Assessable profit</span><b>${money(profit)}</b></div>${cit.isSmall?'':`<div class="totalRow"><span>CIT (25%)</span><b>${money(cit.cit)}</b></div><div class="totalRow"><span>Development Levy (4%)</span><b>${money(cit.levy)}</b></div>`}<div class="totalRow grand"><span>Estimated Company Income Tax Due</span><b>${money(cit.total)}</b></div></div>
    <div class="notice">${cit.note} Files with <b>FIRS</b> (Company Income Tax, VAT if turnover exceeds ₦25,000,000); PAYE for any staff salaries remits to <b>LIRS</b> if Lagos-based (or the relevant state IRS elsewhere).${(openRev||openExp)?' This business also has a balance brought forward — since Company Income Tax is assessed per year, discuss with your accountant how to treat pre-software historical profit in your CIT filing; it is not auto-included in this year\'s figure above.':''}</div>`;
   } else {
    personalIncomeBase+=profit;
@@ -1621,13 +1649,26 @@ async function loadTaxReport(){
  const nonTaxableOtherIncome=yearIncome.filter(e=>!e.taxable).reduce((a,e)=>a+e.amount,0);
  personalIncomeBase+=taxableOtherIncome;
 
+ // Investment gains are global (not tied to one business), and only count once realized —
+ // an investment closed within this tax year, comparing what came back out against what went in.
+ const closedInvestments=(await all('investments')).filter(inv=>inv.status==='closed' && inv.closedAt && inv.closedAt.slice(0,10)>=from && inv.closedAt.slice(0,10)<=to);
+ let investmentGainRows='', investmentGainTotal=0, investmentLossTotal=0;
+ for(const inv of closedInvestments){
+  const withdrawn=(inv.withdrawals||[]).reduce((a,w)=>a+(Number(w.amount)||0),0);
+  const gain=withdrawn-(Number(inv.amountInvested)||0);
+  if(gain>=0) investmentGainTotal+=gain; else investmentLossTotal+=Math.abs(gain);
+  investmentGainRows+=`<div class="row-item"><div><b>${esc(inv.name)}</b><small>Closed ${esc(inv.closedAt.slice(0,10))}</small></div><strong class="money">${gain>=0?'+':'−'}${money(Math.abs(gain))}</strong></div>`;
+ }
+ personalIncomeBase+=investmentGainTotal;
+
  const pit=calculateNigeriaPIT(personalIncomeBase, taxProfile.annualRentPaid, taxProfile.pensionContribution);
 
- const fullProfitLoss = totalRevenue + nonTaxableOtherIncome + taxableOtherIncome - totalExpenses - totalCommission - personalExp;
+ const fullProfitLoss = totalRevenue + nonTaxableOtherIncome + taxableOtherIncome + investmentGainTotal - totalExpenses - totalCommission - totalStockPurchases - totalLoanInterest - totalReturns - investmentLossTotal - personalExp;
  const globalBalance=await getGlobalBankBalance();
  const submission=(await all('taxSubmissions')).find(t=>t.year===year);
 
  const expByCat=groupByCategory((await all('expenses')).filter(e=>e.kind!=='personal' && e.date>=from && e.date<=to));
+ const flaggedExpenses=(await all('expenses')).filter(e=>e.kind!=='personal' && e.date>=from && e.date<=to).map(e=>({e, note:suggestExpenseTaxNote((e.category||'')+' '+(e.description||''))})).filter(x=>x.note);
  const personalExpByCat=groupByCategory(personalExpList);
  const incomeByCat=groupByCategory(yearIncome);
 
@@ -1647,11 +1688,19 @@ async function loadTaxReport(){
   <div class="totalRow"><span>Business revenue (all businesses)</span><b>${money(totalRevenue)}</b></div>
   <div class="totalRow"><span>Other income — taxable</span><b>${money(taxableOtherIncome)}</b></div>
   <div class="totalRow"><span>Other income — not taxable (gifts, inheritance)</span><b>${money(nonTaxableOtherIncome)}</b></div>
+  ${investmentGainTotal?`<div class="totalRow"><span>Realized investment gains</span><b>${money(investmentGainTotal)}</b></div>`:''}
   <div class="totalRow"><span>Business expenses (all businesses)</span><b>${money(totalExpenses)}</b></div>
   ${totalCommission?`<div class="totalRow"><span>Commission (all businesses)</span><b>${money(totalCommission)}</b></div>`:''}
+  ${totalStockPurchases?`<div class="totalRow"><span>Stock purchases (all businesses)</span><b>${money(totalStockPurchases)}</b></div>`:''}
+  ${totalLoanInterest?`<div class="totalRow"><span>Loan interest (all businesses)</span><b>${money(totalLoanInterest)}</b></div>`:''}
+  ${totalReturns?`<div class="totalRow"><span>Returns/refunds (all businesses)</span><b>${money(totalReturns)}</b></div>`:''}
+  ${investmentLossTotal?`<div class="totalRow"><span>Realized investment losses</span><b>${money(investmentLossTotal)}</b></div>`:''}
   <div class="totalRow"><span>Personal expenses</span><b>${money(personalExp)}</b></div>
   <div class="totalRow grand"><span>Net Position for ${year}</span><b>${money(fullProfitLoss)}</b></div>
  </div>
+ ${closedInvestments.length?`<h3 style="font-size:14px;margin-top:18px">Investments Closed in ${year}</h3>
+ <div class="notice">Realized gains are included in the Personal Income Tax estimate below as taxable income. Investment gains can have specific tax treatment (e.g. capital gains) that differs from ordinary income — confirm with an advisor.</div>
+ <div class="list">${investmentGainRows}</div>`:''}
 
  <h3 style="font-size:14px;margin-top:18px">Breakdown by Category (${year})</h3>
  <div class="row2">
@@ -1659,6 +1708,10 @@ async function loadTaxReport(){
   <div><b style="display:block;font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Personal Expenses</b>${personalExpByCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty">None</div>'}</div>
  </div>
  <b style="display:block;font-size:11px;text-transform:uppercase;color:var(--muted);margin:10px 0 6px">Other Income</b>${incomeByCat.map(([c,v])=>`<div class="totalRow"><span>${esc(c)}</span><b>${money(v)}</b></div>`).join('')||'<div class="empty">None</div>'}
+
+ ${flaggedExpenses.length?`<h3 style="font-size:14px;margin-top:18px">May Need Special Tax Treatment (${flaggedExpenses.length})</h3>
+ <div class="notice">Based on the category/description wording — worth a second look before filing, not an automatic ruling.</div>
+ <div class="list">${flaggedExpenses.map(({e,note})=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px"><div style="display:flex;justify-content:space-between"><b>${esc(e.category||'Expense')}</b><strong class="money">${money(e.amount)}</strong></div><small>${esc(e.date)}${e.description?' · '+esc(e.description):''}</small><small style="color:var(--brass2)">⚠ ${esc(note)}</small></div>`).join('')}</div>`:''}
 
  <h3 style="font-size:14px;margin-top:18px">Estimated Tax Position (${year})</h3>
  ${bizTaxSections}
