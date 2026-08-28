@@ -229,7 +229,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 44;
+const APP_VERSION = 45;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -3088,7 +3088,27 @@ window.addEventListener('DOMContentLoaded', ()=>{
       if(h===localStorage.getItem('moborex_applock_hash')){
         document.body.classList.remove('locked');
         lockScreen.classList.remove('show');
-      } else { lockError.style.display='block'; lockInput.value=''; }
+        return;
+      }
+      // Not the owner's App Lock PIN — check whether it's a staff member's PIN instead,
+      // so staff can open a locked device straight into Staff Mode without the owner
+      // needing to unlock it for them first.
+      try{
+        if(!idb) await openDB();
+        const activeId=await getActiveBusinessId();
+        const b=(await all('business')).find(x=>x.id===activeId);
+        const match=(b && b.staffMembers || []).find(s=>s.pinHash===h);
+        if(match){
+          window.staffModeActive=true;
+          window.currentStaffName=match.name;
+          document.body.classList.remove('locked');
+          lockScreen.classList.remove('show');
+          applyStaffModeUI();
+          await refresh();
+          return;
+        }
+      }catch(e){ console.error('Staff PIN check during unlock failed', e); }
+      lockError.style.display='block'; lockInput.value='';
     };
     lockSubmit.onclick=tryUnlock;
     lockInput.addEventListener('keydown', e=>{if(e.key==='Enter')tryUnlock()});
