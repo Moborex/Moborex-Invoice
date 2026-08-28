@@ -229,7 +229,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 42;
+const APP_VERSION = 44;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -675,7 +675,7 @@ function logoutServerAccount(){
   <div style="max-width:320px;width:100%;text-align:center;color:#fff">
     <div style="font-family:var(--font-display);font-size:22px;margin-bottom:6px">🔒 Locked</div>
     <div style="font-size:13px;opacity:.7;margin-bottom:18px">Enter your App Lock PIN to continue</div>
-    <input id="lockInput" type="password" inputmode="numeric" style="width:100%;padding:14px;border-radius:12px;border:0;text-align:center;font-size:18px;letter-spacing:.2em" placeholder="••••">
+    <input id="lockInput" type="password" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;padding:14px;border-radius:12px;border:0;text-align:center;font-size:18px;letter-spacing:.2em" placeholder="••••">
     <div id="lockError" style="display:none;color:#f2a5a5;font-size:12px;margin-top:8px">Incorrect PIN, try again.</div>
     <button class="btn accent full" id="lockSubmit" style="margin-top:14px">Unlock</button>
   </div>
@@ -976,6 +976,7 @@ async function deleteBusiness(id){
 
 /* ---------------- App Lock ---------------- */
 async function sha256Hex(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('')}
+function pinInputHtml(id,placeholder){return `<input id="${id}" type="password" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;padding:14px;border-radius:12px;border:1.4px solid var(--line);text-align:center;font-size:18px;letter-spacing:.2em;margin-top:6px" placeholder="${placeholder||'••••'}">`}
 function showAppLockSettings(){
  if(!requireOwnerMode('App Lock settings'))return;
  const enabled=!!localStorage.getItem('moborex_applock_hash');
@@ -1022,27 +1023,42 @@ async function showStaffAccessSettings(){
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
 }
 async function promptAddStaffMember(){
- const name=prompt('Staff member\'s name:');
- if(!name||!name.trim())return;
- const p1=prompt('Set a PIN for '+name.trim()+' (4+ characters):');
- if(!p1)return;
- const p2=prompt('Confirm PIN:');
- if(p1!==p2){alert('PINs did not match.');return;}
- if(p1.length<4){alert('Use at least 4 characters.');return;}
+ openModal(`<h2>Add Staff Member</h2>
+ <div class="field"><label>Name</label><input id="newStaffName" placeholder="Staff member's name"></div>
+ <div class="field"><label>PIN (4+ characters)</label>${pinInputHtml('newStaffPin1')}</div>
+ <div class="field"><label>Confirm PIN</label>${pinInputHtml('newStaffPin2')}</div>
+ <div id="newStaffError" style="display:none;color:var(--danger);font-size:12px;margin-top:6px;text-align:center">—</div>
+ <button class="btn accent full" style="margin-top:10px" onclick="submitAddStaffMember()">Add Staff Member</button>
+ <button class="btn secondary full" onclick="showStaffAccessSettings()">Cancel</button>`);
+}
+async function submitAddStaffMember(){
+ const name=(newStaffName.value||'').trim();
+ if(!name){ newStaffError.textContent='Enter a name.'; newStaffError.style.display='block'; return; }
+ const p1=newStaffPin1.value, p2=newStaffPin2.value;
+ if(!p1 || p1.length<4){ newStaffError.textContent='PIN must be at least 4 characters.'; newStaffError.style.display='block'; return; }
+ if(p1!==p2){ newStaffError.textContent='PINs did not match.'; newStaffError.style.display='block'; newStaffPin1.value=''; newStaffPin2.value=''; newStaffPin1.focus(); return; }
  const b=await getBusiness();
  b.staffMembers=b.staffMembers||[];
- b.staffMembers.push({id:crypto.randomUUID(), name:name.trim(), pinHash:await sha256Hex(p1)});
+ b.staffMembers.push({id:crypto.randomUUID(), name, pinHash:await sha256Hex(p1)});
  await put('business',b);
  closeModal();showStaffAccessSettings();
 }
 async function promptChangeStaffPin(id){
  const b=await getBusiness();
  const s=(b.staffMembers||[]).find(x=>x.id===id); if(!s)return;
- const p1=prompt('New PIN for '+s.name+' (4+ characters):');
- if(!p1)return;
- const p2=prompt('Confirm PIN:');
- if(p1!==p2){alert('PINs did not match.');return;}
- if(p1.length<4){alert('Use at least 4 characters.');return;}
+ openModal(`<h2>Change PIN — ${esc(s.name)}</h2>
+ <div class="field"><label>New PIN (4+ characters)</label>${pinInputHtml('chgStaffPin1')}</div>
+ <div class="field"><label>Confirm PIN</label>${pinInputHtml('chgStaffPin2')}</div>
+ <div id="chgStaffError" style="display:none;color:var(--danger);font-size:12px;margin-top:6px;text-align:center">—</div>
+ <button class="btn accent full" style="margin-top:10px" onclick="submitChangeStaffPin('${id}')">Save New PIN</button>
+ <button class="btn secondary full" onclick="showStaffAccessSettings()">Cancel</button>`);
+}
+async function submitChangeStaffPin(id){
+ const p1=chgStaffPin1.value, p2=chgStaffPin2.value;
+ if(!p1 || p1.length<4){ chgStaffError.textContent='PIN must be at least 4 characters.'; chgStaffError.style.display='block'; return; }
+ if(p1!==p2){ chgStaffError.textContent='PINs did not match.'; chgStaffError.style.display='block'; chgStaffPin1.value=''; chgStaffPin2.value=''; chgStaffPin1.focus(); return; }
+ const b=await getBusiness();
+ const s=(b.staffMembers||[]).find(x=>x.id===id); if(!s)return;
  s.pinHash=await sha256Hex(p1);
  await put('business',b);
  closeModal();showStaffAccessSettings();
@@ -1058,27 +1074,48 @@ async function promptEnterStaffMode(){
  const b=await getBusiness();
  const staff=b.staffMembers||[];
  if(!staff.length){ alert('No staff members have been added yet. An owner needs to add one first under Staff Access.'); return; }
- const pin=prompt('Enter your Staff PIN:');
- if(pin===null)return;
- const hash=await sha256Hex(pin);
+ openModal(`<h2>Enter Staff Mode</h2>
+ <div class="notice">Enter your Staff PIN to switch into the restricted sales-only view.</div>
+ ${pinInputHtml('sePin')}
+ <div id="sePinError" style="display:none;color:var(--danger);font-size:12px;margin-top:8px;text-align:center">Incorrect PIN, try again.</div>
+ <button class="btn accent full" style="margin-top:14px" onclick="submitEnterStaffMode()">Continue</button>
+ <button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ sePin.addEventListener('keydown', e=>{ if(e.key==='Enter') submitEnterStaffMode(); });
+ sePin.focus();
+}
+async function submitEnterStaffMode(){
+ const b=await getBusiness();
+ const staff=b.staffMembers||[];
+ const hash=await sha256Hex(sePin.value||'');
  const match=staff.find(s=>s.pinHash===hash);
- if(!match){ alert('Incorrect PIN.'); return; }
+ if(!match){ sePinError.style.display='block'; sePin.value=''; sePin.focus(); return; }
  window.staffModeActive=true;
  window.currentStaffName=match.name;
  applyStaffModeUI();
+ closeModal();
  alert('Staff Mode is on for '+match.name+'. Sales, invoices, quotations, and products only — balances and reports are hidden until you exit.');
  await refresh();
 }
-async function exitStaffMode(){
- const p1=prompt('Enter the App Lock PIN to exit Staff Mode:');
- if(p1===null)return;
- const hash=await sha256Hex(p1);
+function exitStaffMode(){
  const appLockHash=localStorage.getItem('moborex_applock_hash');
  if(!appLockHash){ alert('No App Lock PIN is set on this device, so there\'s no owner PIN to verify against. Set one under App Lock first, or ask whoever set up Staff Mode to add one.'); return; }
- if(hash!==appLockHash){ alert('Incorrect PIN.'); return; }
+ openModal(`<h2>Exit Staff Mode</h2>
+ <div class="notice">Enter the App Lock PIN to return to full access.</div>
+ ${pinInputHtml('exPin')}
+ <div id="exPinError" style="display:none;color:var(--danger);font-size:12px;margin-top:8px;text-align:center">Incorrect PIN, try again.</div>
+ <button class="btn accent full" style="margin-top:14px" onclick="submitExitStaffMode()">Continue</button>
+ <button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ exPin.addEventListener('keydown', e=>{ if(e.key==='Enter') submitExitStaffMode(); });
+ exPin.focus();
+}
+async function submitExitStaffMode(){
+ const hash=await sha256Hex(exPin.value||'');
+ const appLockHash=localStorage.getItem('moborex_applock_hash');
+ if(hash!==appLockHash){ exPinError.style.display='block'; exPin.value=''; exPin.focus(); return; }
  window.staffModeActive=false;
  window.currentStaffName='';
  applyStaffModeUI();
+ closeModal();
  await refresh();
 }
 function applyStaffModeUI(){
@@ -2973,11 +3010,11 @@ function showCloudSync(){
    serverStatusHtml = `
     <div class="field"><label>Business/Account name</label><input id="saName" placeholder="e.g. Moborex Service Hub"></div>
     <div class="field"><label>Email</label><input id="saEmail" type="email"></div>
-    <div class="field"><label>Password (8+ characters)</label><input id="saPassword" type="password"></div>
+    <div class="field"><label>Password (8+ characters)</label><input id="saPassword" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
     <button class="btn accent full" onclick="doServerSignup()">Create Account</button>
     <h3 style="font-size:13px;margin-top:14px">Already have an account?</h3>
     <div class="field"><label>Email</label><input id="saLoginEmail" type="email"></div>
-    <div class="field"><label>Password</label><input id="saLoginPassword" type="password"></div>
+    <div class="field"><label>Password</label><input id="saLoginPassword" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
     <button class="btn secondary full" onclick="doServerLogin()">Log In</button>`;
    serverActionsHtml = '';
  }
