@@ -1,7 +1,7 @@
 {
-  "name": "Moborex Ledger Vault",
-  "short_name": "Ledger Vault",
-  "description": "Beyond Invoicing — to Reports & Tax. Invoicing, multi-business books, personal finances, salary tracking, tax reporting, and audit — all in one place.",
+  "name": "Business Vault by Moborex",
+  "short_name": "Business Vault",
+  "description": "Run the business. Not just the books. Invoicing, inventory, staff, multi-business books, personal finances, salary tracking, tax reporting, and audit — all in one place.",
   "id": "/index.html",
   "start_url": "./index.html",
   "scope": "./",

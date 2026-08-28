@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#16233D">
-<title>Moborex Ledger Vault</title>
+<title>Business Vault by Moborex</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Ledger Vault">
+<meta name="apple-mobile-web-app-title" content="Business Vault">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,8 +40,9 @@ button{font-family:var(--font-body);cursor:pointer}
 .brandmark{display:flex;align-items:center;gap:11px}
 .brandmark .seal{width:42px;height:42px;border-radius:12px;background:#ffffff1a;border:1px solid #ffffff33;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:17px;overflow:hidden}
 .brandmark .seal img{width:100%;height:100%;object-fit:contain}
-.appname{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;opacity:.68;font-weight:600}
-.tagline{font-size:10px;opacity:.5;font-style:italic;margin-top:1px;margin-bottom:4px}
+.appname{font-size:14px;letter-spacing:.04em;font-weight:800;opacity:1;color:var(--ink);display:flex;align-items:baseline;gap:6px}
+.appname .byLine{font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.55;font-family:var(--font-mono)}
+.tagline{font-size:10.5px;font-weight:700;opacity:.65;margin-top:2px;margin-bottom:8px;letter-spacing:.01em}
 .bizname{font-family:var(--font-display);font-weight:600;font-size:19px;line-height:1.15}
 .iconbtn{border:1px solid #ffffff3a;background:#ffffff14;color:#fff;width:42px;height:42px;border-radius:12px;font-size:18px;display:flex;align-items:center;justify-content:center}
 .hello{margin-top:18px;font-size:12.5px;opacity:.72}
@@ -96,6 +97,13 @@ button{font-family:var(--font-body);cursor:pointer}
 .drawer .dhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 .drawer .dtitle{font-family:var(--font-display);font-size:17px;font-weight:600}
 .navbtn{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:12px 10px;border:0;background:transparent;color:#dfe4ee;border-radius:10px;margin:2px 0;font-size:14px}
+.navGroup{border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:4px;margin-bottom:4px}
+.navGroupHeader{width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;padding:9px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:#9aa4b8;font-weight:800;cursor:pointer;font-family:inherit}
+.navGroupChevron{transition:transform .15s ease;font-size:10px;opacity:.8}
+.navGroup.collapsed .navGroupChevron{transform:rotate(-90deg)}
+.navGroup.collapsed .navGroupItems{display:none}
+.navExpandControls{display:flex;gap:8px;padding:4px 10px 8px}
+.navExpandControls button{flex:1;font-size:10.5px;padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:none;cursor:pointer;color:#b8c0d4;font-weight:700;font-family:inherit}
 .navbtn:hover{background:#ffffff12}
 .navbtn .ic{width:20px;text-align:center;opacity:.85}
 .modal{align-items:flex-end;justify-content:center}
@@ -213,7 +221,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* =====================================================================
-   Moborex Ledger Vault — single-file PWA. "Beyond Invoicing — to Reports & Tax."
+   Business Vault by Moborex — single-file PWA. "Run the business. Not just the books."
    Storage: IndexedDB (per device). Sync: encrypted snapshot synced to
    the signed-in Google account's private app-data area (no server,
    no third-party database — reuses the Google account you already have).
@@ -221,7 +229,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 39;
+const APP_VERSION = 41;
 window.MOBOREX_SERVER_URL = "PASTE_YOUR_WORKER_URL_HERE"; // e.g. https://moborex-ledger-vault-api.yoursubdomain.workers.dev
 
 const CURRENCIES = {
@@ -687,7 +695,7 @@ function logoutServerAccount(){
   </div>
 </div>
 <div class="installBar" id="installBar">
-  <span id="installText">Install Moborex Ledger Vault on this device for one-tap access — no app store needed.</span>
+  <span id="installText">Install Business Vault on this device for one-tap access — no app store needed.</span>
   <button class="btn accent" id="installBtn" style="padding:8px 14px;font-size:12.5px" onclick="doInstall()">Install</button>
   <button class="iconbtn" style="width:30px;height:30px;font-size:14px;background:transparent;border-color:#ffffff40" onclick="dismissInstallBar()">×</button>
 </div>
@@ -699,44 +707,82 @@ function logoutServerAccount(){
 <div class="shell">
 
 <aside class="sidebar">
-  <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Moborex Ledger Vault</div><div class="tagline">Beyond Invoicing — to Reports &amp; Tax.</div><button class="bizname bizSwitch" style="font-size:15px" onclick="showBusinessSwitcher()"><span id="bizNameWide">Business</span> <span class="chev">▾</span></button></div></div>
-  <button class="navbtn" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
-  <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button>
-  <button class="navbtn" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
-  <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
-  <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
-  <button class="navbtn ownerOnly" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
-  <button class="navbtn ownerOnly" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
-  <button class="navbtn ownerOnly" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
-  <button class="navbtn ownerOnly" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
-  <button class="navbtn ownerOnly" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
-  <button class="navbtn ownerOnly" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
-  <button class="navbtn ownerOnly" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
-  <button class="navbtn" onclick="showReturns()"><span class="ic">↩</span> Returns</button>
-  <button class="navbtn ownerOnly" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
-  <button class="navbtn ownerOnly" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
-  <button class="navbtn ownerOnly" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
-  <button class="navbtn ownerOnly" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
-  <button class="navbtn ownerOnly" onclick="showReports()"><span class="ic">▥</span> Reports</button>
-  <button class="navbtn ownerOnly" onclick="showTransactionReport()"><span class="ic">📋</span> Transaction Report</button>
-  <button class="navbtn ownerOnly" onclick="showTaxReport()"><span class="ic">🏛</span> Tax Report</button>
-  <button class="navbtn ownerOnly" onclick="showAudit()"><span class="ic">🔍</span> Audit of Me</button>
+  <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Business Vault<span class="byLine">by Moborex</span></div><div class="tagline">Run the business. Not just the books.</div><button class="bizname bizSwitch" style="font-size:15px" onclick="showBusinessSwitcher()"><span id="bizNameWide">Business</span> <span class="chev">▾</span></button></div></div>
+  <div class="navExpandControls"><button onclick="expandAllNavGroups()">Expand All</button><button onclick="collapseAllNavGroups()">Collapse All</button></div>
+
+  <div class="navGroup">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Sales &amp; Customers</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
+    <button class="navbtn" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
+    <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button>
+    <button class="navbtn" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
+    <button class="navbtn" onclick="showReturns()"><span class="ic">↩</span> Returns</button>
+    <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
+    <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Money &amp; Expenses</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
+    <button class="navbtn ownerOnly" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
+    <button class="navbtn ownerOnly" onclick="showPersonalExpenses()"><span class="ic">◎</span> Personal Expenses</button>
+    <button class="navbtn ownerOnly" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
+    <button class="navbtn ownerOnly" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
+    <button class="navbtn ownerOnly" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
+    <button class="navbtn ownerOnly" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
+    <button class="navbtn ownerOnly" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Inventory</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
+    <button class="navbtn ownerOnly" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
+    <button class="navbtn ownerOnly" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Tax &amp; Reports</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
+    <button class="navbtn ownerOnly" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
+    <button class="navbtn ownerOnly" onclick="showReports()"><span class="ic">▥</span> Reports</button>
+    <button class="navbtn ownerOnly" onclick="showTransactionReport()"><span class="ic">📋</span> Transaction Report</button>
+    <button class="navbtn ownerOnly" onclick="showTaxReport()"><span class="ic">🏛</span> Tax Report</button>
+    <button class="navbtn ownerOnly" onclick="showAudit()"><span class="ic">🔍</span> Audit of Me</button>
+    <button class="navbtn ownerOnly" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Staff &amp; Security</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
+    <button class="navbtn ownerOnly" onclick="showStaffAccessSettings()"><span class="ic">🧑‍💼</span> Staff Access</button>
+    <button class="navbtn" onclick="promptEnterStaffMode()" id="enterStaffModeBtn"><span class="ic">🔑</span> Enter Staff Mode</button>
+    <button class="navbtn" onclick="exitStaffMode()" id="exitStaffModeBtn" style="display:none"><span class="ic">🔓</span> Exit Staff Mode</button>
+    <button class="navbtn ownerOnly" onclick="showAppLockSettings()"><span class="ic">🔒</span> App Lock</button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Settings &amp; Backup</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
+    <button class="navbtn ownerOnly" onclick="showBusinessSwitcher()"><span class="ic">🏢</span> Switch Business</button>
+    <button class="navbtn ownerOnly" onclick="showCloudSync()"><span class="ic">☁</span> Sync & Backup</button>
+    <button class="navbtn ownerOnly" onclick="showSettings()"><span class="ic">⚙</span> Business Settings</button>
+   </div>
+  </div>
+
   <div style="flex:1"></div>
-  <button class="navbtn ownerOnly" onclick="showBusinessSwitcher()"><span class="ic">🏢</span> Switch Business</button>
-  <button class="navbtn ownerOnly" onclick="showCloudSync()"><span class="ic">☁</span> Sync & Backup</button>
-  <button class="navbtn ownerOnly" onclick="showSettings()"><span class="ic">⚙</span> Business Settings</button>
-  <button class="navbtn ownerOnly" onclick="showAppLockSettings()"><span class="ic">🔒</span> App Lock</button>
-  <button class="navbtn ownerOnly" onclick="showStaffAccessSettings()"><span class="ic">🧑‍💼</span> Staff Access</button>
-  <button class="navbtn" onclick="promptEnterStaffMode()" id="enterStaffModeBtn"><span class="ic">🔑</span> Enter Staff Mode</button>
-  <button class="navbtn" onclick="exitStaffMode()" id="exitStaffModeBtn" style="display:none"><span class="ic">🔓</span> Exit Staff Mode</button>
+  <button class="navbtn" onclick="showHelpFAQ()"><span class="ic">❓</span> Help &amp; FAQ</button>
 </aside>
 
 <header class="topbar">
 <div class="topbar-row">
-<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Moborex Ledger Vault</div><button class="bizname bizSwitch" onclick="showBusinessSwitcher()"><span id="brandName">Business</span> <span class="chev">▾</span></button></div></div>
+<div class="brandmark"><div class="seal" id="brandLogo">▦</div><div><div class="appname">Business Vault<span class="byLine">by Moborex</span></div><div class="tagline">Run the business. Not just the books.</div><button class="bizname bizSwitch" onclick="showBusinessSwitcher()"><span id="brandName">Business</span> <span class="chev">▾</span></button></div></div>
 <button class="iconbtn drawerToggle" onclick="openDrawer()">☰</button>
 </div>
-<div class="hello">Business dashboard</div><div class="pagehead">Good day 👋</div>
 </header>
 
 <main class="main">
@@ -772,34 +818,73 @@ function logoutServerAccount(){
 
 <div class="overlay" id="drawerOverlay" onclick="closeDrawer(event)"><aside class="drawer" onclick="event.stopPropagation()">
 <div class="dhead"><div class="dtitle">Menu</div><button class="iconbtn" onclick="closeDrawer()">×</button></div>
-<button class="navbtn" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
-<button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> <span id="navInvoicesLabelDrawer">Invoices &amp; Sales</span></button>
-<button class="navbtn" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
-<button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
-<button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
-<button class="navbtn ownerOnly" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
-<button class="navbtn ownerOnly" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
-<button class="navbtn ownerOnly" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
-<button class="navbtn ownerOnly" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
-<button class="navbtn ownerOnly" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
-<button class="navbtn ownerOnly" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
-<button class="navbtn ownerOnly" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
-<button class="navbtn" onclick="showReturns();closeDrawer()"><span class="ic">↩</span> Returns</button>
-<button class="navbtn ownerOnly" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
-<button class="navbtn ownerOnly" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
-<button class="navbtn ownerOnly" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
-<button class="navbtn ownerOnly" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
-<button class="navbtn ownerOnly" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
-<button class="navbtn ownerOnly" onclick="showTransactionReport();closeDrawer()"><span class="ic">📋</span> Transaction Report</button>
-<button class="navbtn ownerOnly" onclick="showTaxReport();closeDrawer()"><span class="ic">🏛</span> Tax Report</button>
-<button class="navbtn ownerOnly" onclick="showAudit();closeDrawer()"><span class="ic">🔍</span> Audit of Me</button>
-<button class="navbtn ownerOnly" onclick="showBusinessSwitcher();closeDrawer()"><span class="ic">🏢</span> Switch Business</button>
-<button class="navbtn ownerOnly" onclick="showCloudSync();closeDrawer()"><span class="ic">☁</span> Sync & Backup</button>
-<button class="navbtn ownerOnly" onclick="showSettings();closeDrawer()"><span class="ic">⚙</span> Business Settings</button>
-<button class="navbtn ownerOnly" onclick="showAppLockSettings();closeDrawer()"><span class="ic">🔒</span> App Lock</button>
-<button class="navbtn ownerOnly" onclick="showStaffAccessSettings();closeDrawer()"><span class="ic">🧑‍💼</span> Staff Access</button>
-<button class="navbtn" onclick="promptEnterStaffMode();closeDrawer()" id="enterStaffModeBtnDrawer"><span class="ic">🔑</span> Enter Staff Mode</button>
-<button class="navbtn" onclick="exitStaffMode();closeDrawer()" id="exitStaffModeBtnDrawer" style="display:none"><span class="ic">🔓</span> Exit Staff Mode</button>
+<div class="navExpandControls"><button onclick="expandAllNavGroups()">Expand All</button><button onclick="collapseAllNavGroups()">Collapse All</button></div>
+
+<div class="navGroup">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Sales &amp; Customers</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
+  <button class="navbtn" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
+  <button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> <span id="navInvoicesLabelDrawer">Invoices &amp; Sales</span></button>
+  <button class="navbtn" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
+  <button class="navbtn" onclick="showReturns();closeDrawer()"><span class="ic">↩</span> Returns</button>
+  <button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
+  <button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Money &amp; Expenses</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
+  <button class="navbtn ownerOnly" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
+  <button class="navbtn ownerOnly" onclick="showPersonalExpenses();closeDrawer()"><span class="ic">◎</span> Personal Expenses</button>
+  <button class="navbtn ownerOnly" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
+  <button class="navbtn ownerOnly" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
+  <button class="navbtn ownerOnly" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
+  <button class="navbtn ownerOnly" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
+  <button class="navbtn ownerOnly" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Inventory</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
+  <button class="navbtn ownerOnly" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
+  <button class="navbtn ownerOnly" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Tax &amp; Reports</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
+  <button class="navbtn ownerOnly" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
+  <button class="navbtn ownerOnly" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
+  <button class="navbtn ownerOnly" onclick="showTransactionReport();closeDrawer()"><span class="ic">📋</span> Transaction Report</button>
+  <button class="navbtn ownerOnly" onclick="showTaxReport();closeDrawer()"><span class="ic">🏛</span> Tax Report</button>
+  <button class="navbtn ownerOnly" onclick="showAudit();closeDrawer()"><span class="ic">🔍</span> Audit of Me</button>
+  <button class="navbtn ownerOnly" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Staff &amp; Security</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
+  <button class="navbtn ownerOnly" onclick="showStaffAccessSettings();closeDrawer()"><span class="ic">🧑‍💼</span> Staff Access</button>
+  <button class="navbtn" onclick="promptEnterStaffMode();closeDrawer()" id="enterStaffModeBtnDrawer"><span class="ic">🔑</span> Enter Staff Mode</button>
+  <button class="navbtn" onclick="exitStaffMode();closeDrawer()" id="exitStaffModeBtnDrawer" style="display:none"><span class="ic">🔓</span> Exit Staff Mode</button>
+  <button class="navbtn ownerOnly" onclick="showAppLockSettings();closeDrawer()"><span class="ic">🔒</span> App Lock</button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Settings &amp; Backup</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
+  <button class="navbtn ownerOnly" onclick="showBusinessSwitcher();closeDrawer()"><span class="ic">🏢</span> Switch Business</button>
+  <button class="navbtn ownerOnly" onclick="showCloudSync();closeDrawer()"><span class="ic">☁</span> Sync & Backup</button>
+  <button class="navbtn ownerOnly" onclick="showSettings();closeDrawer()"><span class="ic">⚙</span> Business Settings</button>
+ </div>
+</div>
+
+<button class="navbtn" onclick="showHelpFAQ();closeDrawer()"><span class="ic">❓</span> Help &amp; FAQ</button>
 </aside></div>
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
 
@@ -917,6 +1002,9 @@ function turnOffAppLock(){if(!confirm('Turn off App Lock?'))return;localStorage.
    own PIN, separate from App Lock. Staff Mode resets to OFF every time
    the app is freshly opened — it never stays unlocked in the background. ---------------- */
 function isStaffMode(){ return !!window.staffModeActive; }
+function toggleNavGroup(headerEl){ headerEl.closest('.navGroup').classList.toggle('collapsed'); }
+function expandAllNavGroups(){ document.querySelectorAll('.navGroup').forEach(g=>g.classList.remove('collapsed')); }
+function collapseAllNavGroups(){ document.querySelectorAll('.navGroup').forEach(g=>g.classList.add('collapsed')); }
 function requireOwnerMode(actionLabel){
  if(isStaffMode()){ alert((actionLabel||'This action')+' is not available in Staff Mode.'); return false; }
  return true;
@@ -2660,7 +2748,94 @@ function exportTransactionReportCSV(){
  downloadCSV(csvRows, 'transaction-report.csv');
 }
 
+/* ---------------- Help & FAQ ----------------
+   A full reference to what the app does and answers to the questions that
+   come up most — readable in-app, and downloadable as a PDF for offline
+   reading or handing to someone else. Both pull from the same content, so
+   they never drift out of sync with each other. ---------------- */
+function helpFaqContent(){
+ return `
+ <h1 style="font-size:20px">Business Vault by Moborex — Help &amp; Guide</h1>
+ <div style="font-size:12px;color:#555">Run the business. Not just the books.</div>
+
+ <b style="display:block;margin-top:18px;font-size:15px">What This App Can Do</b>
+
+ <b style="display:block;margin-top:12px">Invoicing &amp; Sales</b>
+ <div>Create invoices and quotations, track payments (full or partial), void or duplicate an invoice, print or save as PDF. Invoice numbers can be manual or auto-generated with a prefix built from your business name. A quotation never counts as a sale anywhere in the app until you convert it into a real invoice.</div>
+
+ <b style="display:block;margin-top:12px">Multiple Businesses, One App</b>
+ <div>Run more than one business from the same install, each with its own invoices, customers, products, numbering, and settings, completely separate. Switch between them from the business name at the top of the screen. Each one is classified as a Business Name (sole proprietor) or Limited company, which changes how its tax estimate is calculated.</div>
+
+ <b style="display:block;margin-top:12px">Salary Mode</b>
+ <div>Switch a business to "Salary / Employment" and it stops behaving like a shop — Products becomes Salary Setup, Customers becomes Employer, and once you turn on auto-generate, a salary payment logs itself every month with no action needed. Useful if you're both a salary earner and a business owner — each job or business is tracked on its own.</div>
+
+ <b style="display:block;margin-top:12px">Money Beyond Sales</b>
+ <div>Personal Expenses and Other Income (gifts, inheritance, dividends, rent) track money outside the business. Loans record what you've borrowed, interest paid, and what's still owed. Investments track money moved into and out of an investment, with final profit or loss calculated once closed. Commission tracks what's owed to whoever facilitated a job — separate from regular expenses, and only payable once the customer has actually paid.</div>
+
+ <b style="display:block;margin-top:12px">Stock &amp; Inventory</b>
+ <div>Turn on stock tracking for any product to get a running quantity that adjusts automatically when it's sold, voided, or returned. Stock Purchases records buying more inventory. Returns handles a customer bringing something back — restricted to stock-tracked products, and only against a fully-paid invoice. The Product Movement Report shows every purchase, sale, and return for one product with a running balance.</div>
+
+ <b style="display:block;margin-top:12px">Tax &amp; Compliance</b>
+ <div>The Tax Report estimates Personal Income Tax (for salary and Business Name profit) and Company Income Tax (for Limited companies) based on the Nigeria Tax Act 2025, with a full profit &amp; loss combining every business, personal spending, and all other income. Government Submission tracking marks a tax year as paid, partially paid, or still owed. Audit of Me runs a rules-based scan of your own records for the kinds of things a real audit checks — numbering gaps, unusual expenses, overdue receivables — and lets you attach an explanation to each before stamping a final report.</div>
+
+ <b style="display:block;margin-top:12px">Bank Reconciliation</b>
+ <div>Upload a real bank statement and the app matches it against what's already recorded, automatically recognising common bank charges and reversal transactions by their wording. Anything left over gets a direct prompt to explain, and an "Accept &amp; Balance the Books" action writes off whatever's still unexplained so your app balance and bank statement agree.</div>
+
+ <b style="display:block;margin-top:12px">Reports</b>
+ <div>Pull All Revenue, Revenue vs Expenses vs Commission, All Business Expenses, All Personal, or All Commission Paid as CSV. The Transaction Report lists every sale, expense, quotation, return, and stock purchase in one place, filterable by date range and by which staff member created it.</div>
+
+ <b style="display:block;margin-top:12px">Staff Access</b>
+ <div>Add named staff members, each with their own PIN. Staff Mode restricts the app to capturing sales, invoices, quotations, and product entries only — no balances, no reports, no voiding or deleting an invoice, and a product deletion or a refund both wait for owner approval before anything actually changes. Every transaction records exactly who created it.</div>
+
+ <b style="display:block;margin-top:12px">Backup &amp; Security</b>
+ <div>An automatic daily backup saves to your phone's Downloads folder with no setup needed. Google Drive sync and a hosted Account Sync are both available for keeping multiple devices in step. App Lock puts a PIN on opening the app at all, separate from Staff Access.</div>
+
+ <b style="display:block;margin-top:20px;font-size:15px">Frequently Asked Questions</b>
+
+ <b style="display:block;margin-top:12px">If I record my personal day-to-day spending as a business expense instead of a salary, do I get tax relief?</b>
+ <div>No. The app will calculate a lower profit if you do this, but that's inaccurate bookkeeping, not real tax relief — the underlying law hasn't changed, you've just told the calculator something untrue. As a Business Name owner, the entire profit of the business is already your personal income the moment it's earned, whether you withdraw it or not. Drawing money out for personal life isn't a business cost — it's moving money you already own and have already been taxed on. Recording it correctly as a personal draw costs you nothing extra in tax; recording it as a business expense just makes your Tax Report and Audit wrong, and wouldn't hold up if your books were ever reviewed.</div>
+
+ <b style="display:block;margin-top:12px">What's the real difference between a Business Name and a Limited company for tax?</b>
+ <div>A Business Name has no legal separation from you — its profit is your personal income, taxed once at personal rates. A Limited company is a separate legal person: it pays Company Income Tax on its own profit first, and if you then pay yourself out of it, that payment can be taxed again on your side — the classic double-taxation trade-off people weigh when choosing a structure.</div>
+
+ <b style="display:block;margin-top:12px">Does an unpaid invoice count as profit or add to my bank balance?</b>
+ <div>No, on both counts. Sales only count toward Profit and Bank Balance once actually received — an invoice sitting unpaid shows in Outstanding, not in either of those figures.</div>
+
+ <b style="display:block;margin-top:12px">My Opening Balance isn't showing the number I expected — why?</b>
+ <div>Revenue and Expenses brought forward feed Lifetime Profit and the Tax Report only. They do not calculate your bank balance for you. If you want a specific figure on the dashboard, type it directly into "Cash / bank balance brought forward" — it's a separate field, entered on purpose, not derived from the other two.</div>
+
+ <b style="display:block;margin-top:12px">What's the difference between Void and a Return?</b>
+ <div>Void cancels an invoice entirely — used when it shouldn't have existed at all. A Return is for a legitimate sale a customer later brings back (defective, wrong item), and only applies to a fully-paid invoice with stock-tracked products, restoring stock and recording a refund without touching the original invoice.</div>
+
+ <b style="display:block;margin-top:12px">Is the tax estimate accurate enough to file directly with FIRS or LIRS?</b>
+ <div>Treat it as a genuine planning estimate, not a filing-ready number. It's based on current public guidance on the Nigeria Tax Act 2025, but tax law has edge cases a rules-based calculator can't fully capture. Confirm with an accountant or FIRS/LIRS directly before relying on it for an actual filing.</div>
+
+ <b style="display:block;margin-top:12px">Can staff members delete things?</b>
+ <div>A staff member can request a product deletion, but it only takes effect once an owner confirms it. They can never void or delete an invoice, and any refund they start waits for owner approval before stock or the balance actually change.</div>
+
+ <b style="display:block;margin-top:12px">What happens to my data if I lose my phone or the app breaks?</b>
+ <div>The automatic daily backup file in Downloads is the first line of defence. If Google Drive sync or Account Sync is set up, a fresh install on any device can pull your data straight back down. Restore is available directly from the Backup screen using a downloaded backup file.</div>
+
+ <b style="display:block;margin-top:12px">Is this a replacement for an accountant?</b>
+ <div>No — think of it as keeping the books in good enough shape that an accountant's job gets easier, not harder. The tax estimates, audit findings, and reconciliation are all designed to surface the right questions early, not to replace professional judgement on anything that genuinely matters.</div>
+ `;
+}
+async function showHelpFAQ(){
+ openModal(`<h2>Help &amp; FAQ ${hb("Everything the app does, and answers to the questions that come up most — read it here, or save it as a PDF.")}</h2>
+ <div class="invoicePreview" id="helpFaqTarget" style="font-family:Georgia,'Times New Roman',Arial,sans-serif">${helpFaqContent()}</div>
+ <button class="btn accent full" onclick="downloadHelpFaqPDF()">Save as PDF</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function downloadHelpFaqPDF(){
+ if(!window.jspdf){alert('The PDF file writer needs to load from the internet the first time — try again once connected.');return;}
+ const {jsPDF}=window.jspdf;
+ const doc=new jsPDF({unit:'pt',format:'a4'});
+ await doc.html(document.getElementById('helpFaqTarget'),{x:24,y:24,width:547,windowWidth:800});
+ doc.save('moborex-ledger-vault-help-guide.pdf');
+}
+
 /* ---------------- Reports ---------------- */
+
 
 
 
@@ -2917,7 +3092,7 @@ window.addEventListener('beforeinstallprompt', e=>{
 window.addEventListener('appinstalled', ()=>{installBar.classList.remove('show')});
 window.addEventListener('DOMContentLoaded', ()=>{
   if(isIOS() && !isStandalone() && !sessionStorage.getItem('moborex_install_dismissed')){
-    installText.textContent='Add Moborex Ledger Vault to your Home Screen: tap Share, then "Add to Home Screen".';
+    installText.textContent='Add Business Vault to your Home Screen: tap Share, then "Add to Home Screen".';
     installBar.classList.add('show');
   }
 });
