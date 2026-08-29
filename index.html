@@ -229,7 +229,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 46;
+const APP_VERSION = 47;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -574,7 +574,7 @@ const ServerAccount = {
     this.token = data.token; this.tenant = data.tenant;
     localStorage.setItem('moborex_server_token', this.token);
     localStorage.setItem('moborex_server_tenant', JSON.stringify(this.tenant));
-    await this.push();
+    await this.push(true); // force the very first push after signup, regardless of the dirty flag — there's real data to seed the account with
     this.startAutoPull();
     return data;
   },
@@ -3004,7 +3004,7 @@ function showCloudSync(){
    const lastServerPush=localStorage.getItem('moborex_server_last_push'), lastServerPull=localStorage.getItem('moborex_server_last_pull');
    accountSyncModeLine = `<b>${esc(ServerAccount.tenant.name)}</b> — status: ${esc(ServerAccount.tenant.status)}${ServerAccount.tenant.status==='trialing'&&ServerAccount.tenant.trialEndsAt?' (trial ends '+esc(new Date(ServerAccount.tenant.trialEndsAt).toLocaleDateString())+')':''}. Unlike Google Drive sync, this data is stored on the server as-is — protected by your account login, not end-to-end encrypted.`;
    serverStatusHtml = `<div class="cloudLast">Last sent: ${lastServerPush?new Date(lastServerPush).toLocaleString():'Never'} · Last received: ${lastServerPull?new Date(lastServerPull).toLocaleString():'Never'}</div>`;
-   serverActionsHtml = `<button class="btn secondary full" onclick="ServerAccount.push()">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
+   serverActionsHtml = `<button class="btn secondary full" onclick="ServerAccount.push(true)">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
  } else {
    accountSyncModeLine = 'Sign up once, then log into the same account on every phone — all synced automatically, no PIN to remember. Separate from the free Google Drive option above.';
    serverStatusHtml = `
