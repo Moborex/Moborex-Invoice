@@ -229,7 +229,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
 window.MOBOREX_GOOGLE_CLIENT_ID = "PASTE_GOOGLE_OAUTH_WEB_CLIENT_ID.apps.googleusercontent.com";
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 47;
+const APP_VERSION = 48;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -531,7 +531,15 @@ const Sync={
           localStorage.setItem('moborex_plain_mode', this.plainMode?'1':'0');
         }
         const data = isEncrypted ? await this.decrypt(r.text, this.pin) : parsed;
-        if(data){ await this.importAll(data); localStorage.setItem('moborex_last_pull',new Date().toISOString()); await refresh(); }
+        if(data){
+          await this.importAll(data);
+          // Same fix as the server sync path: a fresh device already picked an "active business"
+          // (usually an empty placeholder) before this pull ever ran. Clear it so it re-resolves
+          // against the real data that just landed, instead of staying stuck on the placeholder.
+          localStorage.removeItem('moborex_active_business');
+          localStorage.setItem('moborex_last_pull',new Date().toISOString());
+          await refresh();
+        }
       }
     }catch(e){console.error(e);if(force)alert('Could not read the cloud backup.'+(this.pin?' Check your Sync PIN.':''))}
     this.busy=false; this.paintStatus();
@@ -616,6 +624,11 @@ const ServerAccount = {
       if(data && data.payload){
         const parsed = JSON.parse(data.payload);
         await Sync.importAll(parsed);
+        // A fresh device's very first app-open (before ever logging in here) already picked an
+        // "active business" — usually an empty placeholder it created for itself, since no real
+        // data existed yet. That pointer never re-checks itself. Now that real data just landed,
+        // clear it so the next read resolves fresh against what actually exists.
+        localStorage.removeItem('moborex_active_business');
         localStorage.setItem('moborex_server_last_pull', new Date().toISOString());
         await refresh();
       }
@@ -3057,7 +3070,12 @@ async function restoreBackup(ev){
     const looksLikeBackup = d && typeof d==='object' && ('invoices' in d || 'business' in d || 'customers' in d || 'version' in d);
     if(!looksLikeBackup){ alert('This file was read fine, but it doesn\'t look like a Moborex backup — none of the expected data (invoices, business, customers) was found in it.'); return; }
     try{
-      await Sync.importAll(d); closeModal(); await refresh();
+      await Sync.importAll(d);
+      // Same fix as the two sync paths: clear the "active business" pointer so it re-resolves
+      // against whatever the restored file actually contains, instead of staying stuck on
+      // whatever this device had picked (often an empty placeholder) before the restore ran.
+      localStorage.removeItem('moborex_active_business');
+      closeModal(); await refresh();
       alert('Backup restored successfully.');
     }catch(x){
       alert('The backup file looked valid, but restoring it failed partway through.\n\nDetails: '+(x&&x.message?x.message:x));
