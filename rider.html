@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Delivery Rider</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16233D; --ink2:#223258; --paper:#F1F3EF; --card:#FFFFFF;
+  --line:#E1E6E0; --muted:#6B7280;
+  --brass:#B8863B; --brass2:#D4A24C; --brassSoft:#F3E7D2;
+  --good:#2F7A5D; --goodSoft:#E4F1EB; --danger:#B23A3A;
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;padding-bottom:40px}
+h1,h2,h3{font-family:var(--font-display);letter-spacing:-.01em;margin:0}
+button{font-family:var(--font-body);cursor:pointer}
+.wrap{max-width:480px;margin:0 auto;padding:18px}
+.bizName{font-size:24px;font-weight:700;margin-bottom:4px}
+.tagline{font-size:13px;color:var(--muted);margin-bottom:18px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:5px}
+.field input,.field select{width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:15px;font-family:inherit;background:var(--card)}
+.btn{display:block;width:100%;padding:14px;border-radius:12px;border:0;font-size:15px;font-weight:700;text-align:center}
+.btn.accent{background:var(--brass2);color:#fff}
+.btn.ink{background:var(--ink);color:#fff}
+.btn.good{background:var(--good);color:#fff}
+.btn.danger{background:var(--danger);color:#fff}
+.btn.secondary{background:var(--card);color:var(--ink);border:1.4px solid var(--line)}
+.notice{background:var(--goodSoft);border:1.4px solid #bfe0d1;color:var(--good);border-radius:12px;padding:14px;font-size:13.5px;margin-bottom:14px}
+.center{text-align:center;padding:40px 20px}
+.center h2{font-size:22px;margin-bottom:10px}
+.center p{color:var(--muted);font-size:14px}
+.hidden{display:none}
+.toggleRow{display:flex;gap:8px;margin-bottom:16px}
+.toggleRow button{flex:1}
+.statusBadge{display:inline-block;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:800;margin-bottom:16px}
+.statusBadge.available{background:var(--goodSoft);color:var(--good)}
+.statusBadge.offline{background:var(--line);color:var(--muted)}
+.statusBadge.busy{background:var(--brassSoft);color:var(--brass2)}
+.offerOverlay{position:fixed;inset:0;background:var(--ink);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;z-index:999;text-align:center}
+.offerOverlay h1{font-size:26px;color:#fff;margin-bottom:8px}
+.offerOverlay .payout{font-size:44px;font-weight:900;color:var(--brass2);margin:16px 0}
+.offerOverlay .countdown{font-size:18px;font-weight:800;margin-bottom:24px}
+.offerButtons{display:flex;gap:12px;width:100%;max-width:360px}
+.offerButtons button{flex:1;padding:18px;font-size:16px}
+.jobCard{background:var(--card);border:1.4px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+.jobCard .row{display:flex;justify-content:space-between;padding:6px 0;font-size:14px}
+.jobCard .row span:first-child{color:var(--muted)}
+.codeBox{background:var(--brassSoft);border-radius:12px;padding:16px;text-align:center;margin:14px 0}
+.codeBox .code{font-size:28px;font-weight:900;letter-spacing:4px;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="center"><h2>Loading…</h2></div></div>
+
+<script>
+const SERVER = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
+const params = new URLSearchParams(location.search);
+const ownerBusinessId = params.get('business');
+const isOwnedRegistration = params.get('owned') === '1' && !!ownerBusinessId;
+let riderToken = localStorage.getItem('moborex_rider_token');
+let riderInfo = null;
+let pollInterval = null;
+let locationInterval = null;
+let currentOffer = null;
+let offerCountdownInterval = null;
+let audioCtx = null;
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function money(kobo){ return '₦' + (kobo/100).toLocaleString('en-NG', {maximumFractionDigits:2}); }
+
+async function api(path, opts={}){
+  const headers = { 'Content-Type':'application/json', ...(opts.headers||{}) };
+  if(riderToken) headers['Authorization'] = 'Bearer ' + riderToken;
+  const res = await fetch(SERVER + path, { ...opts, headers });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || 'Something went wrong.');
+  return data;
+}
+
+async function init(){
+  if(riderToken){
+    showDashboard();
+  } else {
+    showAuthGate();
+  }
+}
+
+function showAuthGate(){
+  document.getElementById('app').innerHTML = `
+    <div class="bizName">Delivery Rider</div>
+    <div class="tagline">Pick up delivery jobs from businesses near you.</div>
+    <div class="toggleRow">
+      <button class="btn ink" id="loginTabBtn" onclick="showLoginForm()">Log In</button>
+      <button class="btn secondary" id="registerTabBtn" onclick="showRegisterForm()">Register</button>
+    </div>
+    <div id="authFormArea"></div>
+  `;
+  if(isOwnedRegistration) showRegisterForm(); else showLoginForm(); // an owned-registration link is for a new rider signing up, not an existing one logging in
+}
+function showLoginForm(){
+  loginTabBtn.className='btn ink'; registerTabBtn.className='btn secondary';
+  document.getElementById('authFormArea').innerHTML = `
+    <div class="field"><label>Phone number</label><input id="loginPhone" type="tel"></div>
+    <div class="field"><label>PIN</label><input id="loginPin" type="password" inputmode="numeric"></div>
+    <div id="authError" class="hidden" style="color:var(--danger);font-size:13px;margin-bottom:10px"></div>
+    <button class="btn accent" onclick="doLogin()">Log In</button>
+  `;
+}
+function showRegisterForm(){
+  loginTabBtn.className='btn secondary'; registerTabBtn.className='btn ink';
+  document.getElementById('authFormArea').innerHTML = `
+    ${isOwnedRegistration ? `<div class="notice">You're registering as this business's own rider — every job comes only from them, never the shared pool.</div>` : ''}
+    <div class="field"><label>Your name</label><input id="regName"></div>
+    <div class="field"><label>Phone number</label><input id="regPhone" type="tel"></div>
+    <div class="field"><label>Choose a PIN (at least 4 digits)</label><input id="regPin" type="password" inputmode="numeric"></div>
+    <div class="field"><label>Vehicle</label><select id="regVehicle"><option value="motorcycle">Motorcycle</option><option value="bicycle">Bicycle</option></select></div>
+    <div id="authError" class="hidden" style="color:var(--danger);font-size:13px;margin-bottom:10px"></div>
+    <button class="btn accent" onclick="doRegister()">Register</button>
+  `;
+}
+function showAuthError(msg){
+  const el = document.getElementById('authError');
+  el.textContent = msg; el.classList.remove('hidden');
+}
+async function doLogin(){
+  const phone = loginPhone.value.trim(), pin = loginPin.value.trim();
+  if(!phone || !pin){ showAuthError('Enter your phone number and PIN.'); return; }
+  try{
+    const data = await api('/api/riders/login', {method:'POST', body: JSON.stringify({phone, pin})});
+    riderToken = data.token; riderInfo = data.rider;
+    localStorage.setItem('moborex_rider_token', riderToken);
+    showDashboard();
+  }catch(e){ showAuthError(e.message); }
+}
+async function doRegister(){
+  const name = regName.value.trim(), phone = regPhone.value.trim(), pin = regPin.value.trim(), vehicleType = regVehicle.value;
+  if(!name || !phone || !pin){ showAuthError('Fill in your name, phone, and a PIN.'); return; }
+  try{
+    const data = await api('/api/riders/register', {method:'POST', body: JSON.stringify({
+      name, phone, pin, vehicleType,
+      registeredByBusinessId: isOwnedRegistration ? ownerBusinessId : null,
+      isBusinessOwned: isOwnedRegistration,
+    })});
+    riderToken = data.token; riderInfo = data.rider;
+    localStorage.setItem('moborex_rider_token', riderToken);
+    showDashboard();
+  }catch(e){ showAuthError(e.message); }
+}
+function logout(){
+  clearInterval(pollInterval); clearInterval(locationInterval); clearInterval(paymentPollInterval);
+  localStorage.removeItem('moborex_rider_token');
+  riderToken = null; riderInfo = null;
+  showAuthGate();
+}
+
+let riderStatus = 'offline';
+async function showDashboard(){
+  document.getElementById('app').innerHTML = `
+    <div class="bizName">${riderInfo ? esc(riderInfo.name) : 'Rider'}</div>
+    <div class="tagline">${riderInfo ? esc(riderInfo.vehicleType) : ''}</div>
+    <div id="statusBadge" class="statusBadge offline">Offline</div>
+    <div class="toggleRow">
+      <button class="btn good" onclick="setStatus('available')">Go Available</button>
+      <button class="btn secondary" onclick="setStatus('offline')">Go Offline</button>
+    </div>
+    <div id="jobArea"></div>
+    <button class="btn secondary" style="margin-top:20px" onclick="showPayoutAccount()">💳 Payout Account</button>
+    <button class="btn secondary" style="margin-top:8px" onclick="logout()">Log Out</button>
+  `;
+  await checkCurrentJob();
+}
+async function showPayoutAccount(){
+  document.getElementById('app').innerHTML = `
+    <div class="bizName">Payout Account</div>
+    <div class="tagline">Where your delivery earnings actually land — your own account, verified before it's ever used.</div>
+    <div class="notice" id="payoutLoadStatus">Loading banks…</div>
+    <div class="field" style="display:none" id="payoutBankField"><label>Bank</label><select id="payoutBankSelect"></select></div>
+    <div class="field" style="display:none" id="payoutAcctField"><label>Account Number</label><input id="payoutAcctNumber" inputmode="numeric" maxlength="10" onchange="verifyRiderPayoutAccount()"></div>
+    <div class="notice" id="payoutVerifyStatus" style="display:none"></div>
+    <button class="btn accent" id="payoutSaveBtn" style="display:none;width:100%" onclick="saveRiderPayoutAccount()">Save Payout Account</button>
+    <button class="btn secondary" style="margin-top:10px;width:100%" onclick="showDashboard()">Back</button>
+  `;
+  try{
+    const data = await api('/api/paystack/banks');
+    document.getElementById('payoutBankSelect').innerHTML = (data.banks||[]).map(b=>`<option value="${esc(b.code)}">${esc(b.name)}</option>`).join('');
+    document.getElementById('payoutLoadStatus').style.display='none';
+    document.getElementById('payoutBankField').style.display='block';
+    document.getElementById('payoutAcctField').style.display='block';
+  }catch(e){ document.getElementById('payoutLoadStatus').textContent = 'Could not load the bank list: '+e.message; }
+}
+let riderPayoutVerifiedName = null;
+async function verifyRiderPayoutAccount(){
+  riderPayoutVerifiedName = null;
+  document.getElementById('payoutSaveBtn').style.display='none';
+  const accountNumber = document.getElementById('payoutAcctNumber').value.trim();
+  const status = document.getElementById('payoutVerifyStatus');
+  if(accountNumber.length!==10){ status.style.display='none'; return; }
+  status.style.display='block'; status.textContent='Verifying…';
+  try{
+    const bankCode = document.getElementById('payoutBankSelect').value;
+    const data = await api('/api/business/verify-account', {method:'POST', body: JSON.stringify({accountNumber, bankCode})});
+    riderPayoutVerifiedName = data.accountName;
+    status.textContent = '✓ '+data.accountName;
+    document.getElementById('payoutSaveBtn').style.display='block';
+  }catch(e){ status.textContent = 'Could not verify this account — double-check the number and bank.'; }
+}
+async function saveRiderPayoutAccount(){
+  if(!riderPayoutVerifiedName){ alert('Verify the account first.'); return; }
+  const bankSelect = document.getElementById('payoutBankSelect');
+  try{
+    await api('/api/riders/bank-account', {method:'POST', body: JSON.stringify({
+      bankCode: bankSelect.value, bankName: bankSelect.selectedOptions[0].textContent,
+      accountNumber: document.getElementById('payoutAcctNumber').value.trim(), accountName: riderPayoutVerifiedName,
+    })});
+    alert('Payout account saved — delivery earnings will go straight to this account.');
+    await showDashboard();
+  }catch(e){ alert('Could not save: '+e.message); }
+}
+function updateStatusBadge(status){
+  riderStatus = status;
+  const el = document.getElementById('statusBadge');
+  if(!el) return;
+  el.className = 'statusBadge ' + status;
+  el.textContent = status==='available' ? 'Available' : status==='busy' ? 'On a delivery' : 'Offline';
+}
+async function setStatus(status){
+  if(riderStatus === 'busy'){ alert("Finish your current delivery first."); return; }
+  try{
+    await api('/api/riders/status', {method:'POST', body: JSON.stringify({status})});
+    updateStatusBadge(status);
+    if(status === 'available'){ startPolling(); startLocationReporting(); }
+    else { clearInterval(pollInterval); clearInterval(locationInterval); }
+  }catch(e){ alert(e.message); }
+}
+
+// GPS — this is the real basis for "his app always shows his proximity to a business
+// requesting delivery service". Reports periodically while available, not continuously,
+// to be reasonable about battery.
+function startLocationReporting(){
+  clearInterval(locationInterval);
+  reportLocation();
+  locationInterval = setInterval(reportLocation, 20000);
+}
+function reportLocation(){
+  if(!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(async (pos)=>{
+    try{ await api('/api/riders/location', {method:'POST', body: JSON.stringify({lat:pos.coords.latitude, lng:pos.coords.longitude})}); }
+    catch(e){ /* best-effort — a missed location update just means slightly stale proximity data */ }
+  }, ()=>{ /* permission denied or unavailable — rider stays visible but won't be matched until they grant it */ }, {enableHighAccuracy:true, timeout:10000});
+}
+
+// Polling for offers — the ring alarm trigger point. Frequent, since an offer has a real
+// time limit and the rider needs to actually catch it while the app is open.
+function startPolling(){
+  clearInterval(pollInterval);
+  checkForOffer();
+  pollInterval = setInterval(checkForOffer, 5000);
+}
+async function checkForOffer(){
+  if(currentOffer) return; // already showing one — don't stack another check mid-alert
+  try{
+    const data = await api('/api/riders/pending-offer');
+    if(data.offer){ showOfferAlert(data.offer); }
+  }catch(e){ /* silent — a missed poll just means the next tick tries again */ }
+}
+
+function playRingTone(){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sine'; osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+  }catch(e){ /* audio may be blocked until the user has interacted with the page at least once — the visual alert still shows regardless */ }
+}
+
+function showOfferAlert(offer){
+  currentOffer = offer;
+  clearInterval(pollInterval); // stop polling while this offer is on screen — accept/decline drives what happens next, not another poll tick
+  let ringInterval = setInterval(playRingTone, 1200);
+  playRingTone();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'offerOverlay';
+  overlay.id = 'offerOverlay';
+  overlay.innerHTML = `
+    <h1>New Delivery Offer</h1>
+    <div style="font-size:15px;opacity:.85">${esc(offer.businessName||'A business')} · ${offer.distanceKm}km away</div>
+    <div class="payout">${money(offer.payoutKobo)}</div>
+    <div class="countdown" id="offerCountdown">--</div>
+    <div class="offerButtons">
+      <button class="btn danger" onclick="respondToOffer('decline')">Decline</button>
+      <button class="btn good" onclick="respondToOffer('accept')">Accept</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const expiresAt = new Date(offer.offerExpiresAt).getTime();
+  clearInterval(offerCountdownInterval);
+  offerCountdownInterval = setInterval(()=>{
+    const remaining = Math.max(0, Math.round((expiresAt - Date.now())/1000));
+    const el = document.getElementById('offerCountdown');
+    if(el) el.textContent = remaining + 's to respond';
+    if(remaining <= 0){
+      clearInterval(offerCountdownInterval); clearInterval(ringInterval);
+      dismissOfferOverlay();
+      currentOffer = null;
+      startPolling(); // the offer will have already moved on server-side by the time this next poll runs
+    }
+  }, 500);
+
+  window.__currentRingInterval = ringInterval;
+}
+function dismissOfferOverlay(){
+  const el = document.getElementById('offerOverlay');
+  if(el) el.remove();
+}
+async function respondToOffer(action){
+  clearInterval(offerCountdownInterval);
+  clearInterval(window.__currentRingInterval);
+  const jobId = currentOffer.jobId;
+  dismissOfferOverlay();
+  currentOffer = null;
+  try{
+    if(action === 'accept'){
+      const data = await api(`/api/delivery-jobs/${jobId}/accept`, {method:'POST'});
+      updateStatusBadge('busy');
+      showActiveJob({ id: jobId, customer_name: data.customerName, customer_phone: data.customerPhone, dropoff_address: data.dropoffAddress, collection_code: data.collectionCode, status: 'assigned' });
+    } else {
+      await api(`/api/delivery-jobs/${jobId}/decline`, {method:'POST'});
+      startPolling();
+    }
+  }catch(e){
+    alert(e.message);
+    startPolling();
+  }
+}
+
+async function checkCurrentJob(){
+  try{
+    const data = await api('/api/riders/my-job');
+    if(data.job){ updateStatusBadge('busy'); showActiveJob(data.job); }
+    else { updateStatusBadge('offline'); }
+  }catch(e){ updateStatusBadge('offline'); }
+}
+
+function showActiveJob(job){
+  const jobArea = document.getElementById('jobArea');
+  if(!jobArea) return;
+  jobArea.innerHTML = `
+    <div class="jobCard">
+      <div class="sectionhead" style="font-weight:800;margin-bottom:8px">Current Delivery</div>
+      <div class="row"><span>Customer</span><span>${esc(job.customer_name||'—')}</span></div>
+      <div class="row"><span>Phone</span><span>${esc(job.customer_phone||'—')}</span></div>
+      <div class="row"><span>Deliver to</span><span>${esc(job.dropoff_address||'—')}</span></div>
+      ${job.status==='assigned' ? `<button class="btn ink" style="margin-top:14px" onclick="markPickedUp('${job.id}')">Mark Picked Up</button>` : ''}
+      ${job.status==='picked_up' ? `
+        <div class="field"><input id="deliveryCodeInput" placeholder="Code from customer" inputmode="numeric"></div>
+        <button class="btn good" onclick="markDelivered('${job.id}')">Confirm Delivered</button>
+      ` : ''}
+    </div>
+  `;
+}
+async function markPickedUp(jobId){
+  try{
+    await api(`/api/delivery-jobs/${jobId}/picked-up`, {method:'POST'});
+    await checkCurrentJob();
+  }catch(e){ alert(e.message); }
+}
+let paymentPollInterval = null;
+async function markDelivered(jobId){
+  const code = document.getElementById('deliveryCodeInput').value.trim();
+  if(!code){ alert('Enter the code the customer gives you.'); return; }
+  try{
+    const data = await api(`/api/delivery-jobs/${jobId}/confirm-code`, {method:'POST', body: JSON.stringify({code})});
+    if(data.awaitingPayment){
+      // Code confirmed, but not done yet — stays busy until the customer's payment is
+      // actually confirmed. No way to skip this by telling the customer "just pay me cash".
+      // The rider is physically with the customer right now, so show the actual payment
+      // link directly — this works the same whether it came from an online order or a
+      // regular in-store sale, since it's keyed off the delivery job itself, not the order.
+      const payLink = location.origin + location.pathname.replace(/rider\.html$/,'') + 'order.html?deliveryJob=' + encodeURIComponent(jobId);
+      document.getElementById('jobArea').innerHTML = `
+        <div class="notice"><b>Code confirmed.</b> Show the customer this link to pay the delivery fee — you'll stay on this delivery until that payment is confirmed.</div>
+        <div class="jobCard" style="text-align:center;word-break:break-all;font-size:12px">${esc(payLink)}</div>
+      `;
+      clearInterval(paymentPollInterval);
+      paymentPollInterval = setInterval(async ()=>{
+        try{
+          const check = await api(`/api/delivery-jobs/${jobId}/payment-status`);
+          if(check.status === 'delivered'){
+            clearInterval(paymentPollInterval);
+            updateStatusBadge('available');
+            document.getElementById('jobArea').innerHTML = `<div class="notice">Payment confirmed — delivered ✓. You're available for the next job.</div>`;
+            startPolling(); startLocationReporting();
+          }
+        }catch(e){ /* keep polling — a transient network blip shouldn't stop this */ }
+      }, 5000);
+    } else {
+      updateStatusBadge('available');
+      document.getElementById('jobArea').innerHTML = `<div class="notice">Delivered ✓ — you're available for the next job.</div>`;
+      startPolling(); startLocationReporting();
+    }
+  }catch(e){ alert(e.message); }
+}
+
+init();
+</script>
+</body>
+</html>

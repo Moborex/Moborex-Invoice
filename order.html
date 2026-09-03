@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Order</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16233D; --ink2:#223258; --paper:#F1F3EF; --card:#FFFFFF;
+  --line:#E1E6E0; --muted:#6B7280;
+  --brass:#B8863B; --brass2:#D4A24C; --brassSoft:#F3E7D2;
+  --good:#2F7A5D; --goodSoft:#E4F1EB; --danger:#B23A3A;
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;padding-bottom:90px}
+h1,h2,h3{font-family:var(--font-display);letter-spacing:-.01em;margin:0}
+button{font-family:var(--font-body);cursor:pointer}
+.wrap{max-width:520px;margin:0 auto;padding:18px}
+.bizName{font-size:26px;font-weight:700;margin-bottom:2px}
+.tagline{font-size:13px;color:var(--muted);margin-bottom:18px}
+.tileGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.tile{border:1.4px solid var(--line);border-radius:14px;padding:14px 10px;background:var(--card);text-align:center;cursor:pointer;min-height:78px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.tile b{font-size:14px;line-height:1.25}
+.tile small{color:var(--brass2);font-weight:700}
+.tile.inCart{border-color:var(--brass2);background:var(--brassSoft)}
+.qtyBadge{position:relative;top:-2px;background:var(--ink);color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;display:inline-block;margin-top:2px}
+.sectionhead{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);margin:22px 0 8px}
+.cartRow{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.cartRow small{display:block;color:var(--muted)}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:5px}
+.field input{width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:15px;font-family:inherit;background:var(--card)}
+.btn{display:block;width:100%;padding:14px;border-radius:12px;border:0;font-size:15px;font-weight:700;text-align:center}
+.btn.accent{background:var(--brass2);color:#fff}
+.btn.ink{background:var(--ink);color:#fff}
+.btn.secondary{background:var(--card);color:var(--ink);border:1.4px solid var(--line)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1.4px solid var(--line);padding:12px 18px;box-shadow:0 -6px 20px rgba(22,35,61,.08)}
+.bar .row{display:flex;justify-content:space-between;align-items:center;max-width:520px;margin:0 auto}
+.bar .total{font-size:18px;font-weight:800}
+.notice{background:var(--goodSoft);border:1.4px solid #bfe0d1;color:var(--good);border-radius:12px;padding:14px;font-size:13.5px;margin-bottom:14px}
+.center{text-align:center;padding:60px 20px}
+.center h2{font-size:22px;margin-bottom:10px}
+.center p{color:var(--muted);font-size:14px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="center" id="loadingState"><h2>Loading menu…</h2></div>
+</div>
+<div class="bar hidden" id="cartBar">
+  <div class="row">
+    <div><small style="color:var(--muted)">Cart</small><div class="total" id="cartBarTotal">₦0</div></div>
+    <button class="btn accent" style="width:auto;padding:12px 22px" onclick="showCheckout()">Checkout</button>
+  </div>
+</div>
+
+<script>
+const SERVER = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
+const params = new URLSearchParams(location.search);
+const businessId = params.get('business');
+const source = params.get('source') === 'online' ? 'online' : 'qr'; // default to the safer, pay-later path if unspecified
+const paidReturn = params.get('paid') === '1';
+let trackOrderId = params.get('track');
+const paidReturnOrderId = params.get('order');
+const deliveryJobId = params.get('deliveryJob'); // customer paying for a delivery directly — works for any job, online-order-linked or a regular in-store invoice
+
+let menu = [];
+let businessName = '';
+let serviceFeePercent = 7;
+let serviceFeeCapKobo = 500000;
+let wantsDelivery = false;
+let people = [{ label: 'Person 1', cart: {} }]; // each person gets their own cart — id -> {name, priceKobo, qty}
+let currentPersonIdx = 0;
+
+function money(kobo){ return '₦' + (kobo/100).toLocaleString('en-NG', {minimumFractionDigits: (kobo%100? 2:0), maximumFractionDigits:2}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function init(){
+  if(deliveryJobId){ startDeliveryJobTracking(); return; }
+  if(trackOrderId){ startTracking(); return; }
+  if(paidReturn){ renderPaidConfirmation(); return; }
+  if(!businessId){ renderError("This link is missing some details — ask the business for the correct ordering link or QR code."); return; }
+  try{
+    const res = await fetch(`${SERVER}/api/public/menu/${businessId}`);
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Could not load the menu.');
+    businessName = data.businessName;
+    menu = data.items || [];
+    serviceFeePercent = data.serviceFeePercent || 7;
+    serviceFeeCapKobo = data.serviceFeeCapKobo || 500000;
+    renderCheckOrderGate();
+  }catch(e){
+    renderError("Could not load the menu right now — " + e.message);
+  }
+}
+
+function renderCheckOrderGate(){
+  document.getElementById('app').innerHTML = `
+    <div class="bizName">${esc(businessName)}</div>
+    <div class="tagline">Have an order already in progress? Enter your phone number to check it — or skip straight to ordering.</div>
+    <div class="field"><label>Phone number</label><input id="gatePhone" type="tel" placeholder="The number you ordered with"></div>
+    <div id="gateStatus"></div>
+    <button class="btn ink" onclick="checkOutstandingOrder()">Check My Order</button>
+    <button class="btn secondary" style="margin-top:8px" onclick="renderMenu()">Skip — Start a New Order</button>
+  `;
+}
+async function checkOutstandingOrder(){
+  const phone = document.getElementById('gatePhone').value.trim();
+  const statusEl = document.getElementById('gateStatus');
+  if(!phone){ statusEl.innerHTML = `<div class="notice" style="background:#F7E7E7;color:var(--danger);border-color:#e6b8b8">Enter a phone number first.</div>`; return; }
+  statusEl.innerHTML = `<p style="text-align:center;color:var(--muted)">Checking…</p>`;
+  try{
+    const res = await fetch(`${SERVER}/api/public/orders/outstanding?businessId=${encodeURIComponent(businessId)}&phone=${encodeURIComponent(phone)}`);
+    const data = await res.json();
+    if(!data.found){
+      statusEl.innerHTML = `<div class="notice">No order in progress for this number.</div>`;
+      return;
+    }
+    // Reuse the same tracking flow (polling, pay-choice, everything) rather than a
+    // second, parallel rendering path that would have to duplicate all of that logic.
+    trackOrderId = data.orderId;
+    startTracking();
+  }catch(e){
+    statusEl.innerHTML = `<div class="notice" style="background:#F7E7E7;color:var(--danger);border-color:#e6b8b8">Could not check right now — try again.</div>`;
+  }
+}
+function renderError(msg){
+  document.getElementById('app').innerHTML = `<div class="center"><h2>Something's not right</h2><p>${esc(msg)}</p></div>`;
+}
+
+function renderPaidConfirmation(){
+  document.getElementById('app').innerHTML = `<div class="center">
+    <h2>Payment received 🎉</h2>
+    <p>Your order is confirmed and the business has been notified. Thank you!</p>
+    ${paidReturnOrderId ? `<a href="${location.pathname}?track=${encodeURIComponent(paidReturnOrderId)}" style="display:inline-block;margin-top:16px;color:var(--brass2);font-weight:700;text-decoration:none">Track this order →</a>` : ''}
+  </div>`;
+}
+
+let trackingInterval = null;
+async function startTracking(){
+  document.getElementById('app').innerHTML = `<div class="center"><h2>Loading your order…</h2></div>`;
+  await pollTracking();
+  clearInterval(trackingInterval);
+  trackingInterval = setInterval(pollTracking, 15000);
+}
+async function pollTracking(){
+  try{
+    const res = await fetch(`${SERVER}/api/public/orders/${trackOrderId}/track`);
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Could not find this order.');
+    renderTracking(data);
+    if(data.status==='delivered' || data.status==='cancelled') clearInterval(trackingInterval);
+  }catch(e){
+    clearInterval(trackingInterval);
+    renderError("Could not load this order's status — " + e.message);
+  }
+}
+// A simpler counterpart to order tracking — for a delivery that isn't tied to an online
+// order at all (a regular in-store sale delivered by a freelance rider). Same polling
+// pattern, but only ever shows delivery status and the payment prompt, since there's no
+// wider order timeline to show for a walk-in sale.
+async function startDeliveryJobTracking(){
+  document.getElementById('app').innerHTML = `<div class="center"><h2>Loading…</h2></div>`;
+  await pollDeliveryJob();
+  clearInterval(trackingInterval);
+  trackingInterval = setInterval(pollDeliveryJob, 15000);
+}
+async function pollDeliveryJob(){
+  try{
+    const res = await fetch(`${SERVER}/api/public/delivery-jobs/${deliveryJobId}/status`);
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Could not find this delivery.');
+    renderDeliveryJobStatus(data);
+    if(data.status==='delivered') clearInterval(trackingInterval);
+  }catch(e){
+    clearInterval(trackingInterval);
+    renderError("Could not load this delivery's status — " + e.message);
+  }
+}
+function renderDeliveryJobStatus(data){
+  const payHtml = data.deliveryPayment ? `
+    <div class="notice" style="margin-top:16px">
+      <b>Delivery fee: ${money(data.deliveryPayment.chargeKobo)}</b><br>
+      <button class="btn ink" style="margin-top:10px" onclick="payForDeliveryJobDirect('${data.deliveryPayment.jobId}')">Pay Delivery Fee</button>
+    </div>` : '';
+  document.getElementById('app').innerHTML = `
+    <div class="bizName">${esc(data.businessName||'Delivery')}</div>
+    <div class="notice">Status: <b>${esc(data.status==='delivered'?'Delivered':data.status==='picked_up'?'On the way':'In progress')}</b></div>
+    ${payHtml}
+  `;
+}
+async function payForDeliveryJobDirect(jobId){
+  try{
+    const callbackUrl = location.origin + location.pathname + `?deliveryJob=${encodeURIComponent(jobId)}`;
+    const payRes = await fetch(`${SERVER}/api/public/delivery-jobs/${jobId}/pay/initialize`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ callbackUrl })
+    });
+    const payData = await payRes.json();
+    if(!payRes.ok) throw new Error(payData.error || 'Could not start payment.');
+    clearInterval(trackingInterval);
+    location.href = payData.authorizationUrl;
+  }catch(e){
+    renderError("Could not start payment — " + e.message);
+  }
+}
+let lastTrackData = null;
+function renderTracking(data){
+  lastTrackData = data;
+  const s = data.stages || {};
+  const steps = [
+    { key:'processingAt', label:'Order received' },
+    { key:'packedAt', label:'Packed & ready' },
+    { key:'dispatchedAt', label:'Out for delivery' },
+    { key:'deliveredAt', label:'Delivered' },
+  ];
+  const stepsHtml = steps.map(step=>{
+    const done = !!s[step.key];
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+      <div style="width:22px;height:22px;border-radius:50%;background:${done?'var(--good)':'var(--line)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${done?'✓':''}</div>
+      <div style="flex:1"><b style="color:${done?'var(--ink)':'var(--muted)'}">${step.label}</b>${done?`<br><small style="color:var(--muted)">${new Date(s[step.key]).toLocaleString()}</small>`:''}</div>
+    </div>`;
+  }).join('');
+  const deliveryHtml = data.delivery && data.delivery.riderName ? `
+    <div class="notice" style="margin-top:16px">
+      <b>${esc(data.delivery.riderName)}</b>${data.delivery.riderPhone?' · '+esc(data.delivery.riderPhone):''} is bringing your order.<br>
+      Your collection code: <b style="font-size:18px;letter-spacing:2px">${esc(data.delivery.collectionCode||'')}</b> — give this to them on arrival.
+    </div>` : '';
+  // Option B: the delivery charge is its own separate payment, only shown once a rider
+  // has actually accepted — never bundled into the order total, since who it's paying
+  // wasn't known before that.
+  const deliveryPayHtml = data.deliveryPayment ? `
+    <div class="notice" style="margin-top:16px">
+      <b>Delivery fee: ${money(data.deliveryPayment.chargeKobo)}</b><br>
+      <button class="btn ink" style="margin-top:10px" onclick="payForDelivery('${data.deliveryPayment.jobId}')">Pay Delivery Fee</button>
+    </div>` : '';
+  // Pickup (QR) orders don't commit to a payment method upfront — once packed, the
+  // customer chooses here rather than a cashier doing it for them, so they never have
+  // to queue just to pay.
+  let payHtml = '';
+  if(data.status==='ready' && !data.delivery){
+    if(data.paymentStatus==='pay_at_cashier'){
+      payHtml = `<div class="notice" style="margin-top:16px">
+        <b>Your order is ready! How would you like to pay?</b>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn secondary" style="flex:1" onclick="choosePayAtCounter()">Pay at Counter</button>
+          <button class="btn ink" style="flex:1" onclick="chooseOnlinePayment('${trackOrderId}')">Pay Online</button>
+        </div>
+      </div>`;
+    } else if(data.paymentStatus==='awaiting_online_payment'){
+      payHtml = `<div class="notice" style="margin-top:16px">
+        <b>Total to pay: ${money(data.totalKobo)}</b> (includes a small online payment fee)<br>
+        <button class="btn ink" style="margin-top:10px" onclick="confirmOnlinePayment('${trackOrderId}')">Pay Now</button>
+      </div>`;
+    } else if(data.paymentStatus==='paid_online'){
+      payHtml = `<div class="notice" style="margin-top:16px;background:var(--goodSoft);border-color:#bfe0d1;color:var(--good)"><b>✓ Paid — please approach the counter for your order.</b></div>`;
+    }
+  }
+  document.getElementById('app').innerHTML = `
+    <div class="bizName">Order Status</div>
+    ${data.status==='cancelled' ? `<div class="notice" style="background:#F7E7E7;color:var(--danger);border-color:#e6b8b8">This order was cancelled.</div>` : ''}
+    <div style="margin-top:14px">${stepsHtml}</div>
+    ${deliveryHtml}
+    ${deliveryPayHtml}
+    ${payHtml}
+    ${businessId && menu.length ? `
+    <button class="btn ink" style="margin-top:16px" onclick="clearInterval(trackingInterval);renderMenu()">Place Another Order</button>
+    <button class="btn secondary" style="margin-top:8px" onclick="clearInterval(trackingInterval);renderCheckOrderGate()">Check a Different Number</button>
+    ` : ''}
+  `;
+}
+function choosePayAtCounter(){
+  clearInterval(trackingInterval); // nothing left to track for this customer until they physically arrive — also avoids the next poll re-fetching stale server data and re-showing this prompt
+  document.getElementById('app').innerHTML += `<div class="notice" style="margin-top:10px">Okay — please pay at the counter when you collect your order.</div>`;
+}
+async function chooseOnlinePayment(orderId){
+  try{
+    const res = await fetch(`${SERVER}/api/public/orders/${orderId}/enable-online-payment`, {method:'POST'});
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Could not set up online payment.');
+  }catch(e){
+    // Don't dead-end here — the order itself is still fine, its payment state just wasn't
+    // what was expected (e.g. staff already started this from their side). Re-polling shows
+    // whatever the actual current state is instead of stranding the customer on an error.
+  }
+  await pollTracking();
+}
+async function confirmOnlinePayment(orderId){
+  try{
+    const callbackUrl = location.origin + location.pathname + `?track=${encodeURIComponent(orderId)}`;
+    const payRes = await fetch(`${SERVER}/api/public/orders/${orderId}/pay/initialize`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ callbackUrl })
+    });
+    const payData = await payRes.json();
+    if(!payRes.ok) throw new Error(payData.error || 'Could not start payment.');
+    clearInterval(trackingInterval); // leaving the page for Paystack — nothing left to poll for until they return
+    location.href = payData.authorizationUrl;
+  }catch(e){
+    renderError("Could not start payment — " + e.message);
+  }
+}
+async function payForDelivery(jobId){
+  try{
+    const callbackUrl = location.origin + location.pathname + `?track=${encodeURIComponent(trackOrderId)}`;
+    const payRes = await fetch(`${SERVER}/api/public/delivery-jobs/${jobId}/pay/initialize`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ callbackUrl })
+    });
+    const payData = await payRes.json();
+    if(!payRes.ok) throw new Error(payData.error || 'Could not start payment.');
+    clearInterval(trackingInterval);
+    location.href = payData.authorizationUrl;
+  }catch(e){
+    renderError("Could not start payment — " + e.message);
+  }
+}
+
+function sellableMenu(){ return menu.filter(m => !m.kind || m.kind === 'regular' || m.kind === 'food'); }
+function packagingMenu(){ return menu.filter(m => m.kind && ['food_pack','food_nylon','nonfood_packaging'].includes(m.kind)); }
+
+function renderMenu(){
+  const sellable = sellableMenu(), packaging = packagingMenu();
+  document.getElementById('app').innerHTML = `
+    <div class="bizName">${esc(businessName)}</div>
+    <div class="tagline">${source==='qr' ? 'Tap items to add them, then pay at the cashier when your order is ready.' : 'Tap items to add them, then pay online to confirm your order.'}</div>
+    <div class="sectionhead" style="margin-top:4px">Ordering for</div>
+    <div id="personTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
+    ${sellable.length ? `<div class="tileGrid" id="tileGrid"></div>` : `<div class="center"><p>No items available to order right now.</p></div>`}
+    ${packaging.length ? `<div class="sectionhead" style="margin-top:18px">Extra Packaging (added automatically if you order food — tap for more)</div><div class="tileGrid" id="packagingGrid"></div>` : ''}
+  `;
+  renderPersonTabs();
+  renderTiles();
+}
+
+function renderPersonTabs(){
+  const el = document.getElementById('personTabs');
+  if(!el) return;
+  el.innerHTML = people.map((p,idx)=>{
+    const count = Object.values(p.cart).reduce((a,c)=>a+c.qty,0);
+    return `<button onclick="switchPerson(${idx})" class="btn ${idx===currentPersonIdx?'accent':'secondary'}" style="width:auto;padding:9px 16px">${esc(p.label)}${count?' ('+count+')':''}</button>`;
+  }).join('') + `<button onclick="addPerson()" class="btn secondary" style="width:auto;padding:9px 16px">＋ Add Person</button>`;
+}
+
+function switchPerson(idx){ currentPersonIdx = idx; renderPersonTabs(); renderTiles(); }
+function addPerson(){
+  people.push({ label: `Person ${people.length+1}`, cart: {} });
+  currentPersonIdx = people.length - 1;
+  renderPersonTabs(); renderTiles();
+}
+
+function renderTiles(){
+  const cart = people[currentPersonIdx].cart;
+  const grid = document.getElementById('tileGrid');
+  if(grid){
+    grid.innerHTML = sellableMenu().map(item=>{
+      const inCart = cart[item.id];
+      return `<button class="tile ${inCart?'inCart':''}" onclick="addToCart('${item.id}')">
+        <b>${esc(item.name)}</b>
+        <small>${money(item.price_kobo)}</small>
+        ${inCart ? `<span class="qtyBadge">${inCart.qty} in cart</span>` : ''}
+      </button>`;
+    }).join('');
+  }
+  const packGrid = document.getElementById('packagingGrid');
+  if(packGrid){
+    packGrid.innerHTML = packagingMenu().map(item=>{
+      const inCart = cart[item.id];
+      return `<button class="tile ${inCart?'inCart':''}" onclick="addToCart('${item.id}')">
+        <b>${esc(item.name)}</b>
+        <small>${money(item.price_kobo)}</small>
+        ${inCart ? `<span class="qtyBadge">${inCart.qty} in cart</span>` : ''}
+      </button>`;
+    }).join('');
+  }
+  renderPersonTabs();
+  updateCartBar();
+}
+
+function addToCart(id){
+  const item = menu.find(m=>m.id===id); if(!item) return;
+  const cart = people[currentPersonIdx].cart;
+  if(cart[id]) cart[id].qty++;
+  else cart[id] = {name:item.name, priceKobo:item.price_kobo, qty:1};
+  renderTiles();
+}
+
+function cartTotal(){ return people.reduce((a,p)=>a+Object.values(p.cart).reduce((a2,c)=>a2+c.priceKobo*c.qty,0),0); }
+function cartCount(){ return people.reduce((a,p)=>a+Object.values(p.cart).reduce((a2,c)=>a2+c.qty,0),0); }
+
+function updateCartBar(){
+  const bar = document.getElementById('cartBar');
+  if(cartCount() > 0){
+    bar.classList.remove('hidden');
+    document.getElementById('cartBarTotal').textContent = money(cartTotal()) + ` (${cartCount()} item${cartCount()>1?'s':''})`;
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+function packagingPreview(personCart){
+  // Client-side mirror of the server's auto-packaging logic, for an accurate preview before
+  // submitting — the server recalculates authoritatively regardless, so this only has to be
+  // right, not trusted.
+  const items = Object.values(personCart).map(c=>({name:c.name, priceKobo:c.priceKobo, qty:c.qty}));
+  const findMenuItem = (name) => menu.find(m=>m.name===name);
+  const already = (name) => items.some(it=>it.name===name);
+  const hasFood = items.some(it => { const m=findMenuItem(it.name); return m && m.kind==='food'; });
+  const foodPack = menu.find(m=>m.kind==='food_pack'), foodNylon = menu.find(m=>m.kind==='food_nylon'), nonfoodPack = menu.find(m=>m.kind==='nonfood_packaging');
+  if(hasFood){
+    if(foodPack && !already(foodPack.name)) items.push({name:foodPack.name, priceKobo:foodPack.price_kobo, qty:1});
+    if(foodNylon && !already(foodNylon.name)) items.push({name:foodNylon.name, priceKobo:foodNylon.price_kobo, qty:1});
+  } else if(nonfoodPack && nonfoodPack.price_kobo>0 && !already(nonfoodPack.name)){
+    items.push({name:nonfoodPack.name, priceKobo:nonfoodPack.price_kobo, qty:1});
+  }
+  return { items, subtotal: items.reduce((a,it)=>a+it.priceKobo*it.qty,0) };
+}
+
+function showCheckout(){
+  if(!cartCount()) return;
+  const activePeople = people.filter(p=>Object.keys(p.cart).length);
+  const enriched = activePeople.map(p=>({label:p.label, ...packagingPreview(p.cart)}));
+  const orderValue = enriched.reduce((a,p)=>a+p.subtotal,0);
+  const fee = source==='online' ? Math.min(Math.round(orderValue * (serviceFeePercent/100)), serviceFeeCapKobo) : 0;
+  const peopleHtml = enriched.map(p=>`
+    <div class="sectionhead">${esc(p.label)}</div>
+    ${p.items.map(it=>`<div class="cartRow"><div>${esc(it.name)}<small>Qty ${it.qty} × ${money(it.priceKobo)}</small></div><b>${money(it.priceKobo*it.qty)}</b></div>`).join('')}
+    <div class="cartRow" style="font-weight:700"><div>${esc(p.label)} Subtotal</div><div>${money(p.subtotal)}</div></div>
+  `).join('');
+  document.getElementById('app').innerHTML = `
+    <div class="bizName">${esc(businessName)}</div>
+    <div class="sectionhead">Your Order</div>
+    ${peopleHtml}
+    <div class="cartRow"><div>Order Value</div><div>${money(orderValue)}</div></div>
+    ${source==='online' ? `<div class="cartRow"><div>Service Fee${fee < Math.round(orderValue*(serviceFeePercent/100)) ? ' (capped)' : ' ('+serviceFeePercent+'%)'}</div><div>${money(fee)}</div></div>` : ''}
+    <div class="cartRow" style="border:0;font-weight:800;font-size:16px;padding-top:14px"><div>Total</div><div>${money(orderValue+fee)}</div></div>
+    <div class="sectionhead">Your Details</div>
+    <div class="field"><label>Your name</label><input id="custName" placeholder="Who should we call for this?"></div>
+    <div class="field"><label>Phone number</label><input id="custPhone" type="tel" placeholder="For the business to reach you" onblur="lookupCustomerProfile()"></div>
+    ${source==='online' ? `<div class="field"><label>Email (for payment receipt)</label><input id="custEmail" type="email" placeholder="you@example.com"></div>` : ''}
+    ${source==='online' ? `
+    <div class="field"><label>How would you like this?</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="wantPickupBtn" class="btn secondary" style="flex:1" onclick="setWantsDelivery(false)">Pickup</button>
+        <button type="button" id="wantDeliveryBtn" class="btn secondary" style="flex:1" onclick="setWantsDelivery(true)">Delivery</button>
+      </div>
+    </div>
+    <div class="field hidden" id="deliveryAddressField">
+      <label>Delivery address</label>
+      <select id="savedAddressSelect" class="hidden" onchange="onSavedAddressChange()" style="width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:15px;margin-bottom:8px"></select>
+      <input id="deliveryAddress" placeholder="Where should this go?" oninput="onDeliveryAddressTyped()">
+      <label class="hidden" id="saveAddressLabel" style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:500"><input type="checkbox" id="saveAddressCheck" checked style="width:auto"> Save this address for next time</label>
+    </div>
+    ` : ''}
+    <div id="checkoutError" class="hidden" style="color:var(--danger);font-size:13px;margin-bottom:10px"></div>
+    <button class="btn ink" onclick="placeOrder()">${source==='online' ? 'Continue to Payment' : 'Place Order'}</button>
+    <button class="btn secondary" style="margin-top:8px" onclick="renderMenu()">Back to Menu</button>
+  `;
+  if(source==='online'){ wantsDelivery=false; setWantsDelivery(false); }
+}
+
+function setWantsDelivery(val){
+  wantsDelivery = val;
+  wantPickupBtn.classList.toggle('accent', !val);
+  wantPickupBtn.classList.toggle('secondary', val);
+  wantDeliveryBtn.classList.toggle('accent', val);
+  wantDeliveryBtn.classList.toggle('secondary', !val);
+  deliveryAddressField.classList.toggle('hidden', !val);
+}
+
+let savedAddresses = [];
+async function lookupCustomerProfile(){
+  const phone = document.getElementById('custPhone').value.trim();
+  if(!phone || !businessId) return;
+  try{
+    const res = await fetch(`${SERVER}/api/public/customer-profile?businessId=${encodeURIComponent(businessId)}&phone=${encodeURIComponent(phone)}`);
+    const data = await res.json();
+    if(!data.found) { savedAddresses=[]; return; }
+    const nameEl = document.getElementById('custName');
+    if(nameEl && !nameEl.value.trim() && data.name) nameEl.value = data.name;
+    savedAddresses = data.addresses || [];
+    const sel = document.getElementById('savedAddressSelect');
+    if(sel && savedAddresses.length){
+      sel.innerHTML = savedAddresses.map((a,i)=>`<option value="${i}">${esc(a.label)}: ${esc(a.address)}</option>`).join('') + `<option value="new">+ Enter a new address</option>`;
+      sel.classList.remove('hidden');
+      onSavedAddressChange();
+    }
+  }catch(e){ /* best-effort — no saved profile is a normal, unremarkable case */ }
+}
+function onSavedAddressChange(){
+  const sel = document.getElementById('savedAddressSelect');
+  const addrEl = document.getElementById('deliveryAddress');
+  const saveLabel = document.getElementById('saveAddressLabel');
+  if(sel.value === 'new'){
+    addrEl.value = ''; addrEl.classList.remove('hidden'); saveLabel.classList.remove('hidden');
+  } else {
+    addrEl.value = savedAddresses[Number(sel.value)].address;
+    addrEl.classList.add('hidden'); saveLabel.classList.add('hidden'); // already saved — nothing new to offer saving
+  }
+}
+function onDeliveryAddressTyped(){
+  // Typing manually (no saved-address dropdown shown, or picked "new") means this could be
+  // a fresh address worth remembering — show the save option.
+  const saveLabel = document.getElementById('saveAddressLabel');
+  if(saveLabel) saveLabel.classList.remove('hidden');
+}
+
+async function placeOrder(){
+  const name = document.getElementById('custName').value.trim();
+  const phone = document.getElementById('custPhone').value.trim();
+  const emailEl = document.getElementById('custEmail');
+  const email = emailEl ? emailEl.value.trim() : '';
+  const deliveryAddressEl = document.getElementById('deliveryAddress');
+  const deliveryAddress = deliveryAddressEl ? deliveryAddressEl.value.trim() : '';
+  const errEl = document.getElementById('checkoutError');
+  const showErr = (m)=>{ errEl.textContent = m; errEl.classList.remove('hidden'); };
+  if(!name){ showErr('Enter your name.'); return; }
+  if(!phone){ showErr('Enter a phone number.'); return; }
+  if(source==='online' && wantsDelivery && !deliveryAddress){ showErr('Enter a delivery address.'); return; }
+  errEl.classList.add('hidden');
+
+  // Save/update the profile BEFORE submitting the order — the online path redirects
+  // straight to Paystack on success, leaving no chance to do this afterward.
+  const saveCheck = document.getElementById('saveAddressCheck');
+  if(name || phone){
+    fetch(`${SERVER}/api/public/customer-profile`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ businessId, phone, name, newAddress: (wantsDelivery && deliveryAddress && saveCheck && saveCheck.checked) ? deliveryAddress : null })
+    }).catch(()=>{}); // best-effort — never block placing the order over this
+  }
+
+  // The raw picks only — packaging is NOT sent from here, the server derives it authoritatively
+  // from the same rules, so it can never be spoofed or out of date with the real menu.
+  const peoplePayload = people.filter(p=>Object.keys(p.cart).length).map(p=>({
+    label: p.label,
+    items: Object.values(p.cart).map(c=>({name:c.name, priceKobo:c.priceKobo, qty:c.qty})),
+  }));
+  try{
+    const res = await fetch(`${SERVER}/api/public/orders`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ businessId, source, customerName:name, customerPhone:phone, people:peoplePayload, deliveryRequested:wantsDelivery, deliveryAddress })
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Could not place the order.');
+
+    if(source === 'qr'){
+      renderQrConfirmation(data.orderId, data.totalKobo); // server's authoritative total — never trust the client's own cart math for what's actually owed
+    } else {
+      const callbackUrl = location.origin + location.pathname + `?business=${encodeURIComponent(businessId)}&paid=1&order=${data.orderId}`;
+      const payRes = await fetch(`${SERVER}/api/public/orders/${data.orderId}/pay/initialize`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ email, callbackUrl })
+      });
+      const payData = await payRes.json();
+      if(!payRes.ok) throw new Error(payData.error || 'Could not start payment.');
+      location.href = payData.authorizationUrl;
+    }
+  }catch(e){
+    showErr(e.message);
+  }
+}
+
+function renderQrConfirmation(orderId, totalKobo){
+  document.getElementById('cartBar').classList.add('hidden');
+  document.getElementById('app').innerHTML = `<div class="center">
+    <h2>Order placed ✅</h2>
+    <p>Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.</p>
+    <p style="font-family:monospace;font-size:13px;color:var(--muted);margin-top:16px">Order ref: ${esc(orderId.slice(0,8))}</p>
+    <a href="${location.pathname}?track=${encodeURIComponent(orderId)}" style="display:inline-block;margin-top:16px;color:var(--brass2);font-weight:700;text-decoration:none">Track this order →</a>
+  </div>`;
+}
+
+init();
+</script>
+</body>
+</html>
