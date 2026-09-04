@@ -231,7 +231,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 52;
+const APP_VERSION = 53;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -330,6 +330,7 @@ async function getBusiness(){
   let b = await req('business','readonly',s=>s.get(id));
   if(!b){ b={id,...defaults.business}; await req('business','readwrite',s=>s.put(b)); }
   window.CURRENT_CURRENCY=b.currency||'NGN';
+  window.CURRENT_BUSINESS_TYPE=b.type||'business';
   return b;
 }
 async function bizInvoices(){const id=await getActiveBusinessId();return (await all('invoices')).filter(x=>x.businessId===id)}
@@ -359,6 +360,56 @@ async function bizBranches(){const id=await getActiveBusinessId();return (await 
 async function bizConversions(){const id=await getActiveBusinessId();return (await all('conversions')).filter(x=>x.businessId===id && x.active!==false)}
 async function bizOnlineOrders(){const id=await getActiveBusinessId();return (await all('onlineOrders')).filter(x=>x.businessId===id)}
 window.currentBranchId = null; window.currentBranchName = '';
+/* ---------------- Login-time module selection — the device-setup step. Runs once after
+   login/signup, then is remembered on the device (moborex_device_module_set) until the
+   owner explicitly switches modules. Auto-resolves silently when there's only one business
+   to choose from; only asks when there's a genuine choice to make. ---------------- */
+async function showModuleSelectionIfNeeded(force){
+ if(!force && localStorage.getItem('moborex_device_module_set')) return; // already configured on this device
+ if(!ServerAccount.token) return; // nothing to discover without an account
+ let remote=[];
+ try{ const data=await ServerAccount.api('/api/sync/businesses'); remote=data.businesses||[]; }
+ catch(e){ /* offline on first run — fall through to whatever's local, rather than block startup entirely */ }
+ const local=await all('business');
+ if(remote.length===0 && local.length===0){
+  await addBusiness(); // brand new account, nothing anywhere yet — straight to module creation; must be awaited, or startup would race ahead and refresh() could run against no business at all while this modal is still open
+  return;
+ }
+ if(remote.length<=1){
+  const target=remote[0];
+  if(target){
+   localStorage.setItem('moborex_active_business', target.businessId); // set BEFORE pulling — pull() internally calls refresh(), which reads this
+   if(!local.some(b=>b.id===target.businessId)) await ServerAccount.pull(target.businessId, true); // not on this device yet — pull it down
+  }
+  localStorage.setItem('moborex_device_module_set','1');
+  await promptSelectBranchIfNeeded();
+  return;
+ }
+ // A genuine choice — this is the "which module" question.
+ await new Promise(resolve=>{
+  openModal(`<h2>Select Module ${hb("This account has more than one business set up. Choose which one this device is for — it'll be remembered here until you switch.")}</h2>
+  <div class="list">${remote.map(b=>`<button class="btn secondary full" style="margin-bottom:8px;text-align:left" onclick="chooseDeviceModule('${b.businessId}')"><b>${esc(b.businessName||'Business')}</b></button>`).join('')}</div>`);
+  window.__moduleSelectResolve=resolve;
+ });
+}
+async function chooseDeviceModule(businessId){
+ const local=await all('business');
+ localStorage.setItem('moborex_active_business', businessId); // set BEFORE pulling — pull() internally calls refresh(), which reads this
+ if(!local.some(b=>b.id===businessId)) await ServerAccount.pull(businessId, true);
+ localStorage.setItem('moborex_device_module_set','1');
+ closeModal();
+ await promptSelectBranchIfNeeded(); // must complete BEFORE resolving — resolving first would let the outer await return while this is still mid-flow
+ if(window.__moduleSelectResolve){ window.__moduleSelectResolve(true); window.__moduleSelectResolve=null; }
+}
+// Explicit action for the owner to change what a device is set up for — re-runs the full
+// picker regardless of what's already remembered.
+async function switchDeviceModule(){
+ if(!requireOwnerMode('Switching module','moduleSwitch'))return;
+ localStorage.removeItem('moborex_device_module_set');
+ closeModal();
+ await showModuleSelectionIfNeeded(true);
+ await refresh();
+}
 async function promptSelectBranchIfNeeded(){
  const branches=(await bizBranches()).filter(b=>b.active!==false);
  if(branches.length===0){ window.currentBranchId=null; window.currentBranchName=''; return true; }
@@ -729,6 +780,16 @@ function applyBillingUI(){
   applyRolePermissionsUI(); // must run after module gating — it needs to know the tier result first
   const status = window.billingStatus && window.billingStatus.status;
   document.body.classList.toggle('accountLocked', status==='locked');
+  if(subscriptionCardStatus){
+    const bs=window.billingStatus;
+    if(!bs) subscriptionCardStatus.textContent='Log in to see your plan';
+    else if(status==='lifetime') subscriptionCardStatus.textContent='Lifetime access — no renewal needed';
+    else if(status==='trialing'){ const days=Math.max(0,Math.ceil((new Date(bs.periodEndsAt)-new Date())/86400000)); subscriptionCardStatus.textContent='Free trial — '+days+' day(s) left'; }
+    else if(status==='active') subscriptionCardStatus.textContent=(PLAN_LABELS[bs.plan]||bs.plan)+' — active';
+    else if(status==='grace') subscriptionCardStatus.textContent='Lapsed — limited use until renewed';
+    else if(status==='locked') subscriptionCardStatus.textContent='Expired — view-only until renewed';
+    else subscriptionCardStatus.textContent='Checking…';
+  }
   if(billingBanner){
     if(status==='grace'){
       const days = Math.max(0, Math.ceil((new Date(window.billingStatus.graceEndsAt) - new Date())/86400000));
@@ -869,12 +930,31 @@ function logoutServerAccount(){
     <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
     <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
     <button class="navbtn" data-min-level="3" onclick="showPosTerminal()"><span class="ic">🛒</span> POS Terminal</button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Delivery &amp; Fulfillment</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
     <button class="navbtn" data-min-level="3" onclick="showDeliveries()"><span class="ic">🚚</span> Deliveries</button>
     <button class="navbtn ownerOnly" data-min-level="3" onclick="showDeliveryReport()"><span class="ic">📋</span> Delivery Report</button>
+    <button class="navbtn ownerOnly" data-min-level="3" onclick="showBusinessLocation()"><span class="ic">📍</span> Business Location</button>
     <button class="navbtn" data-min-level="3" onclick="showPhoneOrder()"><span class="ic">📞</span> Phone Order</button>
-    <button class="navbtn ownerOnly" data-min-level="3" onclick="showOnlineOrderingSettings()"><span class="ic">🔗</span> Online Ordering</button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Online Ordering</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
+    <button class="navbtn ownerOnly" data-min-level="3" onclick="showOnlineOrderingSettings()"><span class="ic">🔗</span> Online Ordering Setup</button>
     <button class="navbtn" data-min-level="3" onclick="showIncomingOrders()"><span class="ic">📥</span> Incoming Orders</button>
     <button class="navbtn" data-min-level="3" onclick="showReadyBoard()"><span class="ic">📣</span> Ready Board</button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Hotel Operations</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
     <button class="navbtn" data-min-level="4" onclick="showHotelDashboard()"><span class="ic">🛏</span> Hotel Dashboard</button>
     <button class="navbtn" data-min-level="4" onclick="showKitchenBarTerminal()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
     <button class="navbtn ownerOnly" data-min-level="4" onclick="showOccupancyReport()"><span class="ic">📊</span> Occupancy Report</button>
@@ -894,7 +974,6 @@ function logoutServerAccount(){
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="loans" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
     <button class="navbtn ownerOnly" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
     <button class="navbtn ownerOnly" onclick="showBankAccounts()"><span class="ic">🏦</span> Bank Accounts</button>
-    <button class="navbtn ownerOnly" onclick="showBusinessLocation()"><span class="ic">📍</span> Business Location</button>
    </div>
   </div>
 
@@ -940,13 +1019,19 @@ function logoutServerAccount(){
   </div>
 
   <div class="navGroup collapsed">
-   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Settings &amp; Backup</span><span class="navGroupChevron">▾</span></button>
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Switching</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
     <button class="navbtn ownerOnly" data-perm-key="businessSwitch" onclick="showBusinessSwitcher()"><span class="ic">🏢</span> Switch Business</button>
+    <button class="navbtn ownerOnly" data-perm-key="moduleSwitch" onclick="switchDeviceModule()"><span class="ic">🔁</span> Switch Module</button>
     <button class="navbtn" onclick="showBranchManagement()"><span class="ic">📍</span> Branches</button>
     <button class="navbtn ownerOnly" data-perm-key="branchSwitch" onclick="showSwitchBranch()"><span class="ic">🔀</span> Switch Branch</button>
+   </div>
+  </div>
+
+  <div class="navGroup collapsed">
+   <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Settings &amp; Backup</span><span class="navGroupChevron">▾</span></button>
+   <div class="navGroupItems">
     <button class="navbtn ownerOnly" onclick="showCloudSync()"><span class="ic">☁</span> Sync & Backup</button>
-    <button class="navbtn ownerOnly" onclick="showBillingScreen()"><span class="ic">💳</span> Subscription</button>
     <button class="navbtn ownerOnly" onclick="showSettings()"><span class="ic">⚙</span> Business Settings</button>
    </div>
   </div>
@@ -964,15 +1049,21 @@ function logoutServerAccount(){
 
 <main class="main">
 <div class="heroBalance ownerOnly">
-  <div class="lbl">Cash Balance — All Businesses</div>
+  <div class="lbl">Cash Balance</div>
   <div class="val" id="cashBalance">—</div>
-  <div class="lbl" style="margin-top:10px">Bank Balance — All Businesses</div>
+  <div class="lbl" style="margin-top:10px">Bank Balance</div>
   <div class="val" id="bankBalanceOnly">—</div>
   <div class="heroSplit">
     <div class="heroSide"><span class="heroSideLbl">Unpaid (this business)</span><span class="heroSideVal" id="heroOutstanding">—</span></div>
   </div>
   <div class="sub">For this business only — minus its own drawings. Switch business above to see another one's figures. Unpaid invoices don't count until marked paid. <button class="linkbtn" onclick="showBankAccounts()" style="font-size:11px">See balance per bank →</button></div>
 </div>
+<button class="row-item ownerOnly" id="subscriptionCard" style="width:100%;text-align:left;border:1.4px solid var(--line);border-radius:14px;background:#fff;margin-bottom:14px;cursor:pointer" onclick="showBillingScreen()">
+  <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+    <div><b style="font-size:13px">Subscription</b><div id="subscriptionCardStatus" style="font-size:12px;color:var(--muted);margin-top:2px">Checking…</div></div>
+    <span style="color:var(--brass2);font-size:13px">Manage →</span>
+  </div>
+</button>
 <div class="stats ownerOnly">
 <div class="stat"><div class="lbl">Total Sales</div><div class="val" id="sales">—</div></div>
 <div class="stat"><div class="lbl">Received</div><div class="val" id="received">—</div></div>
@@ -1011,12 +1102,31 @@ function logoutServerAccount(){
   <button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
   <button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
   <button class="navbtn" data-min-level="3" onclick="showPosTerminal();closeDrawer()"><span class="ic">🛒</span> POS Terminal</button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Delivery &amp; Fulfillment</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
   <button class="navbtn" data-min-level="3" onclick="showDeliveries();closeDrawer()"><span class="ic">🚚</span> Deliveries</button>
   <button class="navbtn ownerOnly" data-min-level="3" onclick="showDeliveryReport();closeDrawer()"><span class="ic">📋</span> Delivery Report</button>
+  <button class="navbtn ownerOnly" data-min-level="3" onclick="showBusinessLocation();closeDrawer()"><span class="ic">📍</span> Business Location</button>
   <button class="navbtn" data-min-level="3" onclick="showPhoneOrder();closeDrawer()"><span class="ic">📞</span> Phone Order</button>
-  <button class="navbtn ownerOnly" data-min-level="3" onclick="showOnlineOrderingSettings();closeDrawer()"><span class="ic">🔗</span> Online Ordering</button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Online Ordering</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
+  <button class="navbtn ownerOnly" data-min-level="3" onclick="showOnlineOrderingSettings();closeDrawer()"><span class="ic">🔗</span> Online Ordering Setup</button>
   <button class="navbtn" data-min-level="3" onclick="showIncomingOrders();closeDrawer()"><span class="ic">📥</span> Incoming Orders</button>
   <button class="navbtn" data-min-level="3" onclick="showReadyBoard();closeDrawer()"><span class="ic">📣</span> Ready Board</button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Hotel Operations</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
   <button class="navbtn" data-min-level="4" onclick="showHotelDashboard();closeDrawer()"><span class="ic">🛏</span> Hotel Dashboard</button>
   <button class="navbtn" data-min-level="4" onclick="showKitchenBarTerminal();closeDrawer()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
   <button class="navbtn ownerOnly" data-min-level="4" onclick="showOccupancyReport();closeDrawer()"><span class="ic">📊</span> Occupancy Report</button>
@@ -1036,7 +1146,6 @@ function logoutServerAccount(){
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="loans" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
   <button class="navbtn ownerOnly" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn ownerOnly" onclick="showBankAccounts();closeDrawer()"><span class="ic">🏦</span> Bank Accounts</button>
-  <button class="navbtn ownerOnly" onclick="showBusinessLocation();closeDrawer()"><span class="ic">📍</span> Business Location</button>
  </div>
 </div>
 
@@ -1082,13 +1191,19 @@ function logoutServerAccount(){
 </div>
 
 <div class="navGroup collapsed">
- <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Settings &amp; Backup</span><span class="navGroupChevron">▾</span></button>
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Switching</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
   <button class="navbtn ownerOnly" data-perm-key="businessSwitch" onclick="showBusinessSwitcher();closeDrawer()"><span class="ic">🏢</span> Switch Business</button>
+  <button class="navbtn ownerOnly" data-perm-key="moduleSwitch" onclick="switchDeviceModule();closeDrawer()"><span class="ic">🔁</span> Switch Module</button>
   <button class="navbtn" onclick="showBranchManagement();closeDrawer()"><span class="ic">📍</span> Branches</button>
   <button class="navbtn ownerOnly" data-perm-key="branchSwitch" onclick="showSwitchBranch();closeDrawer()"><span class="ic">🔀</span> Switch Branch</button>
+ </div>
+</div>
+
+<div class="navGroup collapsed">
+ <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Settings &amp; Backup</span><span class="navGroupChevron">▾</span></button>
+ <div class="navGroupItems">
   <button class="navbtn ownerOnly" onclick="showCloudSync();closeDrawer()"><span class="ic">☁</span> Sync & Backup</button>
-  <button class="navbtn ownerOnly" onclick="showBillingScreen();closeDrawer()"><span class="ic">💳</span> Subscription</button>
   <button class="navbtn ownerOnly" onclick="showSettings();closeDrawer()"><span class="ic">⚙</span> Business Settings</button>
  </div>
 </div>
@@ -1131,7 +1246,8 @@ async function refresh(){
  document.getElementById('brandLogoWide').innerHTML=logoHtml;
  brandName.textContent=b.name; brandLogo.innerHTML=logoHtml;
  const isSalary=b.type==='salary';
- const prodLabel=isSalary?'Salary Setup':'Products / Services', custLabel=isSalary?'Employer':'Customers';
+ const isHotel=b.type==='hotel';
+ const prodLabel=isSalary?'Salary Setup':isHotel?'Bar & Kitchen Menu':'Products / Services', custLabel=isSalary?'Employer':isHotel?'Guests':'Customers';
  if(navProductsLabel)navProductsLabel.textContent=prodLabel; if(navProductsLabelDrawer)navProductsLabelDrawer.textContent=prodLabel;
  if(navCustomersLabel)navCustomersLabel.textContent=custLabel; if(navCustomersLabelDrawer)navCustomersLabelDrawer.textContent=custLabel;
  if(navNewInvoiceLabel){navNewInvoiceLabel.textContent=isSalary?'Log Salary':'New Invoice';navNewInvoiceSub.textContent=isSalary?'Add a salary payment':'Create a customer invoice';}
@@ -1187,15 +1303,48 @@ function setCurrentBranch(id, name){
  window.currentBranchId=id; window.currentBranchName=name;
  closeModal();
 }
-async function addBusiness(){
- const name=prompt('Name of the new business:');
- if(!name||!name.trim())return;
- const nb={id:crypto.randomUUID(),...defaults.business,name:name.trim()};
+// Five real modules, matching PLAN_LABELS exactly — this is where a business is actually
+// born, so it's where its type gets tied to a real module from the start, instead of a
+// bare name prompt that leaves b.type to default and disconnected from what's subscribed to.
+function addBusiness(){
+ return new Promise(resolve=>{
+  window.__addBusinessResolve=resolve;
+  openModal(`<h2>New Business ${hb("Choose the module that matches what this business actually does — this sets up the right screens and points you at the matching subscription plan.")}</h2>
+  <div class="field"><label>Business name</label><input id="nbName" placeholder="e.g. Adeola Stores"></div>
+  <div class="field"><label>Module</label>
+   <select id="nbModule">
+    <option value="personal">${esc(PLAN_LABELS.personal)}</option>
+    <option value="business_basic">${esc(PLAN_LABELS.business_basic)}</option>
+    <option value="business_stock">${esc(PLAN_LABELS.business_stock)}</option>
+    <option value="full_retail" selected>${esc(PLAN_LABELS.full_retail)}</option>
+    <option value="hotel">${esc(PLAN_LABELS.hotel)}</option>
+   </select>
+  </div>
+  <button class="btn accent full" onclick="submitAddBusiness()">Create Business</button>
+  <button class="btn secondary full" onclick="cancelAddBusiness()">Cancel</button>`);
+ });
+}
+function cancelAddBusiness(){
+ closeModal();
+ if(window.__addBusinessResolve){ window.__addBusinessResolve(false); window.__addBusinessResolve=null; }
+}
+async function submitAddBusiness(){
+ const name=nbName.value.trim();
+ if(!name){ alert('Enter a business name.'); return; }
+ const module=nbModule.value;
+ // b.type only distinguishes salary/hotel/business for now — the other three modules
+ // (basic/stock/full_retail) all run the same regular-business screens, just gated to
+ // different feature levels once a matching plan is subscribed to.
+ const bizType = module==='personal' ? 'salary' : module==='hotel' ? 'hotel' : 'business';
+ const nb={id:crypto.randomUUID(),...defaults.business,name,type:bizType};
  await put('business',nb,true); // skipDirty — handled explicitly below, since a brand new business needs to be marked ready BEFORE markDirty() would otherwise silently block its first push
  localStorage.setItem('moborex_active_business',nb.id);
+ localStorage.setItem('moborex_device_module_set','1'); // this device now has a definite module — the login-time picker won't re-ask until "Switch Module" is used
  registerBusinessWithServer(nb.id); // fire-and-forget — the business ID exists locally either way; this just gets the server aware of it immediately instead of waiting for a first billing/menu touch
  if(ServerAccount.token){ ServerAccount.readyBusinesses.add(nb.id); ServerAccount.push(nb.id, true); } // brand new — nothing on the server to lose, this device's data IS the seed, same reasoning as signup()
  closeModal();await refresh();
+ if(confirm('Business created. Go to Subscription now to activate the '+PLAN_LABELS[module]+' plan?')) await showBillingScreen();
+ if(window.__addBusinessResolve){ window.__addBusinessResolve(true); window.__addBusinessResolve=null; }
 }
 function registerBusinessWithServer(businessId){
  if(!ServerAccount.token) return; // not logged in yet — will register the first time they do log in and this business becomes active, via refreshBillingStatus()
@@ -1262,7 +1411,7 @@ const PERMISSION_KEYS = {
  investments:'Investments', loans:'Loans', taxReport:'Tax Report', audit:'Audit of Me',
  reconciliation:'Bank Reconciliation', transactionReport:'Transaction Report', openingBalances:'Opening Balances',
  voidReport:'Void Report', paymentChannelReport:'Payment Channel Report', vendorPurchaseReport:'Vendor Purchase Report',
- staffAccess:'Staff Access', businessSwitch:'Switch Business', branchSwitch:'Switch Branch',
+ staffAccess:'Staff Access', businessSwitch:'Switch Business', branchSwitch:'Switch Branch', moduleSwitch:'Switch Module',
 };
 async function refreshRolePermissions(){
  try{ const b=await getBusiness(); window.rolePermissions=b.rolePermissions||{}; }catch(e){ window.rolePermissions={}; }
@@ -1341,13 +1490,15 @@ async function showStaffAccessSettings(){
  <div class="notice">Roles: <b>Staff</b> — the general restricted view (sales, invoices, quotations, no balances/reports). <b>Supervisor</b> — same, plus can approve a POS void or refund a clerk started. <b>POS Clerk</b> — sees only the sales terminal, nothing else in the app.</div>
  <button class="btn accent full" onclick="promptAddStaffMember()">＋ Add Staff Member</button>
  <div class="sectionhead" style="margin-top:16px"><h3>Staff members</h3></div>
- <div class="list" id="staffList">${staff.map(s=>`<div class="row-item"><div><b>${esc(s.name)}</b><small>${ROLE_LABELS[s.role]||'Staff'}</small></div><div class="row-right"><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="promptChangeStaffRole('${s.id}')">Role</button><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="promptChangeStaffPin('${s.id}')">PIN</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="removeStaffMember('${s.id}')">Remove</button></span></div></div>`).join('')||'<div class="empty">No staff members added yet.</div>'}</div>
+ <div class="list" id="staffList">${staff.map(s=>`<div class="row-item"><div><b>${esc(s.name)}</b><small>${ROLE_LABELS[s.role]||'Staff'}${s.branchName?' · '+esc(s.branchName):''}</small></div><div class="row-right"><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="promptChangeStaffRole('${s.id}')">Role/Branch</button><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="promptChangeStaffPin('${s.id}')">PIN</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="removeStaffMember('${s.id}')">Remove</button></span></div></div>`).join('')||'<div class="empty">No staff members added yet.</div>'}</div>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
 }
 async function promptAddStaffMember(){
+ const branches=(await bizBranches()).filter(b=>b.active!==false);
  openModal(`<h2>Add Staff Member</h2>
  <div class="field"><label>Name</label><input id="newStaffName" placeholder="Staff member's name"></div>
  <div class="field"><label>Role</label><select id="newStaffRole"><option value="staff">Staff</option><option value="supervisor">Supervisor</option><option value="pos_clerk">POS Clerk</option></select></div>
+ ${branches.length>1?`<div class="field"><label>Branch ${hb("Which branch this person actually works at. Their PIN takes them straight there on login — no separate branch selection needed.")}</label><select id="newStaffBranch"><option value="">— Not assigned to a specific branch —</option>${branches.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>`:''}
  <div class="field"><label>PIN (4+ characters)</label>${pinInputHtml('newStaffPin1')}</div>
  <div class="field"><label>Confirm PIN</label>${pinInputHtml('newStaffPin2')}</div>
  <div id="newStaffError" style="display:none;color:var(--danger);font-size:12px;margin-top:6px;text-align:center">—</div>
@@ -1357,19 +1508,28 @@ async function promptAddStaffMember(){
 async function promptChangeStaffRole(id){
  const b=await getBusiness();
  const s=(b.staffMembers||[]).find(x=>x.id===id); if(!s)return;
- openModal(`<h2>Role — ${esc(s.name)}</h2>
+ const branches=(await bizBranches()).filter(x=>x.active!==false);
+ openModal(`<h2>Role &amp; Branch — ${esc(s.name)}</h2>
  <div class="field"><label>Role</label><select id="chgStaffRole">
   <option value="staff" ${(!s.role||s.role==='staff')?'selected':''}>Staff</option>
   <option value="supervisor" ${s.role==='supervisor'?'selected':''}>Supervisor</option>
   <option value="pos_clerk" ${s.role==='pos_clerk'?'selected':''}>POS Clerk</option>
  </select></div>
- <button class="btn accent full" onclick="submitChangeStaffRole('${id}')">Save Role</button>
+ ${branches.length>1?`<div class="field"><label>Branch ${hb("Which branch this person works at. Their PIN takes them straight there on login.")}</label><select id="chgStaffBranch"><option value="">— Not assigned to a specific branch —</option>${branches.map(x=>`<option value="${x.id}" ${s.branchId===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>`:''}
+ <button class="btn accent full" onclick="submitChangeStaffRole('${id}')">Save</button>
  <button class="btn secondary full" onclick="showStaffAccessSettings()">Cancel</button>`);
 }
 async function submitChangeStaffRole(id){
  const b=await getBusiness();
  const s=(b.staffMembers||[]).find(x=>x.id===id); if(!s)return;
  s.role=chgStaffRole.value;
+ const branchEl=document.getElementById('chgStaffBranch');
+ if(branchEl){
+  const branchId=branchEl.value;
+  const branches=branchId?(await bizBranches()):[];
+  const branch=branches.find(x=>x.id===branchId);
+  s.branchId=branchId||null; s.branchName=branch?branch.name:null;
+ }
  await put('business',b);
  closeModal();showStaffAccessSettings();
 }
@@ -1381,7 +1541,16 @@ async function submitAddStaffMember(){
  if(p1!==p2){ newStaffError.textContent='PINs did not match.'; newStaffError.style.display='block'; newStaffPin1.value=''; newStaffPin2.value=''; newStaffPin1.focus(); return; }
  const b=await getBusiness();
  b.staffMembers=b.staffMembers||[];
- b.staffMembers.push({id:crypto.randomUUID(), name, role:newStaffRole.value, pinHash:await sha256Hex(p1)});
+ const newHash=await sha256Hex(p1);
+ // A PIN identifies exactly one person — if two staff shared one, entering it would be
+ // ambiguous about who's actually logging in, and whichever record happens to be found
+ // first silently wins. Checked against every other staff member on this business.
+ if(b.staffMembers.some(s=>s.pinHash===newHash)){ newStaffError.textContent='This PIN is already in use by another staff member — choose a different one.'; newStaffError.style.display='block'; newStaffPin1.value=''; newStaffPin2.value=''; newStaffPin1.focus(); return; }
+ const branchEl=document.getElementById('newStaffBranch');
+ const branchId=branchEl?branchEl.value:'';
+ const branches=branchId?(await bizBranches()):[];
+ const branch=branches.find(x=>x.id===branchId);
+ b.staffMembers.push({id:crypto.randomUUID(), name, role:newStaffRole.value, pinHash:newHash, branchId:branchId||null, branchName:branch?branch.name:null});
  await put('business',b);
  closeModal();showStaffAccessSettings();
 }
@@ -1401,7 +1570,9 @@ async function submitChangeStaffPin(id){
  if(p1!==p2){ chgStaffError.textContent='PINs did not match.'; chgStaffError.style.display='block'; chgStaffPin1.value=''; chgStaffPin2.value=''; chgStaffPin1.focus(); return; }
  const b=await getBusiness();
  const s=(b.staffMembers||[]).find(x=>x.id===id); if(!s)return;
- s.pinHash=await sha256Hex(p1);
+ const newHash=await sha256Hex(p1);
+ if((b.staffMembers||[]).some(x=>x.id!==id && x.pinHash===newHash)){ chgStaffError.textContent='This PIN is already in use by another staff member — choose a different one.'; chgStaffError.style.display='block'; chgStaffPin1.value=''; chgStaffPin2.value=''; chgStaffPin1.focus(); return; }
+ s.pinHash=newHash;
  await put('business',b);
  closeModal();showStaffAccessSettings();
 }
@@ -1434,6 +1605,8 @@ async function submitEnterStaffMode(){
  window.staffModeActive=true;
  window.currentStaffName=match.name;
  window.currentRole=match.role||'staff';
+ window.currentBusinessNameForBanner=b.name||'';
+ if(match.branchId){ window.currentBranchId=match.branchId; window.currentBranchName=match.branchName||''; } // their PIN identifies their branch — no separate picker needed for them
  applyStaffModeUI();
  closeModal();
  alert((ROLE_LABELS[window.currentRole]||'Staff')+' mode is on for '+match.name+'. Sales, invoices, quotations, and products only — balances and reports are hidden until you exit.');
@@ -1467,7 +1640,7 @@ function applyStaffModeUI(){
  document.body.classList.toggle('posClerkMode', isPosClerk());
  document.body.classList.toggle('supervisorMode', isSupervisorOrHigher());
  const roleLabel = isStaffMode() ? (ROLE_LABELS[currentRole()]||'Staff') : '';
- if(staffModeBanner) staffModeBanner.textContent = isStaffMode() ? ('🔑 '+roleLabel+' — '+(window.currentStaffName||'')+(isPosClerk()?' — POS Terminal':' — sales & quotations only')) : '';
+ if(staffModeBanner) staffModeBanner.textContent = isStaffMode() ? ('🔑 '+roleLabel+' — '+(window.currentStaffName||'')+' — '+(window.currentBusinessNameForBanner||'')+(isPosClerk()?' — POS Terminal':' — sales & quotations only')) : '';
  if(staffModeBanner) staffModeBanner.style.display = isStaffMode() ? 'flex' : 'none';
  const showEls=[enterStaffModeBtn,enterStaffModeBtnDrawer], hideEls=[exitStaffModeBtn,exitStaffModeBtnDrawer];
  for(const el of showEls) if(el) el.style.display = isStaffMode() ? 'none' : '';
@@ -3549,9 +3722,15 @@ function currentModuleLevel(){
 }
 function applyModuleGatingUI(){
  const level=currentModuleLevel();
+ const isHotel=(window.CURRENT_BUSINESS_TYPE||'business')==='hotel';
  document.querySelectorAll('[data-min-level]').forEach(el=>{
   const min=Number(el.dataset.minLevel);
-  el.style.display = level>=min ? '' : 'none';
+  // Level 4 (hotel-tier billing) alone isn't "this business is a hotel" — it's just the
+  // highest-paying tier. Without this, any business on that tier sees hotel-only features
+  // regardless of what kind of business it actually is, and a genuine hotel business that
+  // hasn't set its type still wouldn't see them even after paying for the tier.
+  const passesHotelGate = min<4 || isHotel;
+  el.style.display = (level>=min && passesHotelGate) ? '' : 'none';
  });
 }
 async function showBillingScreen(){
@@ -3835,7 +4014,7 @@ async function showPosTerminal(){
  const bizId=await getActiveBusinessId();
  const todaysSales=(await all('invoices')).filter(i=>i.businessId===bizId && i.source==='pos' && i.date===new Date().toISOString().slice(0,10));
  const visibleSales=(isSupervisorOrHigher()?todaysSales:todaysSales.filter(i=>i.createdBy===currentActorName())).sort((a,b2)=>(a.number||'').localeCompare(b2.number||''));
- openModal(`<h2>POS Terminal ${hb("Tap a product to add it to the cart — tap again to add another. Only stock-tracked products show up here.")}</h2>
+ openModal(`<h2>${esc(b.name||'POS Terminal')} — POS Terminal ${hb("Tap a product to add it to the cart — tap again to add another. Only stock-tracked products show up here.")}</h2>
  ${!products.length?`<div class="notice">No stock-tracked products yet. Turn on stock tracking for a product under Products / Services first.</div>`:''}
  <div class="row2" style="margin-bottom:8px">
   <button class="btn secondary" onclick="showPosDashboard()">My Sales Today</button>
@@ -4268,6 +4447,8 @@ async function renderProductSold(){
    same tax computation, print, and payment machinery POS already uses. Full plan only. ---------------- */
 async function showRoomsManagement(){
  if(!requireOwnerMode('Room management'))return;
+ const b=await getBusiness();
+ if(b.type!=='hotel'){alert('This business isn\'t set to Hotel type. Change it under Business Settings first.');return;}
  window.editingRoomId=null;
  const rooms=await bizRooms();
  openModal(`<h2>Rooms ${hb("Set up each room once — number, type, nightly rate. Guests get checked into these from the Hotel Dashboard.")}</h2>
@@ -5888,6 +6069,7 @@ async function submitAuthGateLogin(){
 }
 async function continueStartupAfterAuth(){
   try{
+    await showModuleSelectionIfNeeded(); // self-gated — only does real work on first device setup or after an explicit Switch Module
     await migrateBusinessScopeIfNeeded();
     await autoGenerateSalaryIfDue();
     await refresh(); // also syncs window.rolePermissions for the active business
@@ -5952,6 +6134,8 @@ window.addEventListener('DOMContentLoaded', ()=>{
           window.staffModeActive=true;
           window.currentStaffName=match.name;
           window.currentRole=match.role||'staff';
+          window.currentBusinessNameForBanner=(b&&b.name)||'';
+          if(match.branchId){ window.currentBranchId=match.branchId; window.currentBranchName=match.branchName||''; } // their PIN identifies their branch — no separate picker needed for them
           document.body.classList.remove('locked');
           lockScreen.classList.remove('show');
           applyStaffModeUI();
