@@ -90,6 +90,7 @@ async function init(){
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Could not load the menu.');
     businessName = data.businessName;
+    document.title = businessName ? businessName+' — Order' : 'Order'; // browser tab identifies which business this is, not just generic "Order"
     menu = data.items || [];
     serviceFeePercent = data.serviceFeePercent || 7;
     serviceFeeCapKobo = data.serviceFeeCapKobo || 500000;
@@ -183,6 +184,7 @@ async function pollDeliveryJob(){
   }
 }
 function renderDeliveryJobStatus(data){
+  document.title = data.businessName ? data.businessName+' — Delivery' : 'Delivery'; // same fix as the ordering page — this is a separate render path
   const payHtml = data.deliveryPayment ? `
     <div class="notice" style="margin-top:16px">
       <b>Delivery fee: ${money(data.deliveryPayment.chargeKobo)}</b><br>

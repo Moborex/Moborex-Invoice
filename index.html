@@ -201,6 +201,10 @@ body.staffMode .ownerOnly{display:none!important}
 body.staffMode:not(.supervisorMode) .supervisorOnly{display:none!important}
 body.staffMode .ownerOnly.permGranted{display:flex!important}
 body.posClerkMode .navGroupItems .navbtn{display:none!important}
+body.hotelFrontDeskMode .navGroupItems .navbtn{display:none!important}
+body.hotelKitchenMode .navGroupItems .navbtn{display:none!important}
+body.hotelBarMode .navGroupItems .navbtn{display:none!important}
+body.productionStaffMode .navGroupItems .navbtn{display:none!important}
 .staffModeBanner{display:none;position:fixed;top:0;left:0;right:0;z-index:82;background:var(--brass);color:#fff;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;letter-spacing:.03em}
 body.staffMode .staffModeBanner{display:flex;align-items:center;justify-content:center;gap:8px}
 body.staffMode .topbar{margin-top:34px}
@@ -231,7 +235,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 53;
+const APP_VERSION = 54;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -335,6 +339,75 @@ async function getBusiness(){
 }
 async function bizInvoices(){const id=await getActiveBusinessId();return (await all('invoices')).filter(x=>x.businessId===id)}
 async function bizCustomers(){const id=await getActiveBusinessId();return (await all('customers')).filter(x=>x.businessId===id)}
+function customerSearchHtml(prefix, custLabel, selectedName, disabled){
+ return `<div class="field" style="position:relative">
+  <label>${esc(custLabel||'Customer')}</label>
+  <input id="${prefix}CustSearch" placeholder="Type a name or phone number…" value="${esc(selectedName||'')}" autocomplete="off" ${disabled?'disabled':''}
+   oninput="onCustomerSearchInput('${prefix}')" onfocus="onCustomerSearchInput('${prefix}')" onblur="setTimeout(()=>hideCustomerSearchResults('${prefix}'),200)">
+  <div id="${prefix}CustResults" style="display:none;position:absolute;z-index:50;background:#fff;border:1.4px solid var(--line);border-radius:10px;margin-top:4px;max-height:220px;overflow-y:auto;width:100%;box-shadow:0 4px 14px rgba(0,0,0,.12)"></div>
+  <div id="${prefix}CustNewForm" style="display:none;margin-top:8px;padding:10px;border:1.4px solid var(--line);border-radius:10px;background:var(--paper2,#faf8f3)"></div>
+ </div>`;
+}
+async function onCustomerSearchInput(prefix){
+ const input=document.getElementById(prefix+'CustSearch'), box=document.getElementById(prefix+'CustResults');
+ if(!input||!box)return;
+ const q=input.value.trim().toLowerCase();
+ if(!q){ box.style.display='none'; box.innerHTML=''; return; }
+ const customers=await bizCustomers();
+ const matches=customers.filter(c=>(c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q)).slice(0,8);
+ let html=matches.map(c=>`<div onclick="pickCustomerSearchResult('${prefix}','${c.id}')" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--line)"><b>${esc(c.name)}</b>${c.phone?` <small style="color:var(--muted)">${esc(c.phone)}</small>`:''}</div>`).join('');
+ html+=`<div onclick="showCreateCustomerInline('${prefix}')" style="padding:10px 12px;cursor:pointer;color:var(--brass2);font-weight:600">${matches.length?'None of these — ':''}＋ Create "${esc(input.value.trim())}" as a new customer</div>`;
+ box.innerHTML=html; box.style.display='block';
+}
+function hideCustomerSearchResults(prefix){
+ const box=document.getElementById(prefix+'CustResults');
+ if(box) box.style.display='none';
+}
+async function pickCustomerSearchResult(prefix, customerId){
+ const customers=await bizCustomers(), c=customers.find(x=>x.id===customerId);
+ const input=document.getElementById(prefix+'CustSearch');
+ if(input && c) input.value=c.name;
+ hideCustomerSearchResults(prefix);
+ if(prefix==='f') await selectCustomer(customerId);
+ else if(prefix==='q') await selectQuoteCustomer(customerId);
+}
+// Inline, not a separate modal — this app's modal is single-content, not a stack, so
+// navigating away here would silently lose an in-progress, not-yet-saved invoice or
+// quotation (which only exists in memory until its own Save button is pressed). Expanding
+// within the same screen keeps every other field exactly as the user left it.
+function showCreateCustomerInline(prefix){
+ hideCustomerSearchResults(prefix);
+ const typedName=(document.getElementById(prefix+'CustSearch')?.value||'').trim();
+ const form=document.getElementById(prefix+'CustNewForm');
+ if(!form)return;
+ form.innerHTML=`<div style="font-size:12px;font-weight:700;margin-bottom:8px">New customer</div>
+  <input id="${prefix}NcName" placeholder="Name" value="${esc(typedName)}" style="margin-bottom:6px">
+  <input id="${prefix}NcPhone" placeholder="Phone" style="margin-bottom:6px">
+  <input id="${prefix}NcAddress" placeholder="Address" style="margin-bottom:6px">
+  <div id="${prefix}NcDupWarning" style="display:none;color:var(--danger);font-size:12px;margin-bottom:6px"></div>
+  <div style="display:flex;gap:8px"><button class="btn accent" style="flex:1;padding:8px" onclick="submitCreateCustomerInline('${prefix}')">Create</button><button class="btn secondary" style="flex:1;padding:8px" onclick="document.getElementById('${prefix}CustNewForm').style.display='none'">Cancel</button></div>`;
+ form.style.display='block';
+}
+async function submitCreateCustomerInline(prefix){
+ const name=(document.getElementById(prefix+'NcName').value||'').trim();
+ if(!name){ alert('Enter a name.'); return; }
+ const phone=(document.getElementById(prefix+'NcPhone').value||'').trim();
+ const address=(document.getElementById(prefix+'NcAddress').value||'').trim();
+ const warnEl=document.getElementById(prefix+'NcDupWarning');
+ if(phone){
+  const existing=(await bizCustomers()).find(c=>c.phone===phone);
+  if(existing){
+   warnEl.innerHTML=`This phone number is already saved under <b>${esc(existing.name)}</b> — they may have used a different name before. Not creating a duplicate. <span style="color:var(--brass2);cursor:pointer;text-decoration:underline" onclick="pickCustomerSearchResult('${prefix}','${existing.id}')">Use ${esc(existing.name)} instead</span>`;
+   warnEl.style.display='block';
+   return;
+  }
+ }
+ const c={id:crypto.randomUUID(), name, phone, address, businessId:await getActiveBusinessId()};
+ await put('customers',c);
+ document.getElementById(prefix+'CustNewForm').style.display='none';
+ if(prefix==='f') await selectCustomer(c.id);
+ else if(prefix==='q') await selectQuoteCustomer(c.id);
+}
 async function findOrCreateCustomerByPhone(name, phone, address){
  // Links a phone/online order to the app's own Customers list by phone number, so a
  // repeat customer's Customer Statement actually reflects their history — matches the
@@ -833,20 +906,70 @@ async function doServerSignup(){
   try{
     await ServerAccount.signup(saEmail.value.trim(), saPassword.value, saName.value.trim());
     alert('Account created! Your data is now backed up to your account.');
-    closeModal(); showCloudSync();
+    closeModal(); await continueStartupAfterAuth();
   }catch(e){ alert('Could not create account: '+e.message); }
 }
 async function doServerLogin(){
   if(!saLoginEmail.value || !saLoginPassword.value) return alert('Enter your email and password.');
   try{
     await ServerAccount.login(saLoginEmail.value.trim(), saLoginPassword.value);
-    if(confirm("Signed in. Pull this account's data into this device now? (Recommended for a new device.)")) await ServerAccount.pull(true);
-    closeModal(); showCloudSync();
+    closeModal(); await continueStartupAfterAuth(); // handles per-business discovery/pull correctly — the old blind pull(true) here was a leftover from before sync went per-business and never actually worked (businessId="true" matches nothing)
   }catch(e){ alert('Could not sign in: '+e.message); }
 }
-function logoutServerAccount(){
-  if(!confirm('Log out of this account on this device? Your data stays on the server.')) return;
-  ServerAccount.logout(); closeModal(); showCloudSync();
+// This button was previously wired to ServerAccount.push(true) — a leftover from before
+// sync went per-business. push() now requires a real businessId as its first argument, so
+// that call silently did nothing at all: force was never actually true, and true was
+// treated as the businessId, which never matches anything real. Fixed by resolving the
+// actual active business first.
+async function syncNow(){
+ if(!ServerAccount.token){ alert('Log in first.'); return; }
+ const bizId=await getActiveBusinessId();
+ await ServerAccount.push(bizId, true);
+ await showCloudSync();
+}
+async function logoutServerAccount(){
+ if(!ServerAccount.token){ alert('Not logged in.'); return; }
+ // Forced sync before logout — this device might genuinely never be used again by this
+ // person, so any change that only exists here right now needs to reach the server first.
+ // Offline with unsynced changes is a hard block, not a warning: there's nowhere for the
+ // data to go, and once logged out there's no guarantee of a way back to finish the job.
+ const dirty=Array.from(ServerAccount.dirtyBusinesses||[]);
+ if(dirty.length){
+  if(!navigator.onLine){
+   alert('You have changes that haven\'t been synced yet, and this device appears to be offline. Please connect to the internet before logging out — otherwise this may be the only place these changes exist, and there\'s no guarantee you\'ll be back on this device to finish syncing them.');
+   return;
+  }
+  for(const bizId of dirty){
+   try{ await ServerAccount.push(bizId, true); }
+   catch(e){ alert('Could not sync your changes before logging out: '+e.message+'\n\nLogout cancelled, to avoid leaving unsynced data behind. Please try again once you have a stable connection.'); return; }
+  }
+ }
+ if(!confirm('Log out of this account on this device? You can sign back in with this account, or a different one, next time.')) return;
+ ServerAccount.logout();
+ // No business ID stays "in session" after this — clearing the active-business pointer
+ // and every in-memory global means getActiveBusinessId()'s fallback logic has nothing to
+ // silently resolve to, and nothing stale can leak into the next login before it's ready.
+ localStorage.removeItem('moborex_active_business');
+ localStorage.removeItem('moborex_device_module_set');
+ window.CURRENT_BUSINESS_TYPE=null;
+ window.CURRENT_CURRENCY=null;
+ window.billingStatus=null;
+ window.currentBranchId=null; window.currentBranchName=null;
+ window.staffModeActive=false; window.currentStaffName=null; window.currentRole=null;
+ blankDashboardUI();
+ closeModal();
+ showAuthGate();
+}
+// Belt-and-suspenders alongside the auth gate's full-screen overlay — clears every visible
+// figure immediately so nothing stale is even momentarily present in the DOM underneath it.
+function blankDashboardUI(){
+ for(const id of ['cashBalance','bankBalanceOnly','heroOutstanding','sales','received','outstanding','profit','personalSpend','commissionOwed']){
+  const el=document.getElementById(id); if(el) el.textContent='—';
+ }
+ const subStatus=document.getElementById('subscriptionCardStatus'); if(subStatus) subStatus.textContent='Checking…';
+ const recent=document.getElementById('recent'); if(recent) recent.innerHTML='';
+ const bizNameWide=document.getElementById('bizNameWide'); if(bizNameWide) bizNameWide.textContent='Business';
+ applyStaffModeUI();
 }
 </script>
 </head>
@@ -865,22 +988,26 @@ function logoutServerAccount(){
   <div style="max-width:340px;width:100%;color:#fff">
     <div style="text-align:center;margin-bottom:20px">
       <div style="font-family:var(--font-display);font-weight:800;font-size:20px">Business Vault<span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.6;margin-left:6px;font-family:var(--font-mono)">by Moborex</span></div>
-      <div style="font-size:11px;opacity:.6;margin-top:2px">An account is needed to use the app — your 14-day trial starts the moment you sign up.</div>
+      <div style="font-size:11px;opacity:.6;margin-top:2px" id="agTagline">Run the business. Not just the books.</div>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:14px;background:rgba(255,255,255,.08);border-radius:10px;padding:4px">
-      <button id="agTabSignup" onclick="switchAuthGateTab('signup')" style="flex:1;padding:9px;border:0;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;background:#fff;color:var(--ink)">Sign Up</button>
-      <button id="agTabLogin" onclick="switchAuthGateTab('login')" style="flex:1;padding:9px;border:0;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;background:transparent;color:#fff">Log In</button>
+    <div id="agLandingPane">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;text-align:center">Which of these matches your business?</div>
+      <div id="agModuleList" style="max-height:340px;overflow-y:auto;margin-bottom:14px"></div>
+      <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="showAuthGateLoginFromLanding()">Already have an account? Log In</button>
     </div>
-    <div id="agSignupPane">
+    <div id="agSignupPane" style="display:none">
+      <div id="agSignupModuleContext" style="font-size:12px;background:rgba(255,255,255,.08);border-radius:10px;padding:10px;margin-bottom:10px"></div>
       <input id="agSignupName" placeholder="Business / Account name" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
       <input id="agSignupEmail" type="email" autocomplete="off" placeholder="Email" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
       <input id="agSignupPassword" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Password (8+ characters)" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
-      <button class="btn accent full" onclick="submitAuthGateSignup()">Create Account &amp; Start Trial</button>
+      <button class="btn accent full" onclick="submitAuthGateSignup()">Create Account</button>
+      <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showAuthGateLanding()">← Back to modules</button>
     </div>
     <div id="agLoginPane" style="display:none">
       <input id="agLoginEmail" type="email" autocomplete="off" placeholder="Email" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
       <input id="agLoginPassword" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Password" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
       <button class="btn accent full" onclick="submitAuthGateLogin()">Log In</button>
+      <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showAuthGateLanding()">← Back</button>
     </div>
     <div id="agError" style="display:none;color:#f2a5a5;font-size:12px;margin-top:10px;text-align:center">—</div>
     <div id="agBusy" style="display:none;color:#fff;font-size:12px;margin-top:10px;text-align:center;opacity:.7">Working…</div>
@@ -974,6 +1101,7 @@ function logoutServerAccount(){
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="loans" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
     <button class="navbtn ownerOnly" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
     <button class="navbtn ownerOnly" onclick="showBankAccounts()"><span class="ic">🏦</span> Bank Accounts</button>
+    <button class="navbtn supervisorOnly" onclick="showPaymentAdviceMenu()"><span class="ic">💸</span> Payment Advice</button>
    </div>
   </div>
 
@@ -1146,6 +1274,7 @@ function logoutServerAccount(){
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="loans" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
   <button class="navbtn ownerOnly" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
   <button class="navbtn ownerOnly" onclick="showBankAccounts();closeDrawer()"><span class="ic">🏦</span> Bank Accounts</button>
+  <button class="navbtn supervisorOnly" onclick="showPaymentAdviceMenu();closeDrawer()"><span class="ic">💸</span> Payment Advice</button>
  </div>
 </div>
 
@@ -1279,7 +1408,7 @@ async function showBusinessSwitcher(){ if(!requireOwnerMode('Switching business'
  openModal(`<h2>Switch Business ${hb("Each business keeps its own invoices, customers, products, settings, and Director's Drawings, completely separate.")}</h2>
  <div class="notice">Each business keeps its own invoices, customers, products, settings, and Director's Drawings — completely separate books.</div>
  <div class="list" id="bizList"></div>
- <button class="btn accent full" onclick="addBusiness()">＋ Add New Business</button>
+ <button class="btn accent full" onclick="promptAddModuleFromWithinApp()">＋ Add Another Module</button>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
  document.getElementById('bizList').innerHTML = list.sort((a,b)=>a.name.localeCompare(b.name)).map(b=>`
   <div class="row-item">
@@ -1306,6 +1435,16 @@ function setCurrentBranch(id, name){
 // Five real modules, matching PLAN_LABELS exactly — this is where a business is actually
 // born, so it's where its type gets tied to a real module from the start, instead of a
 // bare name prompt that leaves b.type to default and disconnected from what's subscribed to.
+// Adding a module is deliberately not an in-app action — keeping it tied to the front
+// page (where every module is shown clearly, with its own trial/payment step) avoids
+// the in-app environment turning into a place where modules the account hasn't actually
+// subscribed to start showing up muddled in with the ones it has.
+function promptAddModuleFromWithinApp(){
+ if(confirm('To add another module, you\'ll need to log out and select it from the front page — this keeps things tidy and makes sure the new module\'s trial or payment gets set up properly.\n\nLog out now?')){
+  closeModal();
+  logoutServerAccount();
+ }
+}
 function addBusiness(){
  return new Promise(resolve=>{
   window.__addBusinessResolve=resolve;
@@ -1328,10 +1467,7 @@ function cancelAddBusiness(){
  closeModal();
  if(window.__addBusinessResolve){ window.__addBusinessResolve(false); window.__addBusinessResolve=null; }
 }
-async function submitAddBusiness(){
- const name=nbName.value.trim();
- if(!name){ alert('Enter a business name.'); return; }
- const module=nbModule.value;
+async function createBusinessForModule(name, module){
  // b.type only distinguishes salary/hotel/business for now — the other three modules
  // (basic/stock/full_retail) all run the same regular-business screens, just gated to
  // different feature levels once a matching plan is subscribed to.
@@ -1342,6 +1478,13 @@ async function submitAddBusiness(){
  localStorage.setItem('moborex_device_module_set','1'); // this device now has a definite module — the login-time picker won't re-ask until "Switch Module" is used
  registerBusinessWithServer(nb.id); // fire-and-forget — the business ID exists locally either way; this just gets the server aware of it immediately instead of waiting for a first billing/menu touch
  if(ServerAccount.token){ ServerAccount.readyBusinesses.add(nb.id); ServerAccount.push(nb.id, true); } // brand new — nothing on the server to lose, this device's data IS the seed, same reasoning as signup()
+ return nb;
+}
+async function submitAddBusiness(){
+ const name=nbName.value.trim();
+ if(!name){ alert('Enter a business name.'); return; }
+ const module=nbModule.value;
+ await createBusinessForModule(name, module);
  closeModal();await refresh();
  if(confirm('Business created. Go to Subscription now to activate the '+PLAN_LABELS[module]+' plan?')) await showBillingScreen();
  if(window.__addBusinessResolve){ window.__addBusinessResolve(true); window.__addBusinessResolve=null; }
@@ -1353,13 +1496,42 @@ function registerBusinessWithServer(businessId){
 async function deleteBusiness(id){
  const list=await all('business');
  if(list.length<=1){alert('You need at least one business.');return;}
- if(!confirm('Delete this business and ALL its invoices, customers, products, and expenses? This cannot be undone.'))return;
+ const biz=list.find(b=>b.id===id);
+ if(!biz)return;
+ // Real deletion is a genuinely destructive action — a simple OK/Cancel is too easy to
+ // click through by habit. Typing the business's own name is the same bar other serious
+ // deletions use elsewhere, and doubles as a moment to actually reconsider.
+ const typed=prompt('This permanently deletes "'+biz.name+'" and ALL its invoices, customers, products, and expenses — on every device, everywhere. This cannot be undone.\n\nType the business name exactly to confirm:');
+ if(typed===null)return;
+ if(typed.trim()!==biz.name){ alert('That didn\'t match — nothing was deleted.'); return; }
+ if(ServerAccount.token){
+  try{
+   await ServerAccount.api('/api/business/delete', {method:'POST', body: JSON.stringify({businessId:id})});
+  }catch(e){
+   if(e.message && e.message.includes('active subscription')){
+    if(confirm(e.message+'\n\nDeactivate it instead? This hides it from Switch Module and future syncing everywhere, but keeps all its data and billing history intact — reversible later.')){
+     await deactivateBusiness(id);
+    }
+    return;
+   }
+   alert('Could not delete on the server: '+e.message+'\n\nNothing was deleted, to avoid this device and the server disagreeing about what exists.');
+   return;
+  }
+ }
  for(const store of ['invoices','customers','products','quotations','commissions','loans','stockPurchases','returns','rooms','bookings','branches','conversions','onlineOrders']){for(const item of (await all(store)).filter(x=>x.businessId===id))await del(store,item.id);}
  for(const t of (await all('expenseTypes')).filter(t=>t.kind!=='personal'&&t.businessId===id))await del('expenseTypes',t.id);
  for(const e of (await all('expenses')).filter(e=>e.kind!=='personal'&&e.businessId===id))await del('expenses',e.id);
  await req('business','readwrite',s=>s.delete(id));
  if(localStorage.getItem('moborex_active_business')===id)localStorage.removeItem('moborex_active_business');
  closeModal();await showBusinessSwitcher();await refresh();
+}
+async function deactivateBusiness(id){
+ if(!ServerAccount.token){ alert('Log in to your account first — deactivation is a server-side action.'); return; }
+ try{
+  await ServerAccount.api('/api/business/deactivate', {method:'POST', body: JSON.stringify({businessId:id})});
+  alert('Deactivated — it\'s hidden from Switch Module and future syncing now, but nothing was deleted. Contact support or use the admin side to reactivate it later if needed.');
+  closeModal();await showBusinessSwitcher();
+ }catch(e){ alert('Could not deactivate: '+e.message); }
 }
 
 /* ---------------- App Lock ---------------- */
@@ -1394,8 +1566,12 @@ function isStaffMode(){ return !!window.staffModeActive; }
 function currentRole(){ return isStaffMode() ? (window.currentRole||'staff') : 'owner'; } // 'owner' | 'staff' | 'supervisor' | 'pos_clerk'
 function isOwner(){ return currentRole()==='owner'; }
 function isPosClerk(){ return currentRole()==='pos_clerk'; }
+function isHotelFrontDesk(){ return currentRole()==='hotel_front_desk'; }
+function isHotelKitchen(){ return currentRole()==='hotel_kitchen'; }
+function isHotelBar(){ return currentRole()==='hotel_bar'; }
+function isProductionStaff(){ return currentRole()==='production_staff'; }
 function isSupervisorOrHigher(){ return currentRole()==='owner' || currentRole()==='supervisor'; }
-const ROLE_LABELS = {staff:'Staff', supervisor:'Supervisor', pos_clerk:'POS Clerk'};
+const ROLE_LABELS = {staff:'Staff', supervisor:'Supervisor', pos_clerk:'POS Clerk', hotel_front_desk:'Hotel Front Desk', hotel_kitchen:'Kitchen Staff', hotel_bar:'Bar Staff', production_staff:'Production Staff'};
 function toggleNavGroup(headerEl){ headerEl.closest('.navGroup').classList.toggle('collapsed'); }
 function expandAllNavGroups(){ document.querySelectorAll('.navGroup').forEach(g=>g.classList.remove('collapsed')); }
 function collapseAllNavGroups(){ document.querySelectorAll('.navGroup').forEach(g=>g.classList.add('collapsed')); }
@@ -1495,9 +1671,11 @@ async function showStaffAccessSettings(){
 }
 async function promptAddStaffMember(){
  const branches=(await bizBranches()).filter(b=>b.active!==false);
+ const b=await getBusiness();
+ const isHotelBiz=b.type==='hotel';
  openModal(`<h2>Add Staff Member</h2>
  <div class="field"><label>Name</label><input id="newStaffName" placeholder="Staff member's name"></div>
- <div class="field"><label>Role</label><select id="newStaffRole"><option value="staff">Staff</option><option value="supervisor">Supervisor</option><option value="pos_clerk">POS Clerk</option></select></div>
+ <div class="field"><label>Role</label><select id="newStaffRole"><option value="staff">Staff</option><option value="supervisor">Supervisor</option><option value="pos_clerk">POS Clerk</option><option value="production_staff">Production Staff</option>${isHotelBiz?`<option value="hotel_front_desk">Hotel Front Desk</option><option value="hotel_kitchen">Kitchen Staff</option><option value="hotel_bar">Bar Staff</option>`:''}</select></div>
  ${branches.length>1?`<div class="field"><label>Branch ${hb("Which branch this person actually works at. Their PIN takes them straight there on login — no separate branch selection needed.")}</label><select id="newStaffBranch"><option value="">— Not assigned to a specific branch —</option>${branches.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>`:''}
  <div class="field"><label>PIN (4+ characters)</label>${pinInputHtml('newStaffPin1')}</div>
  <div class="field"><label>Confirm PIN</label>${pinInputHtml('newStaffPin2')}</div>
@@ -1509,11 +1687,14 @@ async function promptChangeStaffRole(id){
  const b=await getBusiness();
  const s=(b.staffMembers||[]).find(x=>x.id===id); if(!s)return;
  const branches=(await bizBranches()).filter(x=>x.active!==false);
+ const isHotelBiz=b.type==='hotel';
  openModal(`<h2>Role &amp; Branch — ${esc(s.name)}</h2>
  <div class="field"><label>Role</label><select id="chgStaffRole">
   <option value="staff" ${(!s.role||s.role==='staff')?'selected':''}>Staff</option>
   <option value="supervisor" ${s.role==='supervisor'?'selected':''}>Supervisor</option>
   <option value="pos_clerk" ${s.role==='pos_clerk'?'selected':''}>POS Clerk</option>
+  <option value="production_staff" ${s.role==='production_staff'?'selected':''}>Production Staff</option>
+  ${isHotelBiz?`<option value="hotel_front_desk" ${s.role==='hotel_front_desk'?'selected':''}>Hotel Front Desk</option><option value="hotel_kitchen" ${s.role==='hotel_kitchen'?'selected':''}>Kitchen Staff</option><option value="hotel_bar" ${s.role==='hotel_bar'?'selected':''}>Bar Staff</option>`:''}
  </select></div>
  ${branches.length>1?`<div class="field"><label>Branch ${hb("Which branch this person works at. Their PIN takes them straight there on login.")}</label><select id="chgStaffBranch"><option value="">— Not assigned to a specific branch —</option>${branches.map(x=>`<option value="${x.id}" ${s.branchId===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>`:''}
  <button class="btn accent full" onclick="submitChangeStaffRole('${id}')">Save</button>
@@ -1638,15 +1819,29 @@ async function submitExitStaffMode(){
 function applyStaffModeUI(){
  document.body.classList.toggle('staffMode', isStaffMode());
  document.body.classList.toggle('posClerkMode', isPosClerk());
+ document.body.classList.toggle('hotelFrontDeskMode', isHotelFrontDesk());
+ document.body.classList.toggle('hotelKitchenMode', isHotelKitchen());
+ document.body.classList.toggle('hotelBarMode', isHotelBar());
+ document.body.classList.toggle('productionStaffMode', isProductionStaff());
  document.body.classList.toggle('supervisorMode', isSupervisorOrHigher());
  const roleLabel = isStaffMode() ? (ROLE_LABELS[currentRole()]||'Staff') : '';
- if(staffModeBanner) staffModeBanner.textContent = isStaffMode() ? ('🔑 '+roleLabel+' — '+(window.currentStaffName||'')+' — '+(window.currentBusinessNameForBanner||'')+(isPosClerk()?' — POS Terminal':' — sales & quotations only')) : '';
+ const roleContext = isPosClerk() ? ' — POS Terminal' : isHotelFrontDesk() ? ' — Hotel Front Desk' : isHotelKitchen() ? ' — Kitchen' : isHotelBar() ? ' — Bar' : isProductionStaff() ? ' — Production' : ' — sales & quotations only';
+ if(staffModeBanner) staffModeBanner.textContent = isStaffMode() ? ('🔑 '+roleLabel+' — '+(window.currentStaffName||'')+' — '+(window.currentBusinessNameForBanner||'')+roleContext) : '';
  if(staffModeBanner) staffModeBanner.style.display = isStaffMode() ? 'flex' : 'none';
  const showEls=[enterStaffModeBtn,enterStaffModeBtnDrawer], hideEls=[exitStaffModeBtn,exitStaffModeBtnDrawer];
  for(const el of showEls) if(el) el.style.display = isStaffMode() ? 'none' : '';
  for(const el of hideEls) if(el) el.style.display = isStaffMode() ? '' : 'none';
  if(isPosClerk()){
   showPosTerminal();
+ }
+ if(isHotelFrontDesk()){
+  showHotelDashboard();
+ }
+ if(isHotelKitchen() || isHotelBar()){
+  showKitchenBarTerminal();
+ }
+ if(isProductionStaff()){
+  showProductionStaffScreen();
  }
 }
 
@@ -1712,9 +1907,10 @@ async function saveSalarySetup(){
  closeModal();await refresh();
 }
 
-async function showProducts(){let p=await bizProducts();window.editingProductId=null;openModal(`<h2>Products / Services ${hb("Add a cost price and turn on stock tracking for anything you buy and resell — the app will then quietly deduct stock when it's sold on an invoice, and restore it if that invoice is voided.")}</h2>
+async function showProducts(){let p=await bizProducts();const b=await getBusiness();const isHotelBiz=b.type==='hotel';window.editingProductId=null;openModal(`<h2>${isHotelBiz?'Bar &amp; Kitchen Menu':'Products / Services'} ${hb("Add a cost price and turn on stock tracking for anything you buy and resell — the app will then quietly deduct stock when it's sold on an invoice, and restore it if that invoice is voided.")}</h2>
 <div class="row2"><div class="field"><label>Name</label><input id="pName"></div><div class="field"><label>Selling Price</label><input id="pPrice" type="number" min="0"></div></div>
 <div class="field"><label>Track stock for this item? ${hb("Optional. Leave off for services or anything you don't hold as physical inventory.")}</label><select id="pTrack" onchange="onTrackStockChanged()"><option value="0">No</option><option value="1">Yes</option></select></div>
+${isHotelBiz?`<div class="field"><label>Department ${hb("Kitchen and Bar staff each only see their own department's items on the Kitchen/Bar Terminal — this is what tells the app which is which.")}</label><select id="pDepartment"><option value="">— Neither —</option><option value="kitchen">Kitchen</option><option value="bar">Bar</option></select></div>`:''}
 <div id="pStockFields" style="display:none">
  <div class="row2"><div class="field"><label>Cost Price (per unit)</label><input id="pCost" type="number" min="0"></div><div class="field"><label>Current Stock Qty</label><input id="pQty" type="number"></div></div>
  <div class="field"><label>Low stock warning at ${hb("Optional — leave at 0 to not bother with a warning for this product.")}</label><input id="pLowStockThreshold" type="number" min="0" value="0"></div>
@@ -1748,13 +1944,15 @@ function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(
   : `<button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button>`;
  return `<div class="row-item"><div><b>${esc(p.name)}</b>${pendingBadge}${stockLine}</div><div class="row-right"><strong class="money">${money(p.price)}</strong><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="editProduct('${p.id}')">Edit</button>${deleteBtn}</span></div></div>`;
 }).join('')||'<div class="empty">No products yet.</div>'}
-function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pTrack.value=p.trackStock?'1':'0';pCost.value=p.costPrice||0;pQty.value=p.stockQty||0;pLowStockThreshold.value=p.lowStockThreshold||0;pKind.value=p.kind||'regular';toggleProductStockFields();pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
+function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pTrack.value=p.trackStock?'1':'0';pCost.value=p.costPrice||0;pQty.value=p.stockQty||0;pLowStockThreshold.value=p.lowStockThreshold||0;pKind.value=p.kind||'regular';const deptEl=document.getElementById('pDepartment');if(deptEl)deptEl.value=p.department||'';toggleProductStockFields();pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
 function cancelEditProduct(){window.editingProductId=null;pName.value='';pPrice.value='';pTrack.value='0';pCost.value='';pQty.value='';pLowStockThreshold.value=0;pKind.value='regular';toggleProductStockFields();pSaveBtn.textContent='＋ Add Product';pCancelBtn.style.display='none'}
 async function saveProduct(){if(!requireActiveSubscription('Adding a product'))return;if(!pName.value.trim())return alert('Enter a product name.');
  const trackStock=pTrack.value==='1';
  const kind=pKind.value;
- if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;p.trackStock=trackStock;p.kind=kind;if(trackStock){p.costPrice=Number(pCost.value)||0;p.lowStockThreshold=Number(pLowStockThreshold.value)||0;}await put('products',p);} // stockQty deliberately not touched here — locked after creation, see toggleProductStockFields()
- else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId(),trackStock,kind,costPrice:trackStock?(Number(pCost.value)||0):0,stockQty:trackStock?(Number(pQty.value)||0):0,lowStockThreshold:trackStock?(Number(pLowStockThreshold.value)||0):0,createdBy:currentActorName()};await put('products',p);pCache.push(p);}
+ const deptEl=document.getElementById('pDepartment');
+ const department=deptEl?(deptEl.value||null):null; // only rendered for hotel businesses at all — unlike pKind, which always exists just sometimes CSS-hidden
+ if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;p.trackStock=trackStock;p.kind=kind;p.department=department;if(trackStock){p.costPrice=Number(pCost.value)||0;p.lowStockThreshold=Number(pLowStockThreshold.value)||0;}await put('products',p);} // stockQty deliberately not touched here — locked after creation, see toggleProductStockFields()
+ else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId(),trackStock,kind,department,costPrice:trackStock?(Number(pCost.value)||0):0,stockQty:trackStock?(Number(pQty.value)||0):0,lowStockThreshold:trackStock?(Number(pLowStockThreshold.value)||0):0,createdBy:currentActorName()};await put('products',p);pCache.push(p);}
  cancelEditProduct();drawProducts()}
 async function deleteProduct(id){
  const p=pCache.find(x=>x.id===id); if(!p)return;
@@ -1794,7 +1992,22 @@ async function applyStockDelta(items, sign){
 }
 
 /* ---------------- Customers ---------------- */
-async function showCustomers(){const biz=await getBusiness();const label=biz.type==='salary'?'Employer':'Customer';let c=await bizCustomers();openModal(`<h2>${label}s</h2><div class="field"><label>Name</label><input id="cName"></div><div class="row2"><div class="field"><label>Phone</label><input id="cPhone"></div><div class="field"><label>Address</label><input id="cAddress"></div></div><button class="btn accent full" onclick="addCustomer()">＋ Add ${label}</button><div class="sectionhead" style="margin-top:18px"><h3>All ${label.toLowerCase()}s</h3></div><div class="list" id="cList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.cCache=c;drawCustomers()}
+async function showCustomers(){const biz=await getBusiness();const label=biz.type==='salary'?'Employer':'Customer';let c=await bizCustomers();openModal(`<h2>${label}s</h2><div class="field"><label>Name</label><input id="cName"></div><div class="row2"><div class="field"><label>Phone</label><input id="cPhone"></div><div class="field"><label>Address</label><input id="cAddress"></div></div><div id="cDupWarning" style="display:none;color:var(--danger);font-size:12px;margin-bottom:8px"></div><button class="btn accent full" onclick="addCustomer()">＋ Add ${label}</button><div class="sectionhead" style="margin-top:18px"><h3>All ${label.toLowerCase()}s</h3></div><div class="list" id="cList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);window.cCache=c;drawCustomers()}
+async function addCustomer(){
+ if(!cName.value.trim())return alert('Enter a customer name.');
+ const phone=cPhone.value.trim();
+ const warnEl=document.getElementById('cDupWarning');
+ if(phone){
+  const existing=cCache.find(c=>c.phone===phone);
+  if(existing){
+   warnEl.innerHTML=`This phone number is already saved under <b>${esc(existing.name)}</b> — they may have used a different name before. Not creating a duplicate.`;
+   warnEl.style.display='block';
+   return;
+  }
+ }
+ if(warnEl)warnEl.style.display='none';
+ let c={id:crypto.randomUUID(),name:cName.value.trim(),phone,address:cAddress.value.trim(),businessId:await getActiveBusinessId()};await put('customers',c);cCache.push(c);cName.value='';cPhone.value='';cAddress.value='';drawCustomers()
+}
 function drawCustomers(){cList.innerHTML=cCache.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<div class="row-item"><div><b>${esc(c.name)}</b><small>${esc(c.phone||'')}</small></div><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="showCustomerStatement('${c.id}')">Statement</button><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteCustomer('${c.id}')">Delete</button></span></div>`).join('')||'<div class="empty">No customers yet.</div>'}
 async function showCustomerStatement(customerId){
  const biz=await getBusiness();
@@ -1819,7 +2032,6 @@ async function showCustomerStatement(customerId){
  <div class="list">${rows}</div>
  <button class="btn secondary full" onclick="showCustomers()">Back</button>`);
 }
-async function addCustomer(){if(!cName.value.trim())return alert('Enter a customer name.');let c={id:crypto.randomUUID(),name:cName.value.trim(),phone:cPhone.value.trim(),address:cAddress.value.trim(),businessId:await getActiveBusinessId()};await put('customers',c);cCache.push(c);cName.value='';cPhone.value='';cAddress.value='';drawCustomers()}
 async function deleteCustomer(id){if(!confirm('Delete this customer?'))return;await del('customers',id);cCache=cCache.filter(x=>x.id!==id);drawCustomers()}
 
 /* ---------------- Expense Types ---------------- */
@@ -2012,11 +2224,10 @@ async function openQuotation(id){
  q=q||{id:crypto.randomUUID(),businessId:await getActiveBusinessId(),status:'draft',number:await nextQuoteNo(),date:new Date().toISOString().slice(0,10),validUntil:'',customerId:'',customer:'',phone:'',address:'',discount:0,items:[{productId:'',description:'',qty:1,price:0,comment:''}],notes:'',headerComment:'',createdBy:currentActorName()};
  window.qEditing=q; window.qItems=(q.items||[]).map(x=>({...x}));
  const locked=q.status==='converted';
- const custOpts='<option value="">Select saved customer</option>'+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
  openModal(`<h2>${id?'Edit Quotation':'New Quotation'}</h2>
  ${locked?`<div class="notice" style="background:var(--goodSoft);border-color:#bfe0d1;color:var(--good)"><b>Converted to invoice.</b> This quotation is now locked for editing — see the linked invoice for the live version.</div>`:''}
  <div class="row2"><div class="field"><label>Quote number</label><input id="qNo" value="${esc(q.number)}" ${locked?'disabled':''}></div><div class="field"><label>Date</label><input id="qDate" type="date" value="${q.date}" ${locked?'disabled':''}></div></div>
- <div class="row2"><div class="field"><label>Customer</label><select id="qCustomerSelect" onchange="selectQuoteCustomer(this.value)" ${locked?'disabled':''}>${custOpts}</select></div><div class="field"><label>Valid until</label><input id="qValid" type="date" value="${q.validUntil||''}" ${locked?'disabled':''}></div></div>
+ <div class="row2">${customerSearchHtml('q', 'Customer', customers.find(c=>c.id===q.customerId)?.name, locked)}<div class="field"><label>Valid until</label><input id="qValid" type="date" value="${q.validUntil||''}" ${locked?'disabled':''}></div></div>
  <div class="row2"><div class="field"><label>Customer phone</label><input id="qPhone" value="${esc(q.phone)}" readonly></div><div class="field"><label>Customer address</label><input id="qAddress" value="${esc(q.address)}" readonly></div></div>
  <div class="field"><label>Header note</label><textarea id="qHeader" ${locked?'disabled':''}>${esc(q.headerComment||'')}</textarea></div>
  <div class="sectionhead"><h3>Quoted items / services</h3>${locked?'':'<button class="btn secondary" onclick="addQuoteLine()">＋ Add</button>'}</div><div id="qlines"></div>
@@ -2035,7 +2246,7 @@ async function openQuotation(id){
  </div>` : ''}
  ${id?`<button class="btn danger full" onclick="deleteQuotation('${id}')">Delete Quotation</button>`:''}
  <button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- window.qSelectedCustomerId=q.customerId||''; if(qCustomerSelect)qCustomerSelect.value=qSelectedCustomerId; if(qSelectedCustomerId)await selectQuoteCustomer(qSelectedCustomerId);
+ window.qSelectedCustomerId=q.customerId||''; if(window.qSelectedCustomerId)await selectQuoteCustomer(window.qSelectedCustomerId);
  await drawQuoteLines(); updateQuoteTotal();
 }
 async function selectQuoteCustomer(id){window.qSelectedCustomerId=id;const cs=await bizCustomers(),c=cs.find(x=>x.id===id);qPhone.value=c?.phone||'';qAddress.value=c?.address||'';}
@@ -2132,14 +2343,13 @@ async function openInvoice(id){
  const isVoid=inv.status==='void';
  const isSalary=b.type==='salary';
  const custLabel=isSalary?'Employer':'Customer';
- const custOpts=`<option value="">Select saved ${custLabel.toLowerCase()}</option>`+customers.sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
  const nextPreview = b.invoiceMode==='auto' ? await previewNextNo(b) : null;
  openModal(`<h2>${id?(isSalary?'Edit Salary Payment':'Edit Invoice'):(isSalary?'Log Salary Payment':'New Invoice')}</h2>
  ${isSalary?'<div class="notice">This entry is treated like an invoice under the hood, so it shows up in Reports, Tax Report, and your bank balance the same way regular sales do.</div>':''}
  ${isVoid?`<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)"><b>This ${isSalary?'entry':'invoice'} is void.</b> It's kept for your records and numbering, but excluded from sales, profit, and reports.</div>`:''}
  <div class="row2"><div class="field"><label>${isSalary?'Reference':'Invoice'} number ${b.invoiceMode==='auto'?'<span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">(auto — not editable)</span>':''}</label><input id="fNo" value="${esc(inv.number)}" ${(isVoid||b.invoiceMode==='auto')?'disabled':''}></div><div class="field"><label>${isSalary?'Pay':'Invoice'} date</label><input id="fDate" type="date" value="${inv.date}" ${isVoid?'disabled':''}></div></div>
  ${(!id && nextPreview) ? `<div class="notice">Next number in this business's sequence: <b>${esc(nextPreview)}</b></div>` : ''}
- <div class="row2"><div class="field"><label>${custLabel}</label><select id="fCustomerSelect" onchange="selectCustomer(this.value)" ${isVoid?'disabled':''}>${custOpts}</select></div><div class="field"><label>Due date</label><input id="fDue" type="date" value="${inv.dueDate||''}" ${isVoid?'disabled':''}></div></div>
+ <div class="row2">${customerSearchHtml('f', custLabel, customers.find(c=>c.id===inv.customerId)?.name, isVoid)}<div class="field"><label>Due date</label><input id="fDue" type="date" value="${inv.dueDate||''}" ${isVoid?'disabled':''}></div></div>
  <div class="row2"><div class="field"><label>${custLabel} phone</label><input id="fPhone" value="${esc(inv.phone)}" readonly></div><div class="field"><label>${custLabel} address</label><input id="fAddress" value="${esc(inv.address)}" readonly></div></div>
  <div class="field"><label>Job details</label><input id="fVehicle" value="${esc(inv.vehicleDetails||'')}" placeholder="Optional — job reference, service description, etc." ${isVoid?'disabled':''}></div>
  <div class="field"><label>Header note</label><textarea id="fHeader" ${isVoid?'disabled':''}>${esc(inv.headerComment||'')}</textarea></div>
@@ -2152,7 +2362,7 @@ async function openInvoice(id){
  <div class="row2"><div class="field"><label>Person</label><input id="fCommissionPerson" value="${esc(commission?.personName||'')}" ${isVoid?'disabled':''}></div><div class="field"><label>Amount</label><input id="fCommissionAmount" type="number" min="0" value="${commission?.amount||0}" ${isVoid?'disabled':''}></div></div>
  <div class="totalBox"><div class="totalRow"><span>Sales</span><b id="lineTotal">—</b></div><div class="totalRow"><span>Discount</span><b id="discTotal">—</b></div><div class="totalRow"><span>Job expenses</span><b id="invExpTotal">—</b></div><div class="totalRow grand"><span>Customer total</span><b id="grandTotal">—</b></div></div>
  ${isVoid?'':'<button class="btn primary full" onclick="saveInvoice()">Save Invoice</button>'}${id?`<button class="btn secondary full" onclick="payments('${id}')">Payments</button><button class="btn secondary full" onclick="previewInvoice('${id}')">Preview & PDF</button><button class="btn secondary full" onclick="duplicateInvoice('${id}')">Duplicate</button>${isVoid?`<button class="btn secondary full ownerOnly" onclick="restoreInvoice('${id}')">Restore (Un-void)</button>`:(inv.source==='pos'?`<button class="btn danger full" onclick="posVoidSale('${id}')">Void Sale</button>`:`<button class="btn danger full ownerOnly" onclick="voidInvoiceConfirm('${id}')">Void Invoice</button>`)}`:''}<button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
- window.selectedCustomerId=inv.customerId||'';if(fCustomerSelect)fCustomerSelect.value=window.selectedCustomerId;if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();updateInvoiceTotal();
+ window.selectedCustomerId=inv.customerId||'';if(window.selectedCustomerId)await selectCustomer(window.selectedCustomerId);await drawLines();await drawInvoiceExpenses();updateInvoiceTotal();
 }
 async function selectCustomer(id){window.selectedCustomerId=id;const cs=await bizCustomers(),c=cs.find(x=>x.id===id);fPhone.value=c?.phone||'';fAddress.value=c?.address||'';}
 async function drawInvoiceExpenses(){const types=await businessExpenseTypes(),opts='<option value="">Select expense type</option>'+types.sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');invoiceExpenseLines.innerHTML=invoiceExpenses.map((x,n)=>`<div class="line"><select onchange="invoiceExpenses[${n}].typeId=this.value">${opts}</select><input type="number" min="0" placeholder="Amount" value="${x.amount||0}" oninput="invoiceExpenses[${n}].amount=Number(this.value);updateInvoiceTotal()"><input placeholder="Note" value="${esc(x.description||'')}" oninput="invoiceExpenses[${n}].description=this.value"><button class="btn danger" onclick="invoiceExpenses.splice(${n},1);drawInvoiceExpenses();updateInvoiceTotal()">×</button></div>`).join('');invoiceExpenses.forEach((x,n)=>{let q=invoiceExpenseLines.querySelectorAll('select')[n];if(q)q.value=x.typeId||'';});}
@@ -4675,8 +4885,12 @@ async function removeFolioItem(bookingId, itemIdx){
  await showGuestFolio(bookingId);
 }
 async function showAddFolioItem(bookingId){
- const products=(await bizProducts()).filter(p=>p.trackStock);
- openModal(`<h2>Add Item to Folio</h2>
+ let products=(await bizProducts()).filter(p=>p.trackStock);
+ // Kitchen/Bar staff only ever see their own department's items — they shouldn't be
+ // choosing from the other department's menu, or from anything un-departmented.
+ if(isHotelKitchen()) products=products.filter(p=>p.department==='kitchen');
+ else if(isHotelBar()) products=products.filter(p=>p.department==='bar');
+ openModal(`<h2>Add Item to Folio${isHotelKitchen()?' — Kitchen':isHotelBar()?' — Bar':''}</h2>
  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px">
   ${products.map(p=>`<button onclick="addFolioItem('${bookingId}','${p.id}')" style="border:1.4px solid var(--line);border-radius:12px;padding:10px 6px;background:#fff;text-align:center;cursor:pointer;min-height:60px"><b style="font-size:12px">${esc(p.name)}</b><br><small>${money(p.price)}</small></button>`).join('') || '<div class="empty">No stock-tracked products yet.</div>'}
  </div>
@@ -4798,6 +5012,32 @@ async function reactivateBranch(id){
    cost/profit figure instead of showing as pure profit. Full Retail /
    Hotel only. Kept the 'conversions' store name for continuity — its
    shape just changed to hold an ingredients array instead of one source. ---------------- */
+// Staff-reachable production screen — the owner-only Recipes screen is where recipes get
+// defined, but actually producing a batch (issuing the raw ingredients out and creating the
+// finished stock) is an operational, day-to-day task that shouldn't require owner access
+// any more than ringing up a sale does. Reuses showProduceScreen()/produceFromConversion()
+// directly underneath — neither ever had an owner guard, they just weren't reachable
+// without going through the owner-only menu first.
+async function showProductionStaffScreen(){
+ const recipes=(await bizConversions()).filter(r=>r.active!==false);
+ openModal(`<h2>Production</h2>
+ <div class="list">${recipes.map(r=>`<div class="row-item"><div><b>${esc(r.soldProductName)}</b><small>${(r.ingredients||[]).length} ingredient(s) → ${r.yieldsQty} ${esc(r.unitLabel||'units')}</small></div><button class="btn accent" style="padding:6px 12px;font-size:12px" onclick="showProduceScreenStaff('${r.id}')">Produce</button></div>`).join('')||'<div class="empty">No recipes have been set up yet — ask the owner to define one under Recipes.</div>'}</div>`);
+}
+// Identical to showProduceScreen() except it returns here instead of the owner-only
+// Recipes menu — staff in this mode never see that screen at all.
+async function showProduceScreenStaff(recipeId){
+ const r=(await all('conversions')).find(x=>x.id===recipeId); if(!r)return;
+ openModal(`<h2>Produce: ${esc(r.soldProductName)}</h2>
+ <div class="notice">Each batch uses: ${(r.ingredients||[]).map(i=>`${i.qtyUsed} ${esc(i.sourceProductName)}`).join(', ')} — yields ${r.yieldsQty} ${esc(r.unitLabel||'units')}.</div>
+ <div class="field"><label>Number of batches</label><input id="produceBatches" type="number" min="1" value="1" onchange="previewProduce('${recipeId}')" oninput="previewProduce('${recipeId}')"></div>
+ <div id="producePreview" class="notice"></div>
+ <button class="btn accent full" onclick="produceFromConversionStaff('${recipeId}')">Produce</button>
+ <button class="btn secondary full" onclick="showProductionStaffScreen()">Cancel</button>`);
+ previewProduce(recipeId);
+}
+async function produceFromConversionStaff(recipeId){
+ await produceFromConversion(recipeId, true);
+}
 async function showConversionMenu(){
  if(!requireOwnerMode('Recipes'))return;
  const recipes=await bizConversions();
@@ -4877,7 +5117,7 @@ function previewProduce(recipeId){
   producePreview.textContent=`Will use: ${uses||'—'}. Will produce: ${(batches*r.yieldsQty).toFixed(2)} ${r.soldProductName}.`;
  });
 }
-async function produceFromConversion(recipeId){
+async function produceFromConversion(recipeId, fromStaffScreen){
  if(!requireActiveSubscription('Producing stock'))return;
  const r=(await all('conversions')).find(x=>x.id===recipeId); if(!r)return;
  const batches=Number(produceBatches.value);
@@ -4906,7 +5146,8 @@ async function produceFromConversion(recipeId){
  sold.costPrice=derivedUnitCost;
  await put('products',sold);
  await put('stockPurchases',{id:crypto.randomUUID(), businessId:bizId, productId:sold.id, productName:sold.name, qty:yieldQty, unitCost:derivedUnitCost, totalCost:0, type:'produced', sourceProductName:ingredients.map(i=>i.sourceProductName).join(', '), date:new Date().toISOString().slice(0,10), journalNumber:await nextJournalNo(), createdBy:currentActorName()});
- closeModal(); await refresh(); await showConversionMenu();
+ closeModal(); await refresh();
+ if(fromStaffScreen) await showProductionStaffScreen(); else await showConversionMenu();
 }
 
 /* ---------------- Void, Payment Channel, and Vendor Purchase reports ---------------- */
@@ -5486,6 +5727,219 @@ async function renderWarDashboard(){
    account, verified against Paystack before saving so a typo can't send
    money somewhere wrong. Online payment stays blocked server-side until
    this is set up; QR (pay at cashier) works without it. ---------------- */
+/* ---------------- Third-party payment advice — real money leaving the business via
+   Paystack Transfers. Deliberately opt-in per business, and split into two authority
+   levels: any staff with app access can RAISE an advice using the normal session, but only
+   the owner, re-entering their real account password at that exact moment, can approve and
+   actually send the money — the server has no other way to distinguish "owner" from
+   "supervisor", since staff roles/PINs are a client-side concept it never sees. ---------------- */
+async function showPaymentAdviceMenu(){
+ if(!ServerAccount.token){ alert('Log in to your account first — this needs a server connection.'); return; }
+ const bizId=await getActiveBusinessId();
+ const b=await getBusiness();
+ openModal(`<h2>Payment Advice ${hb("Raise a request to pay a third party (a vendor, contractor, or refund) directly from the business's bank account via transfer. Anyone with app access can raise one — only the owner can actually approve and send the money.")}</h2>
+ <div id="paLoadStatus" class="notice">Loading…</div>
+ <div id="paEnableSection"></div>
+ <div id="paListSection" style="display:none">
+  <button class="btn accent full" onclick="showRaisePaymentAdvice()">＋ Raise Payment Advice</button>
+  <div class="sectionhead" style="margin-top:16px"><h3>Recent</h3></div>
+  <div class="list" id="paList"></div>
+ </div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ await refreshPaymentAdviceList(bizId);
+}
+async function refreshPaymentAdviceList(bizId){
+ try{
+  const statusData = await ServerAccount.api('/api/business/transfers/status?businessId='+encodeURIComponent(bizId));
+  const enabled = !!statusData.enabled;
+  const listData = await ServerAccount.api('/api/payment-advice/list?businessId='+encodeURIComponent(bizId));
+  const advices = listData.advices||[];
+  await reconcileCompletedAdvicesLocally(advices); // creates the matching expense entry for anything newly completed, before rendering
+  paLoadStatus.style.display='none';
+  const isOwner = !isStaffMode();
+  document.getElementById('paEnableSection').innerHTML = isOwner
+   ? `<div class="notice" style="margin-bottom:10px">Third-party payments are currently <b>${enabled?'ON':'OFF'}</b> for this business.</div><button class="btn secondary full" style="margin-bottom:14px" onclick="promptToggleTransfers(${enabled})">${enabled?'Disable':'Enable'} Third-Party Payments</button>`
+   : (enabled ? '' : `<div class="notice" style="margin-bottom:14px">Third-party payments haven't been turned on by the owner yet.</div>`);
+  document.getElementById('paListSection').style.display = enabled ? 'block' : 'none';
+  if(!enabled){ document.getElementById('paList').innerHTML=''; return; }
+  const statusLabel = {pending_review:'Pending Review', processing:'Processing', completed:'Paid', failed:'Failed', rejected:'Rejected'};
+  const statusClass = {pending_review:'overdue', processing:'overdue', completed:'paid', failed:'overdue', rejected:'overdue'};
+  paList.innerHTML = advices.map(a=>`<div class="row-item"><div><b>${esc(a.purpose)}</b><small>${esc(a.recipient_account_name||'')} · ${money((a.amount_kobo||0)/100)}</small></div><div class="row-right"><span class="stamp ${statusClass[a.status]||''}">${statusLabel[a.status]||a.status}</span>${a.status==='pending_review'?`<button class="btn secondary" style="padding:5px 9px;font-size:11px;margin-top:4px" onclick="showReviewPaymentAdvice('${a.id}')">${isOwner?'Review':'View'}</button>`:''}</div></div>`).join('') || '<div class="empty">No payment advices yet.</div>';
+ }catch(e){
+  paLoadStatus.textContent = 'Could not load: '+e.message;
+ }
+}
+// Reconciliation — the server is the source of truth for whether the real transfer
+// succeeded; this device (or any other on the account) creates the matching expense entry
+// the first time it sees a completed advice that hasn't been applied yet, then tells the
+// server so a second device polling later never double-books the same payment.
+async function reconcileCompletedAdvicesLocally(advices){
+ const bizId=await getActiveBusinessId();
+ for(const a of advices){
+  if(a.status!=='completed' || a.applied_locally) continue;
+  const journalNumber = await nextJournalNo();
+  const e={id:crypto.randomUUID(), date:new Date().toISOString().slice(0,10), category:a.expense_category||'Third-Party Payment', amount:(a.amount_kobo||0)/100, description:a.purpose+' — paid to '+(a.recipient_account_name||'recipient'), invoiceId:'', kind:'business', businessId:bizId, journalNumber, createdBy:'Payment Advice (auto)'};
+  await put('expenses', e);
+  try{ await ServerAccount.api('/api/payment-advice/'+a.id+'/mark-applied', {method:'POST'}); }
+  catch(err){ console.error('Could not mark payment advice as applied — it may be re-applied on a future check', err); }
+ }
+}
+async function promptToggleTransfers(currentlyEnabled){
+ if(!requireOwnerMode('Third-party payments'))return;
+ const bizId=await getActiveBusinessId();
+ if(!currentlyEnabled){
+  // Enabling — the disclaimer must be accepted first, so check its status before going
+  // any further. Already-accepted businesses skip straight to the normal toggle screen.
+  try{
+   const data = await ServerAccount.api('/api/business/transfers/disclaimer?businessId='+encodeURIComponent(bizId));
+   if(!data.alreadyAccepted){ showDisclaimerScreen(data.text); return; }
+  }catch(e){ alert('Could not check the disclaimer status: '+e.message); return; }
+ }
+ showToggleTransfersPasswordScreen(currentlyEnabled);
+}
+function showToggleTransfersPasswordScreen(currentlyEnabled){
+ openModal(`<h2>Third-Party Payments ${hb("Turning this on lets staff raise payment requests for you to review — it does not let anyone but you actually send money. Your account password is required either way, since this is a real setting change, not a bookkeeping entry.")}</h2>
+ <div class="field"><label>Your account password</label><input id="paTogglePassword" type="password" autocomplete="off"></div>
+ <button class="btn ${currentlyEnabled?'danger':'accent'} full" onclick="submitToggleTransfers(${!currentlyEnabled})">${currentlyEnabled?'Disable':'Enable'}</button>
+ <button class="btn secondary full" onclick="showPaymentAdviceMenu()">Cancel</button>`);
+}
+function showDisclaimerScreen(text){
+ openModal(`<h2>Liability Disclaimer</h2>
+ <div style="max-height:320px;overflow-y:auto;white-space:pre-wrap;font-size:12px;border:1.4px solid var(--line);padding:12px;border-radius:10px;margin-bottom:12px;background:#fff">${esc(text)}</div>
+ <div class="field"><label>Your account password, to accept this and continue enabling</label><input id="paDisclaimerPassword" type="password" autocomplete="off"></div>
+ <div id="paDisclaimerError" style="display:none;color:var(--danger);font-size:12px;margin-bottom:8px">—</div>
+ <button class="btn accent full" onclick="submitAcceptDisclaimer()">I Accept — Continue</button>
+ <button class="btn secondary full" onclick="showPaymentAdviceMenu()">Cancel</button>`);
+}
+async function submitAcceptDisclaimer(){
+ const password=paDisclaimerPassword.value;
+ if(!password){ paDisclaimerError.textContent='Enter your account password.'; paDisclaimerError.style.display='block'; return; }
+ const bizId=await getActiveBusinessId();
+ try{
+  const result = await ServerAccount.api('/api/business/transfers/accept-disclaimer', {method:'POST', body: JSON.stringify({businessId:bizId, password})});
+  if(!result.ownerEmailSent || !result.platformEmailSent){
+   console.warn('Disclaimer accepted and recorded, but one or both confirmation emails did not send (owner: '+result.ownerEmailSent+', platform: '+result.platformEmailSent+'). The database record is unaffected.');
+  }
+  // The password was just verified successfully by the call above — reused here directly
+  // for the immediately-following enable step, rather than asking for it a second time in
+  // the same continuous flow.
+  await ServerAccount.api('/api/business/transfers/enable', {method:'POST', body: JSON.stringify({businessId:bizId, password})});
+  alert('Third-party payments enabled.'+((!result.ownerEmailSent)?' Note: the confirmation email could not be sent — the acceptance itself is still safely recorded.':''));
+  await showPaymentAdviceMenu();
+ }catch(e){ paDisclaimerError.textContent=e.message; paDisclaimerError.style.display='block'; }
+}
+async function submitToggleTransfers(enable){
+ const password=paTogglePassword.value;
+ if(!password){ alert('Enter your account password.'); return; }
+ const bizId=await getActiveBusinessId();
+ try{
+  await ServerAccount.api('/api/business/transfers/'+(enable?'enable':'disable'), {method:'POST', body: JSON.stringify({businessId:bizId, password})});
+  closeModal();
+  await showPaymentAdviceMenu();
+ }catch(e){ alert('Could not update this setting: '+e.message); }
+}
+async function showRaisePaymentAdvice(){
+ const bizId=await getActiveBusinessId();
+ const types=await businessExpenseTypes();
+ openModal(`<h2>Raise Payment Advice</h2>
+ <div class="field"><label>Purpose</label><input id="paPurpose" placeholder="e.g. Payment for office supplies"></div>
+ <div class="field"><label>Expense category ${hb("Which category this should be booked against once the payment goes through.")}</label><select id="paCategory"><option value="">— None —</option>${types.map(t=>`<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('')}</select></div>
+ <div class="field"><label>Amount</label><input id="paAmount" type="number" min="0"></div>
+ <div class="notice" id="paBankLoadStatus">Loading banks…</div>
+ <div class="field" style="display:none" id="paBankField"><label>Recipient's Bank</label><select id="paBankSelect"></select></div>
+ <div class="field" style="display:none" id="paAcctField"><label>Recipient's Account Number</label><input id="paAcctNumber" inputmode="numeric" maxlength="10" onchange="verifyAdviceRecipient()"></div>
+ <div class="notice" id="paVerifyStatus" style="display:none"></div>
+ <button class="btn accent full" id="paSubmitBtn" style="display:none" onclick="submitPaymentAdvice()">Submit for Review</button>
+ <button class="btn secondary full" onclick="showPaymentAdviceMenu()">Cancel</button>`);
+ try{
+  const data = await ServerAccount.api('/api/paystack/banks');
+  paBankSelect.innerHTML = (data.banks||[]).map(b=>`<option value="${esc(b.code)}" data-name="${esc(b.name)}">${esc(b.name)}</option>`).join('');
+  paBankLoadStatus.style.display='none';
+  paBankField.style.display='block'; paAcctField.style.display='block';
+ }catch(e){ paBankLoadStatus.textContent = 'Could not load the bank list: '+e.message; }
+}
+window.paVerifiedName = null;
+async function verifyAdviceRecipient(){
+ window.paVerifiedName=null; paSubmitBtn.style.display='none';
+ const accountNumber=paAcctNumber.value.trim();
+ if(accountNumber.length!==10) return;
+ paVerifyStatus.style.display='block'; paVerifyStatus.textContent='Verifying…';
+ try{
+  const bankCode=paBankSelect.value;
+  const data = await ServerAccount.api('/api/business/verify-account', {method:'POST', body: JSON.stringify({accountNumber, bankCode})});
+  window.paVerifiedName=data.accountName;
+  paVerifyStatus.textContent='Verified: '+data.accountName;
+  paSubmitBtn.style.display='block';
+ }catch(e){ paVerifyStatus.textContent='Could not verify this account: '+e.message; }
+}
+async function submitPaymentAdvice(){
+ const purpose=paPurpose.value.trim();
+ const amount=Number(paAmount.value);
+ if(!purpose){ alert('Enter what this payment is for.'); return; }
+ if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+ if(!paAcctNumber.value.trim()){ alert('Enter the recipient\'s account number.'); return; }
+ const bizId=await getActiveBusinessId();
+ const bankOpt=paBankSelect.options[paBankSelect.selectedIndex];
+ try{
+  await ServerAccount.api('/api/payment-advice/create', {method:'POST', body: JSON.stringify({
+   businessId: bizId, purpose, expenseCategory: paCategory.value||null, amountKobo: Math.round(amount*100),
+   bankCode: paBankSelect.value, bankName: bankOpt?bankOpt.dataset.name:'', accountNumber: paAcctNumber.value.trim(),
+   raisedByName: currentActorName(),
+  })});
+  alert('Submitted for the owner\'s review.');
+  await showPaymentAdviceMenu();
+ }catch(e){ alert('Could not submit this payment advice: '+e.message); }
+}
+// The owner's review screen — approving here is the one genuinely money-moving action in
+// the whole feature. requireOwnerMode() only gates the UI; the real enforcement is the
+// server re-checking the account password at the exact moment of approval, since staff
+// roles are a client-side concept the server never sees at all.
+async function showReviewPaymentAdvice(id){
+ const bizId=await getActiveBusinessId();
+ let advice;
+ try{
+  const data = await ServerAccount.api('/api/payment-advice/list?businessId='+encodeURIComponent(bizId));
+  advice = (data.advices||[]).find(a=>a.id===id);
+ }catch(e){ alert('Could not load this payment advice: '+e.message); return; }
+ if(!advice){ alert('Payment advice not found.'); return; }
+ const isOwner = !isStaffMode();
+ const isPending = advice.status==='pending_review';
+ openModal(`<h2>Payment Advice — Review</h2>
+ <div class="notice">
+  <b>${esc(advice.purpose)}</b><br>
+  Amount: <b>${money((advice.amount_kobo||0)/100)}</b><br>
+  To: ${esc(advice.recipient_account_name)} — ${esc(advice.recipient_account_number)} (${esc(advice.recipient_bank_name||'')})<br>
+  ${advice.expense_category?`Category: ${esc(advice.expense_category)}<br>`:''}
+  Raised by: ${esc(advice.raised_by_name||'—')}<br>
+  Status: <b>${esc(advice.status)}</b>
+  ${advice.status==='failed'&&advice.failure_reason?`<br><span style="color:var(--danger)">Reason: ${esc(advice.failure_reason)}</span>`:''}
+  ${advice.status==='rejected'&&advice.rejected_reason?`<br>Rejection reason: ${esc(advice.rejected_reason)}`:''}
+ </div>
+ ${isPending && isOwner ? `
+  <div class="field"><label>Your account password, to confirm this payment</label><input id="paApprovePassword" type="password" autocomplete="off"></div>
+  <button class="btn accent full" onclick="submitApprovePaymentAdvice('${id}')">Approve &amp; Pay ${money((advice.amount_kobo||0)/100)}</button>
+  <div class="field" style="margin-top:14px"><label>Or, reject with a reason (optional)</label><input id="paRejectReason" placeholder="Reason for declining"></div>
+  <button class="btn danger full" onclick="submitRejectPaymentAdvice('${id}')">Reject</button>
+ ` : (isPending ? `<div class="notice">Only the owner can approve or reject this.</div>` : '')}
+ <button class="btn secondary full" onclick="showPaymentAdviceMenu()">Back</button>`);
+}
+async function submitApprovePaymentAdvice(id){
+ const password=paApprovePassword.value;
+ if(!password){ alert('Enter your account password.'); return; }
+ if(!confirm('This will send a real payment. Are you sure?')) return;
+ try{
+  const result = await ServerAccount.api('/api/payment-advice/'+id+'/approve-and-pay', {method:'POST', body: JSON.stringify({password})});
+  alert('Payment initiated — status: '+result.status+'. It will show as Paid once Paystack confirms it.');
+  await showPaymentAdviceMenu();
+ }catch(e){ alert('Could not approve this payment: '+e.message); }
+}
+async function submitRejectPaymentAdvice(id){
+ const reason=paRejectReason.value.trim();
+ try{
+  await ServerAccount.api('/api/payment-advice/'+id+'/reject', {method:'POST', body: JSON.stringify({reason})});
+  await showPaymentAdviceMenu();
+ }catch(e){ alert('Could not reject this payment advice: '+e.message); }
+}
 async function showPayoutAccountSettings(){
  if(!requireOwnerMode('Payout account'))return;
  if(!ServerAccount.token){ alert('Log in to your account first.'); return; }
@@ -5992,7 +6446,7 @@ function showCloudSync(){
     serverActionsHtml = `<button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
    } else {
     serverStatusHtml = `<div class="cloudLast">Last sent: ${lastServerPush?new Date(lastServerPush).toLocaleString():'Never'} · Last received: ${lastServerPull?new Date(lastServerPull).toLocaleString():'Never'}</div>`;
-    serverActionsHtml = `<button class="btn secondary full" onclick="ServerAccount.push(true)">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
+    serverActionsHtml = `<button class="btn secondary full" onclick="syncNow()">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
    }
  } else {
    accountSyncModeLine = 'Sign up once, then log into the same account on every phone — all synced automatically, no PIN to remember.';
@@ -6032,15 +6486,37 @@ function showCloudSync(){
    anyone already signed in; only an explicit 401 from the server (a truly
    expired session) brings the gate back up while the app is running. ---------------- */
 function isAccountPresent(){ return !!localStorage.getItem('moborex_server_token'); }
-function showAuthGate(){ authGate.classList.add('show'); }
+function showAuthGate(){ authGate.classList.add('show'); showAuthGateLanding(); }
 function hideAuthGate(){ authGate.classList.remove('show'); }
-function switchAuthGateTab(which){
-  const isSignup = which==='signup';
-  agSignupPane.style.display = isSignup?'block':'none';
-  agLoginPane.style.display = isSignup?'none':'block';
-  agTabSignup.style.background = isSignup?'#fff':'transparent'; agTabSignup.style.color = isSignup?'var(--ink)':'#fff';
-  agTabLogin.style.background = isSignup?'transparent':'#fff'; agTabLogin.style.color = isSignup?'#fff':'var(--ink)';
-  agError.style.display='none';
+// The front page — module showcase shown first, before any account form. A potential
+// customer picks what matches their business before ever entering an email or password;
+// an existing customer skips straight past it to Log In. Nothing here is shown again once
+// actually inside the app — that's handled by the existing module-level gating.
+function showAuthGateLanding(){
+ agLandingPane.style.display='block'; agSignupPane.style.display='none'; agLoginPane.style.display='none';
+ agTagline.textContent='Run the business. Not just the books.';
+ agError.style.display='none';
+ populateAuthGateModuleList();
+}
+function populateAuthGateModuleList(){
+ const order=['personal','business_basic','business_stock','full_retail','hotel'];
+ agModuleList.innerHTML = order.map(key=>`
+  <button onclick="chooseSignupModule('${key}')" style="display:block;width:100%;text-align:left;background:rgba(255,255,255,.08);border:1.4px solid rgba(255,255,255,.15);border-radius:12px;padding:12px;margin-bottom:8px;cursor:pointer;color:#fff">
+   <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-weight:700;font-size:13px">${esc(PLAN_LABELS[key])}</div><div style="font-size:11.5px;opacity:.8;white-space:nowrap;margin-left:8px">${money(PLAN_PRICES_DISPLAY[key].monthly)}/mo</div></div>
+   <div style="font-size:11.5px;opacity:.75;margin-top:3px">${esc(PLAN_DESCRIPTIONS[key])}</div>
+  </button>`).join('');
+}
+function chooseSignupModule(key){
+ window.chosenSignupModule=key;
+ agLandingPane.style.display='none'; agSignupPane.style.display='block';
+ agSignupModuleContext.innerHTML=`Signing up for <b>${esc(PLAN_LABELS[key])}</b>. <span style="opacity:.7;cursor:pointer;text-decoration:underline" onclick="showAuthGateLanding()">Change</span>`;
+ agTagline.textContent=PLAN_DESCRIPTIONS[key];
+}
+function showAuthGateLoginFromLanding(){
+ window.chosenSignupModule=null; // this is a plain login, not part of an "add a module" flow
+ agLandingPane.style.display='none'; agSignupPane.style.display='none'; agLoginPane.style.display='block';
+ agTagline.textContent='Log in to your account.';
+ agError.style.display='none';
 }
 async function submitAuthGateSignup(){
   const name=agSignupName.value.trim(), email=agSignupEmail.value.trim(), pw=agSignupPassword.value;
@@ -6049,11 +6525,49 @@ async function submitAuthGateSignup(){
   if(!email){ agError.textContent='Enter an email address.'; agError.style.display='block'; return; }
   if(!pw || pw.length<8){ agError.textContent='Password must be at least 8 characters.'; agError.style.display='block'; return; }
   agBusy.style.display='block';
+  let createdBizIdForCleanup=null;
   try{
+    // Order matters: create the chosen-module business FIRST, so that ServerAccount.signup()'s
+    // own internal getActiveBusinessId() call (which it uses to seed the account's first
+    // push) finds this correctly-named, correctly-typed business already active — instead of
+    // falling back to its generic "Your Business Name" default and creating a stray second
+    // business that would need cleaning up afterward. If signup() itself then fails (e.g.
+    // duplicate email), this business was created for nothing — cleaned up in the catch below,
+    // since it would otherwise sit locally, orphaned, belonging to no account at all.
+    if(window.chosenSignupModule){
+      const nb=await createBusinessForModule(name, window.chosenSignupModule);
+      createdBizIdForCleanup=nb.id;
+    }
     await ServerAccount.signup(email, pw, name); // this also pushes any existing local data up, per its own logic
+    createdBizIdForCleanup=null; // signup succeeded — this business is now real, don't clean it up
     agBusy.style.display='none'; hideAuthGate();
     await continueStartupAfterAuth();
-  }catch(e){ agBusy.style.display='none'; agError.textContent=e.message||'Could not create account.'; agError.style.display='block'; }
+    if(window.chosenSignupModule){
+      const chosen=window.chosenSignupModule; window.chosenSignupModule=null;
+      if(confirm('Account created. Start your free trial of '+PLAN_LABELS[chosen]+' now, or go straight to payment?\n\nOK = view trial/payment options')) await showBillingScreen();
+    }
+  }catch(e){
+    agBusy.style.display='none';
+    if(createdBizIdForCleanup){
+      await req('business','readwrite',s=>s.delete(createdBizIdForCleanup));
+      localStorage.removeItem('moborex_active_business');
+      localStorage.removeItem('moborex_device_module_set');
+    }
+    if(e.message && e.message.includes('already exists') && window.chosenSignupModule){
+      // A returning customer trying to add a module through the "new customer" door —
+      // recognize this rather than just failing, and route them to log in instead, carrying
+      // their module choice through so it's applied the moment they're authenticated.
+      const chosen=window.chosenSignupModule;
+      if(confirm('An account with this email already exists. Log in and add '+PLAN_LABELS[chosen]+' to it?')){
+        window.pendingModuleAfterLogin=chosen; window.chosenSignupModule=null;
+        agLoginEmail.value=email;
+        showAuthGateLoginFromLanding();
+        agLoginPassword.focus();
+        return;
+      }
+    }
+    agError.textContent=e.message||'Could not create account.'; agError.style.display='block';
+  }
 }
 async function submitAuthGateLogin(){
   const email=agLoginEmail.value.trim(), pw=agLoginPassword.value;
@@ -6063,8 +6577,19 @@ async function submitAuthGateLogin(){
   try{
     await ServerAccount.login(email, pw);
     agBusy.style.display='none'; hideAuthGate();
-    if(confirm("Signed in. Pull this account's data into this device now? This replaces what's on this device with what's saved to your account.")) await ServerAccount.pull(true);
-    await continueStartupAfterAuth();
+    if(window.pendingModuleAfterLogin){
+      // Carried over from the landing page — this is a returning customer adding a new
+      // module to their existing account, not a fresh signup. Create it directly so
+      // continueStartupAfterAuth() below finds it already set up and active, alongside
+      // whatever else this account already had.
+      const chosen=window.pendingModuleAfterLogin; window.pendingModuleAfterLogin=null;
+      const bizName=prompt('Name for this new business ('+PLAN_LABELS[chosen]+'):');
+      if(bizName && bizName.trim()) await createBusinessForModule(bizName.trim(), chosen);
+      await continueStartupAfterAuth();
+      if(bizName && bizName.trim() && confirm('Added. Start your free trial of '+PLAN_LABELS[chosen]+' now, or go straight to payment?\n\nOK = view trial/payment options')) await showBillingScreen();
+    } else {
+      await continueStartupAfterAuth(); // handles per-business discovery/pull correctly — see doServerLogin() for why the old blind pull(true) prompt here never actually worked
+    }
   }catch(e){ agBusy.style.display='none'; agError.textContent=e.message||'Could not log in.'; agError.style.display='block'; }
 }
 async function continueStartupAfterAuth(){
