@@ -251,7 +251,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 56;
+const APP_VERSION = 57;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -1692,7 +1692,11 @@ async function switchBusiness(id){
  // ownership rather than trusting that whatever called it showed a correctly-scoped list.
  const mine = await myBusinesses();
  if(!mine.some(b=>b.id===id)){ alert('That business belongs to a different account. Log out and sign in with that account to open it.'); return; }
- localStorage.setItem('moborex_active_business',id);window.currentBranchId=null;window.currentBranchName='';closeModal();await refresh();ServerAccount.onBusinessSwitch(id);}
+ localStorage.setItem('moborex_active_business',id);window.currentBranchId=null;window.currentBranchName='';closeModal();
+ await refresh();
+ await refreshBillingStatus(); // the new business has its own plan/tier — re-read it before deciding what the menu should show
+ await backfillBusinessModuleIfMissing(); // switching into a legacy business must trim its menu too, not just startup
+ ServerAccount.onBusinessSwitch(id);}
 async function showSwitchBranch(){
  if(!requireOwnerMode('Switching branch','branchSwitch'))return;
  const branches=(await bizBranches()).filter(b=>b.active!==false);
@@ -1749,6 +1753,10 @@ function cancelAddBusiness(){
 // Full Stock covers both restaurants and stores, and they differ enough in wording and
 // which screens apply to be worth asking. Only shown for that module — every other module
 // has an unambiguous shape already.
+function onSettingsModuleChanged(){
+ const f=document.getElementById('bRetailKindField');
+ if(f) f.style.display = (document.getElementById('bmodule').value==='full_retail') ? '' : 'none';
+}
 function onNewBusinessModuleChanged(){
  const f=document.getElementById('nbRetailKindField');
  if(f) f.style.display = (document.getElementById('nbModule').value==='full_retail') ? '' : 'none';
@@ -2236,6 +2244,17 @@ async function showSettings(){ if(!requireOwnerMode('Business settings'))return;
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
  openModal(`<h2>Business Settings ${hb("Everything specific to this one business: its name, currency, invoice numbering, and how it's classified for tax purposes.")}</h2>
  <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div><div class="field"><label>Type ${hb("Business tracks sales and expenses normally. Salary auto-logs a monthly pay entry instead, and relabels Customers to Employer. Hotel adds room bookings, check-in/check-out, and a guest folio for bar & restaurant charges — Full plan only.")}</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option><option value="hotel">Hotel</option></select></div></div>
+ <div class="row2"><div class="field"><label>Module ${hb("Which module this business runs as. It decides which screens appear in your menu — a hotel and a supermarket have no reason to see each other's. Normally set when the business is created; change it here if it was set up before modules were recorded, or if it was guessed wrong.")}</label><select id="bmodule" onchange="onSettingsModuleChanged()">
+  <option value="personal" ${b.module==='personal'?'selected':''}>${esc(PLAN_LABELS.personal)}</option>
+  <option value="business_basic" ${b.module==='business_basic'?'selected':''}>${esc(PLAN_LABELS.business_basic)}</option>
+  <option value="business_stock" ${b.module==='business_stock'?'selected':''}>${esc(PLAN_LABELS.business_stock)}</option>
+  <option value="full_retail" ${b.module==='full_retail'?'selected':''}>${esc(PLAN_LABELS.full_retail)}</option>
+  <option value="hotel" ${b.module==='hotel'?'selected':''}>${esc(PLAN_LABELS.hotel)}</option>
+ </select></div>
+ <div class="field" id="bRetailKindField" style="${b.module==='full_retail'?'':'display:none'}"><label>Kind</label><select id="bretailKind">
+  <option value="restaurant" ${b.retailKind!=='store'?'selected':''}>Restaurant / food service</option>
+  <option value="store" ${b.retailKind==='store'?'selected':''}>Store / supermarket</option>
+ </select></div></div>
  <div id="salaryFieldsBox" style="display:none">
   <div class="notice">Once set up, this business logs a salary payment automatically each month until you switch off auto-generate, change amount, or change employer. "Customers" becomes "Employer" for this business.</div>
   <div class="row2"><div class="field"><label>Monthly Salary Amount</label><input id="bsalAmt" type="number" min="0" value="${b.salaryAmount||0}"></div><div class="field"><label>Auto-generate monthly ${hb("When on, this business logs a salary payment for you automatically once a month, with no need to create it by hand.")}</label><select id="bsalAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div></div>
@@ -2268,7 +2287,7 @@ function toggleSalaryFields(){
 function toggleFixedAssets(){fixedAssetsField.style.display = blegal.value==='limited' ? 'block' : 'none';}
 async function saveSettings(){
  let b=await getBusiness();
- let done=async logo=>{b.name=bn.value;b.type=btype.value;b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;b.numberPrefix=bprefix.value.trim();b.posAllowTabs=bposTabs.value==='1';if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}else{b.legalForm=blegal.value;if(blegal.value==='limited')b.fixedAssets=Number(bassets.value)||0;}if(logo!==undefined)b.logo=logo;await put('business',b);closeModal();refresh()};
+ let done=async logo=>{b.name=bn.value;b.type=btype.value;b.module=bmodule.value;b.retailKind=(bmodule.value==='full_retail'?(document.getElementById('bretailKind')?.value||'restaurant'):null);b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;b.numberPrefix=bprefix.value.trim();b.posAllowTabs=bposTabs.value==='1';if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}else{b.legalForm=blegal.value;if(blegal.value==='limited')b.fixedAssets=Number(bassets.value)||0;}if(logo!==undefined)b.logo=logo;await put('business',b);window.CURRENT_BUSINESS_MODULE=b.module;applyModuleGatingUI();closeModal();refresh()};
  if(bl.files[0]){let r=new FileReader();r.onload=()=>done(r.result);r.readAsDataURL(bl.files[0])}else done();
 }
 
@@ -7174,6 +7193,32 @@ async function submitAuthGateLogin(){
     }
   }catch(e){ agBusy.style.display='none'; agError.textContent=e.message||'Could not log in.'; agError.style.display='block'; }
 }
+/* Businesses created before modules were recorded have no b.module, so module-aware menu
+   filtering has nothing to match on and falls back to showing everything. This resolves
+   that permanently rather than leaving it to chance: the server's registered plan is
+   authoritative when there is one, otherwise the business type implies it. Runs once per
+   business — after that b.module is set and this does nothing. The owner can still change
+   it from Business Settings if the guess is wrong. */
+async function backfillBusinessModuleIfMissing(){
+ try{
+  const b = await getBusiness();
+  if(b.module) return; // already recorded — nothing to do
+  let resolved = null;
+  const plan = window.billingStatus && window.billingStatus.plan;
+  if(plan && MODULE_LEVELS[plan]!==undefined) resolved = plan; // what this business is actually registered as, server-side
+  if(!resolved){
+   // No server plan to go on — infer from the business type, which has always been recorded.
+   if(b.type==='hotel') resolved='hotel';
+   else if(b.type==='salary') resolved='personal';
+   else resolved='full_retail'; // broadest business default; correctable in Business Settings
+  }
+  b.module = resolved;
+  if(resolved==='full_retail' && !b.retailKind) b.retailKind='restaurant'; // matches the creation-form default
+  await put('business', b);
+  window.CURRENT_BUSINESS_MODULE = resolved;
+  applyModuleGatingUI(); // re-apply immediately so the menu trims without needing a reload
+ }catch(e){ console.error('Could not backfill the business module', e); }
+}
 async function continueStartupAfterAuth(){
   try{
     await showModuleSelectionIfNeeded(); // self-gated — only does real work on first device setup or after an explicit Switch Module
@@ -7181,6 +7226,7 @@ async function continueStartupAfterAuth(){
     await autoGenerateSalaryIfDue();
     await refresh(); // also syncs window.rolePermissions for the active business
     await refreshBillingStatus();
+    await backfillBusinessModuleIfMissing(); // after billing status, so the server's registered plan can be used when there is one
     startIncomingOrdersPolling(); // deliberately not awaited — a waiting customer's order shouldn't hold up the rest of startup
     await autoDownloadBackupIfDue();
   }catch(e){ console.error('Startup (post-auth) failed', e); }
