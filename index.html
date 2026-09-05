@@ -251,7 +251,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 55;
+const APP_VERSION = 56;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -366,6 +366,7 @@ async function getBusiness(){
   if(!b){ b={id,...defaults.business}; await req('business','readwrite',s=>s.put(b)); }
   window.CURRENT_CURRENCY=b.currency||'NGN';
   window.CURRENT_BUSINESS_TYPE=b.type||'business';
+  window.CURRENT_BUSINESS_MODULE=b.module||null; // set at creation; null for businesses that predate module recording
   return b;
 }
 async function bizInvoices(){const id=await getActiveBusinessId();return (await all('invoices')).filter(x=>x.businessId===id)}
@@ -638,8 +639,10 @@ async function showStoreKitchenBalances(){
 async function showReceivers(){
  if(!requireOwnerMode('Receivers','stockPurchases'))return;
  const list=await bizReceivers();
- openModal(`<h2>Receivers ${hb("Who raw stock gets issued to — a kitchen, a bar, a department, or a named person. Issuing always records who received it, so nothing leaves the store untracked.")}</h2>
- <div class="field"><label>Name</label><input id="rcvName" placeholder="e.g. Kitchen"></div>
+ const bizR=await getBusiness();
+ const isStoreKind = bizR.retailKind==='store';
+ openModal(`<h2>Receivers ${hb("Who raw stock gets issued to. Issuing always records who received it, so nothing leaves the store untracked.")}</h2>
+ <div class="field"><label>Name</label><input id="rcvName" placeholder="${isStoreKind?'e.g. Packing Department':'e.g. Kitchen'}"></div>
  <button class="btn accent full" onclick="addReceiver()">＋ Add Receiver</button>
  <div class="sectionhead" style="margin-top:16px"><h3>All receivers</h3></div>
  <div class="list">${list.map(r=>`<div class="row-item"><div><b>${esc(r.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="removeReceiver('${r.id}')">Remove</button></div>`).join('')||'<div class="empty">No receivers yet — add one before issuing stock.</div>'}</div>
@@ -1309,41 +1312,42 @@ function blankDashboardUI(){
    <div class="navGroupItems">
     <button class="navbtn" data-min-level="1" data-perm-key="newInvoice" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
     <button class="navbtn" data-perm-key="invoicesList" onclick="showInvoices()"><span class="ic">▤</span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button>
-    <button class="navbtn" data-min-level="1" data-perm-key="quotations" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
-    <button class="navbtn" data-perm-key="returns" onclick="showReturns()"><span class="ic">↩</span> Returns</button>
+    <button class="navbtn" data-min-level="1" data-perm-key="quotations" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
+    <button class="navbtn" data-perm-key="returns" data-modules="business_stock,full_retail,hotel" onclick="showReturns()"><span class="ic">↩</span> Returns</button>
     <button class="navbtn" data-perm-key="customers" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
     <button class="navbtn" data-perm-key="products" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
-    <button class="navbtn" data-min-level="3" data-perm-key="posTerminal" onclick="showPosTerminal()"><span class="ic">🛒</span> POS Terminal</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="posTerminal" data-modules="full_retail,hotel" onclick="showPosTerminal()"><span class="ic">🛒</span> POS Terminal</button>
    </div>
   </div>
 
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Delivery &amp; Fulfillment</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn" data-min-level="3" data-perm-key="deliveries" onclick="showDeliveries()"><span class="ic">🚚</span> Deliveries</button>
-    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="deliveryReport" onclick="showDeliveryReport()"><span class="ic">📋</span> Delivery Report</button>
-    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="businessLocation" onclick="showBusinessLocation()"><span class="ic">📍</span> Business Location</button>
-    <button class="navbtn" data-min-level="3" data-perm-key="phoneOrder" onclick="showPhoneOrder()"><span class="ic">📞</span> Phone Order</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="deliveries" data-modules="full_retail,hotel" onclick="showDeliveries()"><span class="ic">🚚</span> Deliveries</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="deliveryReport" data-modules="full_retail,hotel" onclick="showDeliveryReport()"><span class="ic">📋</span> Delivery Report</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="businessLocation" data-modules="full_retail,hotel" onclick="showBusinessLocation()"><span class="ic">📍</span> Business Location</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="phoneOrder" data-modules="full_retail,hotel" onclick="showPhoneOrder()"><span class="ic">📞</span> Phone Order</button>
    </div>
   </div>
 
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Online Ordering</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" onclick="showOnlineOrderingSettings()"><span class="ic">🔗</span> Online Ordering Setup</button>
-    <button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" onclick="showIncomingOrders()"><span class="ic">📥</span> Incoming Orders</button>
-    <button class="navbtn" data-min-level="3" data-perm-key="readyBoard" onclick="showReadyBoard()"><span class="ic">📣</span> Ready Board</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showOnlineOrderingSettings()"><span class="ic">🔗</span> Online Ordering Setup</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="menuAvailability" data-modules="full_retail,hotel" onclick="showMenuAvailability()"><span class="ic">🍽</span> Menu Availability</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" data-modules="full_retail,hotel" onclick="showIncomingOrders()"><span class="ic">📥</span> Incoming Orders</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="readyBoard" data-modules="full_retail,hotel" onclick="showReadyBoard()"><span class="ic">📣</span> Ready Board</button>
    </div>
   </div>
 
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Hotel Operations</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" onclick="showHotelDashboard()"><span class="ic">🛏</span> Hotel Dashboard</button>
-    <button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" onclick="showKitchenBarTerminal()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
-    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="occupancyReport" onclick="showOccupancyReport()"><span class="ic">📊</span> Occupancy Report</button>
-    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="hotelBreakdown" onclick="showHotelSalesBreakdown()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
-    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="rooms" onclick="showRoomsManagement()"><span class="ic">🏨</span> Rooms</button>
+    <button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" data-modules="hotel" onclick="showHotelDashboard()"><span class="ic">🛏</span> Hotel Dashboard</button>
+    <button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" data-modules="hotel" onclick="showKitchenBarTerminal()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
+    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="occupancyReport" data-modules="hotel" onclick="showOccupancyReport()"><span class="ic">📊</span> Occupancy Report</button>
+    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="hotelBreakdown" data-modules="hotel" onclick="showHotelSalesBreakdown()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
+    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="rooms" data-modules="hotel" onclick="showRoomsManagement()"><span class="ic">🏨</span> Rooms</button>
    </div>
   </div>
 
@@ -1353,7 +1357,7 @@ function blankDashboardUI(){
     <button class="navbtn ownerOnly" data-perm-key="businessExpenses" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
     <button class="navbtn ownerOnly" data-perm-key="drawings" onclick="showDirectorsDrawings()"><span class="ic">◎</span> Director's Drawings</button>
     <button class="navbtn ownerOnly" data-perm-key="otherIncome" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
-    <button class="navbtn ownerOnly" data-perm-key="commissions" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
+    <button class="navbtn ownerOnly" data-perm-key="commissions" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="investments" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="loans" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
     <button class="navbtn ownerOnly" data-perm-key="expenseTypes" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
@@ -1365,13 +1369,13 @@ function blankDashboardUI(){
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Inventory</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockPurchases" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
-    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="issueOut" onclick="showIssueOut()"><span class="ic">🍳</span> Issue / Return Stock</button>
-    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storeBalances" onclick="showStoreKitchenBalances()"><span class="ic">⚖️</span> Store &amp; Kitchen Balances</button>
-    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="receivers" onclick="showReceivers()"><span class="ic">👷</span> Receivers</button>
-    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="lowStock" onclick="showLowStock()"><span class="ic">⚠️</span> Low Stock</button>
-    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="recipes" onclick="showConversionMenu()"><span class="ic">🔄</span> Recipes</button>
-    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="productMovement" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockPurchases" data-modules="business_stock,full_retail,hotel" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="issueOut" data-modules="full_retail,hotel" onclick="showIssueOut()"><span class="ic">🍳</span> Issue / Return Stock</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storeBalances" data-modules="full_retail,hotel" onclick="showStoreKitchenBalances()"><span class="ic">⚖️</span> Store &amp; Kitchen Balances</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="receivers" data-modules="full_retail,hotel" onclick="showReceivers()"><span class="ic">👷</span> Receivers</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="lowStock" data-modules="business_stock,full_retail,hotel" onclick="showLowStock()"><span class="ic">⚠️</span> Low Stock</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="recipes" data-modules="full_retail,hotel" onclick="showConversionMenu()"><span class="ic">🔄</span> Recipes</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="productMovement" data-modules="business_stock,full_retail,hotel" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
    </div>
   </div>
 
@@ -1386,10 +1390,10 @@ function blankDashboardUI(){
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="transactionReport" onclick="showTransactionReport()"><span class="ic">📋</span> Transaction Report</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="voidReport" onclick="showVoidReport()"><span class="ic">🚫</span> Void Report</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="paymentChannelReport" onclick="showPaymentChannelReport()"><span class="ic">💳</span> Payment Channel Report</button>
-    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="vendorPurchaseReport" onclick="showVendorPurchaseReport()"><span class="ic">🏭</span> Vendor Purchase Report</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="vendorPurchaseReport" data-modules="business_stock,full_retail,hotel" onclick="showVendorPurchaseReport()"><span class="ic">🏭</span> Vendor Purchase Report</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="taxReport" onclick="showTaxReport()"><span class="ic">🏛</span> Tax Report</button>
     <button class="navbtn ownerOnly" data-perm-key="taxConfig" onclick="showTaxConfiguration()"><span class="ic">%</span> Tax Configuration</button>
-    <button class="navbtn ownerOnly" data-perm-key="cacReturn" onclick="showCacReport()"><span class="ic">🏢</span> CAC Annual Return Summary</button>
+    <button class="navbtn ownerOnly" data-perm-key="cacReturn" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showCacReport()"><span class="ic">🏢</span> CAC Annual Return Summary</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="audit" onclick="showAudit()"><span class="ic">🔍</span> Audit of Me</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="reconciliation" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
    </div>
@@ -1485,41 +1489,42 @@ function blankDashboardUI(){
  <div class="navGroupItems">
   <button class="navbtn" data-min-level="1" data-perm-key="newInvoice" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
   <button class="navbtn" data-perm-key="invoicesList" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> <span id="navInvoicesLabelDrawer">Invoices &amp; Sales</span></button>
-  <button class="navbtn" data-min-level="1" data-perm-key="quotations" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
-  <button class="navbtn" data-perm-key="returns" onclick="showReturns();closeDrawer()"><span class="ic">↩</span> Returns</button>
+  <button class="navbtn" data-min-level="1" data-perm-key="quotations" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
+  <button class="navbtn" data-perm-key="returns" data-modules="business_stock,full_retail,hotel" onclick="showReturns();closeDrawer()"><span class="ic">↩</span> Returns</button>
   <button class="navbtn" data-perm-key="customers" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
   <button class="navbtn" data-perm-key="products" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
-  <button class="navbtn" data-min-level="3" data-perm-key="posTerminal" onclick="showPosTerminal();closeDrawer()"><span class="ic">🛒</span> POS Terminal</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="posTerminal" data-modules="full_retail,hotel" onclick="showPosTerminal();closeDrawer()"><span class="ic">🛒</span> POS Terminal</button>
  </div>
 </div>
 
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Delivery &amp; Fulfillment</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn" data-min-level="3" data-perm-key="deliveries" onclick="showDeliveries();closeDrawer()"><span class="ic">🚚</span> Deliveries</button>
-  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="deliveryReport" onclick="showDeliveryReport();closeDrawer()"><span class="ic">📋</span> Delivery Report</button>
-  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="businessLocation" onclick="showBusinessLocation();closeDrawer()"><span class="ic">📍</span> Business Location</button>
-  <button class="navbtn" data-min-level="3" data-perm-key="phoneOrder" onclick="showPhoneOrder();closeDrawer()"><span class="ic">📞</span> Phone Order</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="deliveries" data-modules="full_retail,hotel" onclick="showDeliveries();closeDrawer()"><span class="ic">🚚</span> Deliveries</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="deliveryReport" data-modules="full_retail,hotel" onclick="showDeliveryReport();closeDrawer()"><span class="ic">📋</span> Delivery Report</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="businessLocation" data-modules="full_retail,hotel" onclick="showBusinessLocation();closeDrawer()"><span class="ic">📍</span> Business Location</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="phoneOrder" data-modules="full_retail,hotel" onclick="showPhoneOrder();closeDrawer()"><span class="ic">📞</span> Phone Order</button>
  </div>
 </div>
 
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Online Ordering</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" onclick="showOnlineOrderingSettings();closeDrawer()"><span class="ic">🔗</span> Online Ordering Setup</button>
-  <button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" onclick="showIncomingOrders();closeDrawer()"><span class="ic">📥</span> Incoming Orders</button>
-  <button class="navbtn" data-min-level="3" data-perm-key="readyBoard" onclick="showReadyBoard();closeDrawer()"><span class="ic">📣</span> Ready Board</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showOnlineOrderingSettings();closeDrawer()"><span class="ic">🔗</span> Online Ordering Setup</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="menuAvailability" data-modules="full_retail,hotel" onclick="showMenuAvailability();closeDrawer()"><span class="ic">🍽</span> Menu Availability</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" data-modules="full_retail,hotel" onclick="showIncomingOrders();closeDrawer()"><span class="ic">📥</span> Incoming Orders</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="readyBoard" data-modules="full_retail,hotel" onclick="showReadyBoard();closeDrawer()"><span class="ic">📣</span> Ready Board</button>
  </div>
 </div>
 
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Hotel Operations</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" onclick="showHotelDashboard();closeDrawer()"><span class="ic">🛏</span> Hotel Dashboard</button>
-  <button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" onclick="showKitchenBarTerminal();closeDrawer()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
-  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="occupancyReport" onclick="showOccupancyReport();closeDrawer()"><span class="ic">📊</span> Occupancy Report</button>
-  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="hotelBreakdown" onclick="showHotelSalesBreakdown();closeDrawer()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
-  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="rooms" onclick="showRoomsManagement();closeDrawer()"><span class="ic">🏨</span> Rooms</button>
+  <button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" data-modules="hotel" onclick="showHotelDashboard();closeDrawer()"><span class="ic">🛏</span> Hotel Dashboard</button>
+  <button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" data-modules="hotel" onclick="showKitchenBarTerminal();closeDrawer()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
+  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="occupancyReport" data-modules="hotel" onclick="showOccupancyReport();closeDrawer()"><span class="ic">📊</span> Occupancy Report</button>
+  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="hotelBreakdown" data-modules="hotel" onclick="showHotelSalesBreakdown();closeDrawer()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
+  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="rooms" data-modules="hotel" onclick="showRoomsManagement();closeDrawer()"><span class="ic">🏨</span> Rooms</button>
  </div>
 </div>
 
@@ -1529,7 +1534,7 @@ function blankDashboardUI(){
   <button class="navbtn ownerOnly" data-perm-key="businessExpenses" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
   <button class="navbtn ownerOnly" data-perm-key="drawings" onclick="showDirectorsDrawings();closeDrawer()"><span class="ic">◎</span> Director's Drawings</button>
   <button class="navbtn ownerOnly" data-perm-key="otherIncome" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
-  <button class="navbtn ownerOnly" data-perm-key="commissions" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
+  <button class="navbtn ownerOnly" data-perm-key="commissions" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="investments" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="loans" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
   <button class="navbtn ownerOnly" data-perm-key="expenseTypes" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
@@ -1541,13 +1546,13 @@ function blankDashboardUI(){
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Inventory</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockPurchases" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
-  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="issueOut" onclick="showIssueOut();closeDrawer()"><span class="ic">🍳</span> Issue / Return Stock</button>
-  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storeBalances" onclick="showStoreKitchenBalances();closeDrawer()"><span class="ic">⚖️</span> Store &amp; Kitchen Balances</button>
-  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="receivers" onclick="showReceivers();closeDrawer()"><span class="ic">👷</span> Receivers</button>
-  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="lowStock" onclick="showLowStock();closeDrawer()"><span class="ic">⚠️</span> Low Stock</button>
-  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="recipes" onclick="showConversionMenu();closeDrawer()"><span class="ic">🔄</span> Recipes</button>
-  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="productMovement" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockPurchases" data-modules="business_stock,full_retail,hotel" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="issueOut" data-modules="full_retail,hotel" onclick="showIssueOut();closeDrawer()"><span class="ic">🍳</span> Issue / Return Stock</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storeBalances" data-modules="full_retail,hotel" onclick="showStoreKitchenBalances();closeDrawer()"><span class="ic">⚖️</span> Store &amp; Kitchen Balances</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="receivers" data-modules="full_retail,hotel" onclick="showReceivers();closeDrawer()"><span class="ic">👷</span> Receivers</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="lowStock" data-modules="business_stock,full_retail,hotel" onclick="showLowStock();closeDrawer()"><span class="ic">⚠️</span> Low Stock</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="recipes" data-modules="full_retail,hotel" onclick="showConversionMenu();closeDrawer()"><span class="ic">🔄</span> Recipes</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="productMovement" data-modules="business_stock,full_retail,hotel" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
  </div>
 </div>
 
@@ -1562,10 +1567,10 @@ function blankDashboardUI(){
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="transactionReport" onclick="showTransactionReport();closeDrawer()"><span class="ic">📋</span> Transaction Report</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="voidReport" onclick="showVoidReport();closeDrawer()"><span class="ic">🚫</span> Void Report</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="paymentChannelReport" onclick="showPaymentChannelReport();closeDrawer()"><span class="ic">💳</span> Payment Channel Report</button>
-  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="vendorPurchaseReport" onclick="showVendorPurchaseReport();closeDrawer()"><span class="ic">🏭</span> Vendor Purchase Report</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="vendorPurchaseReport" data-modules="business_stock,full_retail,hotel" onclick="showVendorPurchaseReport();closeDrawer()"><span class="ic">🏭</span> Vendor Purchase Report</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="taxReport" onclick="showTaxReport();closeDrawer()"><span class="ic">🏛</span> Tax Report</button>
   <button class="navbtn ownerOnly" data-perm-key="taxConfig" onclick="showTaxConfiguration();closeDrawer()"><span class="ic">%</span> Tax Configuration</button>
-  <button class="navbtn ownerOnly" data-perm-key="cacReturn" onclick="showCacReport();closeDrawer()"><span class="ic">🏢</span> CAC Annual Return Summary</button>
+  <button class="navbtn ownerOnly" data-perm-key="cacReturn" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showCacReport();closeDrawer()"><span class="ic">🏢</span> CAC Annual Return Summary</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="audit" onclick="showAudit();closeDrawer()"><span class="ic">🔍</span> Audit of Me</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="reconciliation" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
  </div>
@@ -1719,12 +1724,18 @@ function addBusiness(){
   openModal(`<h2>New Business ${hb("Choose the module that matches what this business actually does — this sets up the right screens and points you at the matching subscription plan.")}</h2>
   <div class="field"><label>Business name</label><input id="nbName" placeholder="e.g. Adeola Stores"></div>
   <div class="field"><label>Module</label>
-   <select id="nbModule">
+   <select id="nbModule" onchange="onNewBusinessModuleChanged()">
     <option value="personal">${esc(PLAN_LABELS.personal)}</option>
     <option value="business_basic">${esc(PLAN_LABELS.business_basic)}</option>
     <option value="business_stock">${esc(PLAN_LABELS.business_stock)}</option>
     <option value="full_retail" selected>${esc(PLAN_LABELS.full_retail)}</option>
     <option value="hotel">${esc(PLAN_LABELS.hotel)}</option>
+   </select>
+  </div>
+  <div class="field" id="nbRetailKindField" style="display:none"><label>What kind of business? ${hb("Full Stock covers both. A restaurant issues raw stock to a kitchen that cooks it; a store or supermarket issues to a processing or packing department. This only changes wording and which screens you see — the stock flow itself is the same.")}</label>
+   <select id="nbRetailKind">
+    <option value="restaurant">Restaurant / food service — issues to a Kitchen</option>
+    <option value="store">Store / supermarket — issues to a Processing Department</option>
    </select>
   </div>
   <button class="btn accent full" onclick="submitAddBusiness()">Create Business</button>
@@ -1735,7 +1746,14 @@ function cancelAddBusiness(){
  closeModal();
  if(window.__addBusinessResolve){ window.__addBusinessResolve(false); window.__addBusinessResolve=null; }
 }
-async function createBusinessForModule(name, module){
+// Full Stock covers both restaurants and stores, and they differ enough in wording and
+// which screens apply to be worth asking. Only shown for that module — every other module
+// has an unambiguous shape already.
+function onNewBusinessModuleChanged(){
+ const f=document.getElementById('nbRetailKindField');
+ if(f) f.style.display = (document.getElementById('nbModule').value==='full_retail') ? '' : 'none';
+}
+async function createBusinessForModule(name, module, retailKind){
  // b.type only distinguishes salary/hotel/business for now — the other three modules
  // (basic/stock/full_retail) all run the same regular-business screens, just gated to
  // different feature levels once a matching plan is subscribed to.
@@ -1756,7 +1774,7 @@ async function createBusinessForModule(name, module){
  // accounts all sat together in one local store with nothing distinguishing them, so the
  // business switcher listed — and would happily switch into — a business belonging to a
  // completely different account. Real data isolation failure, not just a display bug.
- const nb={id:newId,...defaults.business,name,type:bizType,module,ownerTenantId:(ServerAccount.tenant&&ServerAccount.tenant.id)||null};
+ const nb={id:newId,...defaults.business,name,type:bizType,module,retailKind:(module==='full_retail'?(retailKind||'restaurant'):null),ownerTenantId:(ServerAccount.tenant&&ServerAccount.tenant.id)||null};
  await put('business',nb,true); // skipDirty — handled explicitly below, since a brand new business needs to be marked ready BEFORE markDirty() would otherwise silently block its first push
  localStorage.setItem('moborex_active_business',nb.id);
  localStorage.setItem('moborex_device_module_set','1'); // this device now has a definite module — the login-time picker won't re-ask until "Switch Module" is used
@@ -1767,8 +1785,9 @@ async function submitAddBusiness(){
  const name=nbName.value.trim();
  if(!name){ alert('Enter a business name.'); return; }
  const module=nbModule.value;
+ const retailKind=document.getElementById('nbRetailKind')?.value||'restaurant';
  try{
-  await createBusinessForModule(name, module);
+  await createBusinessForModule(name, module, retailKind);
  }catch(e){ return; } // server rejected it (duplicate module or name) — it already told the user why; leave the form open so they can change it
  closeModal();await refresh();
  if(confirm('Business created. Go to Subscription now to activate the '+PLAN_LABELS[module]+' plan?')) await showBillingScreen();
@@ -1883,6 +1902,7 @@ const PERMISSION_GROUPS = {
  },
  'Online Ordering': {
   onlineOrderingSetup:'Online Ordering Setup', incomingOrders:'Incoming Orders', readyBoard:'Ready Board',
+  menuAvailability:'Menu Availability',
  },
  'Hotel Operations': {
   hotelDashboard:'Hotel Dashboard', kitchenBarTerminal:'Kitchen / Bar Terminal', occupancyReport:'Occupancy Report',
@@ -4315,6 +4335,31 @@ function applyModuleGatingUI(){
   const passesHotelGate = min<4 || isHotel;
   el.style.display = (level>=min && passesHotelGate) ? '' : 'none';
  });
+ // Module EXCLUSIVITY, which is different from tier gating above. Tiering asks "is this
+ // plan high enough"; this asks "does this feature belong to this kind of business at all".
+ // A hotel and a supermarket can sit on the same tier and still have no business seeing
+ // each other's screens — and with 65 nav items, showing everything to everyone makes the
+ // menu unusably long. Items with no data-modules attribute are generic and always show.
+ const myModule = currentBusinessModule();
+ document.querySelectorAll('[data-modules]').forEach(el=>{
+  const allowed = (el.dataset.modules||'').split(',').map(s=>s.trim()).filter(Boolean);
+  if(!allowed.length) return;
+  if(!allowed.includes(myModule)){ el.style.display='none'; el.classList.add('moduleHidden'); }
+  else { el.classList.remove('moduleHidden'); }
+ });
+}
+// The business's own module, preferred over the billing plan: a business IS its module from
+// the moment it's created, whereas the plan can lag behind (trialing, lapsed, or never set).
+// Falls back to the plan, then to the broadest sensible default so nothing vanishes for a
+// legacy business created before modules were recorded.
+function currentBusinessModule(){
+ if(window.CURRENT_BUSINESS_MODULE) return window.CURRENT_BUSINESS_MODULE;
+ const plan = window.billingStatus && window.billingStatus.plan;
+ if(plan && MODULE_LEVELS[plan]!==undefined) return plan;
+ const t = window.CURRENT_BUSINESS_TYPE;
+ if(t==='hotel') return 'hotel';
+ if(t==='salary') return 'personal';
+ return 'full_retail';
 }
 async function showBillingScreen(){
  if(!ServerAccount.token){ alert('Log in to your account first.'); return; }
@@ -5704,13 +5749,11 @@ async function renderVendorPurchaseReport(){
    only exists to cover that routing) never applies to this channel. ---------------- */
 window.phoneOrderPeople = [];
 window.phoneOrderCurrentIdx = 0;
-// Same reasoning as publishMenu(): requiring trackStock hid every made-to-order item, which
-// is most of a restaurant's actual menu. A stock-tracked item still disappears when it runs
-// out (nothing orderable should be shown that can't be supplied); an untracked one has no
-// stock count to check against and is always offerable.
-function phoneOrderInStock(p){ return p.trackStock ? (Number(p.stockQty)||0)>0 : true; }
-function phoneOrderSellable(products){ return products.filter(p=>phoneOrderInStock(p) && (!p.kind || p.kind==='regular' || p.kind==='food')); }
-function phoneOrderPackaging(products){ return products.filter(p=>phoneOrderInStock(p) && p.kind && ['food_pack','food_nylon','nonfood_packaging'].includes(p.kind)); }
+// Uses the shared isOfferable() rule, so phone orders, the online link, and the QR page all
+// agree on what can be sold: switched off by the owner, or a stock-tracked item that has
+// run out, means not offerable. A made-to-order item has no stock count and is always on.
+function phoneOrderSellable(products){ return products.filter(p=>isOfferable(p) && (!p.kind || p.kind==='regular' || p.kind==='food')); }
+function phoneOrderPackaging(products){ return products.filter(p=>isOfferable(p) && p.kind && ['food_pack','food_nylon','nonfood_packaging'].includes(p.kind)); }
 async function showPhoneOrder(){
  if(!posRequireFullTier())return;
  window.phoneOrderPeople = [{ label:'Person 1', cart:{} }];
@@ -6473,11 +6516,11 @@ async function showOnlineOrderingSettings(){
  const basePath = location.origin + location.pathname.replace(/index\.html$/,'');
  const qrUrl = `${basePath}order.html?business=${businessId}&source=qr`;
  const onlineUrl = `${basePath}order.html?business=${businessId}&source=online`;
- openModal(`<h2>Online Ordering ${hb("Publish your current stock-tracked products as a public menu, then share the online link or print the QR code. Orders land in Incoming Orders — nothing changes until you accept one.")}</h2>
+ openModal(`<h2>Online Ordering ${hb("Share the online link or print the QR code. Your menu keeps itself up to date automatically — orders land in Incoming Orders, and nothing changes until you accept one.")}</h2>
  <button class="btn secondary full" onclick="showPayoutAccountSettings()">💳 Payout Bank Account ${hb("Required before customers can pay online — this is where their payment actually goes. QR (pay at cashier) works without it.")}</button>
- <button class="btn accent full" style="margin-top:8px" onclick="publishMenu()">Publish Current Menu</button>
- <div class="notice">Publishing is a snapshot, not a live sync — if stock runs out or prices change afterward, publish again to update what customers see. Out-of-stock items are left off automatically.</div>
- <div class="notice" id="publishStatus">Not published yet this session.</div>
+ <button class="btn accent full" style="margin-top:8px" onclick="showMenuAvailability()">🍽 Menu Availability ${hb("Switch individual items on or off for online, QR, and phone orders.")}</button>
+ <div class="notice">Your menu updates itself — there is nothing to publish. Items switched off under Menu Availability, and stock-tracked items that have run out, are left off automatically.</div>
+ <div class="notice" id="publishStatus">Menu is live and syncing automatically.</div>
  <div class="sectionhead" style="margin-top:14px"><h3>Online Link — customer pays online, from home</h3></div>
  <div class="field"><input readonly value="${onlineUrl}" onclick="this.select()"></div>
  <div class="sectionhead" style="margin-top:14px"><h3>QR Code — customer pays at the cashier</h3></div>
@@ -6486,45 +6529,57 @@ async function showOnlineOrderingSettings(){
  <button class="btn secondary full" style="margin-top:10px" onclick="showIncomingOrders()">View Incoming Orders</button>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
 }
-// Keeps the public menu in step with the product list, but only for a business that has
-// already published once — publishing is an explicit opt-in, and this never makes a menu
-// public on its own. Silent and best-effort: a failure here must never block saving a
-// product, and the owner can always re-publish manually from Online Ordering Setup.
+// Publishing is automatic — there is no "press Publish" step. Any product change, or an
+// availability toggle, pushes the current menu straight to the public ordering page.
+// Availability is what controls whether an item is offered, not whether it was published:
+// an unavailable item is simply excluded, so online, QR and phone orders can't select it.
+function isOfferable(p){
+ if(p.availableOnline===false) return false;      // explicitly switched off by the owner
+ if(p.trackStock) return (Number(p.stockQty)||0)>0; // tracked goods must actually be in stock
+ return true;                                      // made-to-order items have no stock to check
+}
 async function republishMenuIfLive(){
  try{
-  const businessId = await getActiveBusinessId();
-  if(!localStorage.getItem('moborex_menu_published_'+businessId)) return; // never published — nothing public to keep in sync
   if(!ServerAccount.token) return;
-  const allProducts = await bizProducts();
-  const products = allProducts.filter(p => p.trackStock ? (Number(p.stockQty)||0)>0 : true);
-  const b = await getBusiness();
-  const items = products.map(p=>({productId:p.id, name:p.name, priceKobo:Math.round((Number(p.price)||0)*100), description:'', kind:p.kind||'regular'}));
-  await ServerAccount.api('/api/menu/publish', {method:'POST', body: JSON.stringify({businessId, businessName:b.name, items})});
- }catch(e){ console.error('Could not auto-refresh the published menu', e); }
-}
-async function publishMenu(){
- // Two different kinds of item, two different rules. Anything stock-tracked is excluded
- // when it's genuinely out of stock — nothing a customer can see should be unorderable.
- // But an item that ISN'T stock-tracked (made-to-order food, a service) has no meaningful
- // stock count at all, and requiring one is why menus were publishing empty: restaurants
- // don't inventory "jollof rice", they cook it on demand.
- const allProducts = await bizProducts();
- const products = allProducts.filter(p => p.trackStock ? (Number(p.stockQty)||0)>0 : true);
- if(!products.length){
-  publishStatus.textContent = allProducts.length
-   ? 'Nothing to publish — every product is stock-tracked and currently out of stock.'
-   : 'No products yet. Add them under Products / Services first.';
-  return;
- }
- try{
   const businessId = await getActiveBusinessId();
+  const products = (await bizProducts()).filter(isOfferable);
   const b = await getBusiness();
   const items = products.map(p=>({productId:p.id, name:p.name, priceKobo:Math.round((Number(p.price)||0)*100), description:'', kind:p.kind||'regular'}));
   await ServerAccount.api('/api/menu/publish', {method:'POST', body: JSON.stringify({businessId, businessName:b.name, items})});
-  localStorage.setItem('moborex_menu_published_'+businessId,'1'); // opts this business into automatic re-publishing on future product changes
-  const excluded = allProducts.length - products.length;
-  publishStatus.textContent = `Published ${products.length} item(s) — live now.` + (excluded?` (${excluded} out-of-stock item(s) not shown.)`:'');
- }catch(e){ publishStatus.textContent = 'Could not publish: '+e.message; }
+ }catch(e){ console.error('Could not refresh the published menu', e); }
+}
+async function showMenuAvailability(){
+ if(!requireOwnerMode('Menu availability','menuAvailability'))return;
+ const products = await bizProducts();
+ const b = await getBusiness();
+ const label = b.type==='hotel' ? 'Bar &amp; Kitchen Menu' : 'Menu / Goods';
+ openModal(`<h2>${label} Availability ${hb("Switch an item off and it immediately stops being offered on your online link, QR code, and phone orders. Switch it back on and it returns. Nothing needs publishing — the public menu updates itself.")}</h2>
+ <div class="notice">Off = not offered online. Stock-tracked items also drop off automatically when they run out.</div>
+ <div class="list">${products.map(p=>{
+   const off = p.availableOnline===false;
+   const outOfStock = p.trackStock && (Number(p.stockQty)||0)<=0;
+   return `<div class="row-item">
+    <div><b>${esc(p.name)}</b><small>${money(p.price)}${p.trackStock?' · stock '+(p.stockQty??0):' · made to order'}${outOfStock?' · out of stock':''}</small></div>
+    <div class="row-right">
+     ${outOfStock?'<span class="stamp overdue">Out</span>':''}
+     <button class="btn ${off?'secondary':'accent'}" style="padding:6px 12px;font-size:12px" onclick="toggleMenuAvailability('${p.id}')">${off?'OFF':'ON'}</button>
+    </div>
+   </div>`;
+  }).join('')||'<div class="empty">No products yet. Add them under Products / Services first.</div>'}</div>
+ <div id="availStatus" class="notice" style="display:none"></div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function toggleMenuAvailability(productId){
+ const products = await bizProducts();
+ const p = products.find(x=>x.id===productId);
+ if(!p) return;
+ p.availableOnline = p.availableOnline===false ? true : false;
+ await put('products',p);
+ await showMenuAvailability();
+ const el=document.getElementById('availStatus');
+ if(el){ el.style.display='block'; el.textContent = p.name+' is now '+(p.availableOnline===false?'unavailable':'available')+' online. Updating the public menu…'; }
+ await republishMenuIfLive();
+ if(el) el.textContent = p.name+' is now '+(p.availableOnline===false?'unavailable':'available')+' online. Public menu updated.';
 }
 window.ordersPollInterval = null;
 async function startIncomingOrdersPolling(){
