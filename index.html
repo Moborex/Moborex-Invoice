@@ -162,9 +162,24 @@ button{font-family:var(--font-body);cursor:pointer}
   .shell, #installBar, #backupBar, #drawerOverlay { display:none !important; }
   #modal{ position:static !important; background:none !important; display:block !important; inset:auto !important; }
   #sheet{ box-shadow:none !important; padding:0 !important; max-height:none !important; overflow:visible !important; border-radius:0 !important; width:auto !important; }
-  #sheet > *:not(#pdfTarget){ display:none !important; }
+  #sheet > *:not(#pdfTarget):not(#receiptTarget){ display:none !important; }
   #pdfTarget{ border:0 !important; box-shadow:none !important; padding:0 !important; }
+  #receiptTarget{ border:0 !important; box-shadow:none !important; padding:0 !important; margin:0 !important; width:100% !important; }
 }
+/* Thermal POS receipt — a roll, not a page. Narrow, monospace, no borders or colour fills
+   (thermal printers are single-colour and any background just wastes heat and time).
+   The actual paper size is set by an @page rule injected only while printing a receipt,
+   since @page is document-level and can't be scoped by a class. */
+.receipt{width:72mm;margin:0 auto;font-family:var(--font-mono),ui-monospace,monospace;font-size:11px;line-height:1.45;color:#000;background:#fff;padding:4mm 2mm}
+.receipt .rHead{text-align:center;margin-bottom:6px}
+.receipt .rBiz{font-size:14px;font-weight:800;letter-spacing:.02em}
+.receipt .rSmall{font-size:10px}
+.receipt .rRule{border-top:1px dashed #000;margin:6px 0}
+.receipt .rRow{display:flex;justify-content:space-between;gap:6px}
+.receipt .rItem{margin-bottom:3px}
+.receipt .rItemName{font-weight:700}
+.receipt .rTotal{font-size:13px;font-weight:800}
+.receipt .rFoot{text-align:center;margin-top:8px;font-size:10px}
 .pdfActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
 
 .cloudBox{padding:13px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--paper);margin:12px 0}
@@ -200,6 +215,7 @@ button{font-family:var(--font-body);cursor:pointer}
 body.staffMode .ownerOnly{display:none!important}
 body.staffMode:not(.supervisorMode) .supervisorOnly{display:none!important}
 body.staffMode .ownerOnly.permGranted{display:flex!important}
+body.staffMode .permDenied{display:none!important}
 body.posClerkMode .navGroupItems .navbtn{display:none!important}
 body.hotelFrontDeskMode .navGroupItems .navbtn{display:none!important}
 body.hotelKitchenMode .navGroupItems .navbtn{display:none!important}
@@ -235,7 +251,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 54;
+const APP_VERSION = 55;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -272,7 +288,7 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=33;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=34;
 let idb;
 const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0,staffMembers:[],posAllowTabs:true,taxRates:[{id:'default-vat',name:'VAT',rate:7.5,inclusive:false}]}};
 function deriveInitials(name){
@@ -305,6 +321,11 @@ function openDB(){
    if(!d.objectStoreNames.contains('conversions')){let s=d.createObjectStore('conversions',{keyPath:'id'});s.createIndex('businessId','businessId')}
    if(!d.objectStoreNames.contains('onlineOrders')){let s=d.createObjectStore('onlineOrders',{keyPath:'id'});s.createIndex('businessId','businessId')}
    if(!d.objectStoreNames.contains('bankAccounts')){let s=d.createObjectStore('bankAccounts',{keyPath:'id'});s.createIndex('businessId','businessId')}
+   // Two-location stock, modelled on the BizFlow reference: raw materials live in the
+   // Store, get ISSUED to a receiver (kitchen/bar), and that batch declares how many
+   // finished counter units it produced. Store balance = purchased - issued + returned.
+   if(!d.objectStoreNames.contains('receivers')){let s=d.createObjectStore('receivers',{keyPath:'id'});s.createIndex('businessId','businessId')}
+   if(!d.objectStoreNames.contains('stockMovements')){let s=d.createObjectStore('stockMovements',{keyPath:'id'});s.createIndex('businessId','businessId');s.createIndex('date','date')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};
   r.onerror=()=>reject(r.error);
@@ -316,13 +337,23 @@ function req(store,mode,action){return new Promise((resolve,reject)=>{let t=idb.
    invoices/customers/products/business-kind expenses & expense types carry a
    businessId. Personal expenses/categories stay global — they're the person's,
    not any one business's. ---- */
+// Every business belonging to the currently logged-in account. Legacy records created
+// before businesses were tagged (ownerTenantId null/undefined) are treated as belonging to
+// whoever is logged in now — they predate multi-account use on one device, so there's no
+// other account they could have come from, and excluding them would strand real data.
+async function myBusinesses(){
+  const list = await all('business');
+  const myTenant = (typeof ServerAccount!=='undefined' && ServerAccount.tenant && ServerAccount.tenant.id) || null;
+  if(!myTenant) return list; // not logged in yet — the auth gate is up anyway, nothing is reachable
+  return list.filter(b => !b.ownerTenantId || b.ownerTenantId === myTenant);
+}
 async function getActiveBusinessId(){
   let id = localStorage.getItem('moborex_active_business');
-  const list = await all('business');
+  const list = await myBusinesses(); // scoped to this account — never fall back into another account's business
   if(id && list.some(b=>b.id===id)) return id;
   if(list.some(b=>b.id==='main')){ localStorage.setItem('moborex_active_business','main'); return 'main'; } // pre-multi-business installs
   if(list.length>0){ localStorage.setItem('moborex_active_business', list[0].id); return list[0].id; }
-  const nb = {id:crypto.randomUUID(), ...defaults.business};
+  const nb = {id:crypto.randomUUID(), ...defaults.business, ownerTenantId:(typeof ServerAccount!=='undefined' && ServerAccount.tenant && ServerAccount.tenant.id)||null};
   await req('business','readwrite',s=>s.put(nb));
   localStorage.setItem('moborex_active_business', nb.id);
   registerBusinessWithServer(nb.id);
@@ -427,6 +458,206 @@ async function bizQuotations(){const id=await getActiveBusinessId();return (awai
 async function bizCommissions(){const id=await getActiveBusinessId();return (await all('commissions')).filter(x=>x.businessId===id)}
 async function bizLoans(){const id=await getActiveBusinessId();return (await all('loans')).filter(x=>x.businessId===id)}
 async function bizStockPurchases(){const id=await getActiveBusinessId();return (await all('stockPurchases')).filter(x=>x.businessId===id)}
+async function bizReceivers(){const id=await getActiveBusinessId();return (await all('receivers')).filter(x=>x.businessId===id)}
+async function bizStockMovements(){const id=await getActiveBusinessId();return (await all('stockMovements')).filter(x=>x.businessId===id)}
+/* ---------------- Two-location stock, adopted from the BizFlow reference ----------------
+   The product's own stockQty is the STORE balance — raw material physically in the store.
+   Issuing to a receiver (kitchen, bar) moves it out of the store; the batch then declares
+   how many finished counter units it produced, which is what actually gets sold. Returns
+   bring unused raw material back. Store balance = purchased - issued + returned, which is
+   exactly what stockQty already tracks once issue/return adjust it.
+   Kitchen balance is derived, not stored: produced - sold, per counter product. ---------------- */
+async function kitchenBalances(){
+ const movements=(await bizStockMovements()).filter(m=>m.status!=='voided');
+ const produced={};
+ for(const m of movements){
+  if(m.type==='issue' && m.counterProductId && m.counterQty>0){
+   produced[m.counterProductId]=(produced[m.counterProductId]||0)+Number(m.counterQty);
+  }
+ }
+ // What's been sold of each counter product, from real invoices — the same source the
+ // rest of the app already treats as the record of a sale.
+ const invoices=(await bizInvoices()).filter(i=>i.status!=='void');
+ const sold={};
+ for(const inv of invoices){
+  for(const it of (inv.items||[])){
+   if(it.productId) sold[it.productId]=(sold[it.productId]||0)+(Number(it.qty)||0);
+  }
+ }
+ const out={};
+ for(const pid of new Set([...Object.keys(produced), ...Object.keys(sold)])){
+  out[pid]={produced:produced[pid]||0, sold:sold[pid]||0, balance:(produced[pid]||0)-(sold[pid]||0)};
+ }
+ return out;
+}
+async function showIssueOut(){
+ if(!requireOwnerMode('Issue stock','stockPurchases'))return;
+ const receivers=await bizReceivers();
+ if(!receivers.length){
+  if(confirm('No receivers registered yet. A receiver is who stock is issued to — a kitchen, bar, or department. Set one up now?')) await showReceivers();
+  return;
+ }
+ const products=(await bizProducts()).filter(p=>p.trackStock);
+ if(!products.length){ alert('No stock-tracked products yet. Turn on stock tracking for a product first.'); return; }
+ window.issueLines=[{productId:products[0].id, qty:''}];
+ openModal(`<h2>Issue / Return Stock ${hb("Issuing moves raw stock out of the store to a kitchen or department. Returning brings unused stock back. On an issue you can also declare what the batch produced, so finished counter units are tracked separately from raw material.")}</h2>
+ <div class="row2">
+  <div class="field"><label>Type</label><select id="ioType" onchange="drawIssueLines()"><option value="issue">Issue Out (store → receiver)</option><option value="return">Return (receiver → store)</option></select></div>
+  <div class="field"><label>Date</label><input id="ioDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+ </div>
+ <div class="field"><label id="ioReceiverLabel">Issued to</label><select id="ioReceiver">${receivers.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select></div>
+ <div class="sectionhead" style="margin-top:12px"><h3>Items</h3><button class="linkbtn" onclick="addIssueLine()">＋ Add item</button></div>
+ <div id="ioLines"></div>
+ <div id="ioCounterSection">
+  <div class="sectionhead" style="margin-top:12px"><h3>What this batch produced ${hb("Optional. If this issue produced finished units for the counter — say 40 plates from a bag of rice — record it here so counter stock is tracked separately from the raw material.")}</h3></div>
+  <div class="row2">
+   <div class="field"><label>Counter product</label><select id="ioCounterProduct"><option value="">— None —</option>${products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+   <div class="field"><label>Units produced</label><input id="ioCounterQty" type="number" min="0"></div>
+  </div>
+ </div>
+ <div class="field"><label>Comment (optional)</label><input id="ioComment"></div>
+ <button class="btn accent full" onclick="saveStockMovement()">Save</button>
+ <button class="btn secondary full" onclick="showStockMovementHistory()">View History</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ window.ioProducts=products;
+ drawIssueLines();
+}
+function drawIssueLines(){
+ const products=window.ioProducts||[];
+ const isReturn=document.getElementById('ioType')?.value==='return';
+ const lbl=document.getElementById('ioReceiverLabel');
+ if(lbl) lbl.textContent = isReturn ? 'Returned by' : 'Issued to';
+ const counterSec=document.getElementById('ioCounterSection');
+ if(counterSec) counterSec.style.display = isReturn ? 'none' : ''; // a return produces nothing — it's stock coming back
+ const el=document.getElementById('ioLines');
+ if(!el)return;
+ el.innerHTML=window.issueLines.map((ln,i)=>`<div class="row2" style="align-items:end">
+  <div class="field"><label>Product</label><select onchange="updateIssueLine(${i},'productId',this.value)">${products.map(p=>`<option value="${p.id}" ${p.id===ln.productId?'selected':''}>${esc(p.name)} (store: ${p.stockQty??0})</option>`).join('')}</select></div>
+  <div class="field"><label>Qty</label><input type="number" min="0" value="${ln.qty}" onchange="updateIssueLine(${i},'qty',this.value)"></div>
+  ${window.issueLines.length>1?`<button class="btn danger" style="padding:6px 10px;font-size:11px;margin-bottom:10px" onclick="removeIssueLine(${i})">✕</button>`:''}
+ </div>`).join('');
+}
+function addIssueLine(){ window.issueLines.push({productId:(window.ioProducts[0]||{}).id, qty:''}); drawIssueLines(); }
+function removeIssueLine(i){ window.issueLines.splice(i,1); drawIssueLines(); }
+function updateIssueLine(i,field,val){ window.issueLines[i][field]=val; }
+async function saveStockMovement(){
+ if(!requireActiveSubscription('Issuing stock'))return;
+ const type=ioType.value, isReturn=type==='return';
+ const receivers=await bizReceivers();
+ const receiver=receivers.find(r=>r.id===ioReceiver.value);
+ if(!receiver){ alert('Choose a receiver.'); return; }
+ const products=await bizProducts();
+ const lines=[];
+ for(const ln of window.issueLines){
+  const qty=Number(ln.qty)||0;
+  if(qty<=0) continue;
+  const p=products.find(x=>x.id===ln.productId);
+  if(!p) continue;
+  // Only blocked on an issue — a return is stock coming back in, so the store having
+  // little of it is exactly the normal case, not an error.
+  if(!isReturn && qty>(Number(p.stockQty)||0)){
+   alert('Only '+(p.stockQty??0)+' of '+p.name+' left in the store — cannot issue '+qty+'.');
+   return;
+  }
+  lines.push({productId:p.id, productName:p.name, qty, unitCost:Number(p.costPrice)||0});
+ }
+ if(!lines.length){ alert('Add at least one item with a quantity.'); return; }
+ const counterProductId = !isReturn ? (ioCounterProduct.value||'') : '';
+ const counterQty = !isReturn ? (Number(ioCounterQty.value)||0) : 0;
+ if(counterProductId && counterQty<=0){ alert('Enter how many units this batch produced, or set the counter product back to None.'); return; }
+ const counterProduct = counterProductId ? products.find(p=>p.id===counterProductId) : null;
+
+ const bizId=await getActiveBusinessId();
+ const movement={
+  id:crypto.randomUUID(), businessId:bizId, type, date:ioDate.value,
+  receiverId:receiver.id, receiverName:receiver.name,
+  items:lines,
+  counterProductId:counterProductId||null, counterProductName:counterProduct?counterProduct.name:null, counterQty:counterQty||null,
+  comment:(ioComment.value||'').trim(), status:'active',
+  journalNumber:await nextJournalNo(), createdBy:currentActorName(),
+ };
+ // Store balance moves here: issuing takes raw stock out, returning puts it back. The
+ // product's own stockQty IS the store balance, so this is the single place it changes
+ // for movements — same as purchases handle it for stock coming in from a vendor.
+ for(const ln of lines){
+  const p=products.find(x=>x.id===ln.productId);
+  p.stockQty=(Number(p.stockQty)||0) + (isReturn ? ln.qty : -ln.qty);
+  await put('products',p);
+ }
+ await put('stockMovements',movement);
+ closeModal(); await refresh();
+ alert((isReturn?'Return':'Issue')+' recorded — '+movement.journalNumber);
+}
+async function showStockMovementHistory(){
+ if(!requireOwnerMode('Stock movement history','stockPurchases'))return;
+ const movements=(await bizStockMovements()).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ openModal(`<h2>Issue / Return History</h2>
+ <div class="list">${movements.map(m=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px${m.status==='voided'?';opacity:.5':''}">
+  <div style="display:flex;justify-content:space-between"><b>${m.type==='issue'?'Issued to':'Returned by'} ${esc(m.receiverName||'')}</b><small>${esc(m.date||'')}</small></div>
+  <small>${(m.items||[]).map(i=>esc(i.productName)+' × '+i.qty).join(', ')}</small>
+  ${m.counterProductName?`<small style="color:var(--brass2)">Produced: ${esc(m.counterProductName)} × ${m.counterQty}</small>`:''}
+  <small style="color:var(--muted)">${esc(m.journalNumber||'')}${m.comment?' · '+esc(m.comment):''}${m.status==='voided'?' · VOIDED':''}</small>
+  ${m.status!=='voided'?`<button class="btn danger" style="align-self:flex-start;padding:4px 9px;font-size:11px" onclick="voidStockMovement('${m.id}')">Void</button>`:''}
+ </div>`).join('')||'<div class="empty">No issues or returns recorded yet.</div>'}</div>
+ <button class="btn secondary full" onclick="showIssueOut()">Back</button>`);
+}
+async function voidStockMovement(id){
+ const reason=prompt('Why is this being voided? (kept on record)');
+ if(reason===null) return;
+ if(!reason.trim()){ alert('A reason is required.'); return; }
+ const m=(await bizStockMovements()).find(x=>x.id===id);
+ if(!m || m.status==='voided') return;
+ // Reverses the stock effect as well as flagging it — voiding an issue puts the raw
+ // material back in the store, voiding a return takes it out again.
+ const products=await bizProducts();
+ for(const ln of (m.items||[])){
+  const p=products.find(x=>x.id===ln.productId);
+  if(!p) continue;
+  p.stockQty=(Number(p.stockQty)||0) + (m.type==='return' ? -ln.qty : ln.qty);
+  await put('products',p);
+ }
+ m.status='voided'; m.voidReason=reason.trim(); m.voidedBy=currentActorName(); m.voidedAt=new Date().toISOString();
+ await put('stockMovements',m);
+ await showStockMovementHistory(); await refresh();
+}
+async function showStoreKitchenBalances(){
+ if(!requireOwnerMode('Store & Kitchen balances','stockPurchases'))return;
+ const products=(await bizProducts()).filter(p=>p.trackStock);
+ const kitchen=await kitchenBalances();
+ openModal(`<h2>Store &amp; Kitchen Balances ${hb("Store is raw material physically in the store — what purchases add and issues take away. Kitchen is finished counter units — what issued batches declared as produced, minus what's been sold.")}</h2>
+ <div class="sectionhead"><h3>Store (raw stock)</h3></div>
+ <div class="list">${products.map(p=>`<div class="row-item"><div><b>${esc(p.name)}</b><small>unit cost ${money(p.costPrice||0)}</small></div><div class="row-right"><strong class="money">${p.stockQty??0}</strong>${(p.lowStockThreshold>0 && (p.stockQty??0)<=p.lowStockThreshold)?'<span class="stamp overdue">Low</span>':''}</div></div>`).join('')||'<div class="empty">No stock-tracked products.</div>'}</div>
+ <div class="sectionhead" style="margin-top:16px"><h3>Kitchen / Counter (finished units)</h3></div>
+ <div class="list">${Object.entries(kitchen).map(([pid,k])=>{
+   const p=products.find(x=>x.id===pid) || (window.pCache||[]).find(x=>x.id===pid);
+   const name=p?p.name:'(removed product)';
+   return `<div class="row-item"><div><b>${esc(name)}</b><small>produced ${k.produced} · sold ${k.sold}</small></div><div class="row-right"><strong class="money">${k.balance}</strong></div></div>`;
+  }).join('')||'<div class="empty">Nothing produced yet — record an issue and declare what the batch produced.</div>'}</div>
+ <button class="btn secondary full" style="margin-top:12px" onclick="closeModal()">Close</button>`);
+}
+async function showReceivers(){
+ if(!requireOwnerMode('Receivers','stockPurchases'))return;
+ const list=await bizReceivers();
+ openModal(`<h2>Receivers ${hb("Who raw stock gets issued to — a kitchen, a bar, a department, or a named person. Issuing always records who received it, so nothing leaves the store untracked.")}</h2>
+ <div class="field"><label>Name</label><input id="rcvName" placeholder="e.g. Kitchen"></div>
+ <button class="btn accent full" onclick="addReceiver()">＋ Add Receiver</button>
+ <div class="sectionhead" style="margin-top:16px"><h3>All receivers</h3></div>
+ <div class="list">${list.map(r=>`<div class="row-item"><div><b>${esc(r.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="removeReceiver('${r.id}')">Remove</button></div>`).join('')||'<div class="empty">No receivers yet — add one before issuing stock.</div>'}</div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function addReceiver(){
+ const name=rcvName.value.trim();
+ if(!name){ alert('Enter a name.'); return; }
+ const existing=(await bizReceivers()).find(r=>r.name.toLowerCase()===name.toLowerCase());
+ if(existing){ alert('There is already a receiver called "'+existing.name+'".'); return; }
+ await put('receivers',{id:crypto.randomUUID(), businessId:await getActiveBusinessId(), name});
+ await showReceivers();
+}
+async function removeReceiver(id){
+ if(!confirm('Remove this receiver? Past issues to them stay on record.'))return;
+ await del('receivers',id);
+ await showReceivers();
+}
 async function bizRooms(){const id=await getActiveBusinessId();return (await all('rooms')).filter(x=>x.businessId===id)}
 async function bizBookings(){const id=await getActiveBusinessId();return (await all('bookings')).filter(x=>x.businessId===id)}
 async function bizBranches(){const id=await getActiveBusinessId();return (await all('branches')).filter(x=>x.businessId===id)}
@@ -527,7 +758,7 @@ async function businessFinancials(bizId){
   const bankBalance=openBal+received-expTotal-drawingsTotal+loanPrincipalTotal-loanRepaidTotal-stockPurchaseTotal-returnsTotal;
   return {business:b,sales,received,outstanding:sales-received,expenses:expTotal,drawingsTotal,lifetimeProfit,bankBalance,openRev,openExp,openBal,loanPrincipalTotal,loanRepaidTotal,loanInterestTotal,loanOutstanding:loanPrincipalTotal-loanRepaidTotal,stockPurchaseTotal,returnsTotal};
 }
-async function allBusinessFinancials(){const list=await all('business');const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
+async function allBusinessFinancials(){const list=await myBusinesses();const out=[];for(const b of list)out.push(await businessFinancials(b.id));return out.filter(Boolean)}
 // Splits each business's combined bank balance into real Cash vs real Bank, based on
 // which transactions were tagged to a bank account vs left as cash. Honest limitation:
 // loans, investments, commissions, and tax payments aren't yet tagged cash/bank
@@ -564,7 +795,7 @@ async function migrateBusinessScopeIfNeeded(){
   for(const e of await all('expenses')) if(e.kind!=='personal' && !e.businessId){ e.businessId=id; await req('expenses','readwrite',s=>s.put(e)); }
 }
 async function autoGenerateSalaryIfDue(){
-  const businesses = await all('business');
+  const businesses = await myBusinesses();
   const curYM = new Date().toISOString().slice(0,7);
   for(const b of businesses){
     if(b.type==='salary' && b.salaryAutoGenerate && (Number(b.salaryAmount)||0)>0 && b.salaryLastGenerated!==curYM){
@@ -713,7 +944,7 @@ const ServerAccount = {
       // The server has explicitly rejected this token (expired session) — distinct from a
       // network failure, which never gets this far. Clear it and require re-authentication.
       this.token=null; this.tenant=null; this.readyBusinesses.clear(); clearInterval(this.pullTimer);
-      localStorage.removeItem('moborex_server_token'); localStorage.removeItem('moborex_server_tenant');
+      localStorage.removeItem('moborex_server_token'); localStorage.removeItem('moborex_server_tenant'); localStorage.removeItem('moborex_server_email');
       if(typeof showAuthGate==='function') showAuthGate();
     }
     if(!res.ok) throw new Error((data && data.error) || ('Server error ('+res.status+')'));
@@ -724,6 +955,7 @@ const ServerAccount = {
     this.token = data.token; this.tenant = data.tenant;
     localStorage.setItem('moborex_server_token', this.token);
     localStorage.setItem('moborex_server_tenant', JSON.stringify(this.tenant));
+    localStorage.setItem('moborex_server_email', email); // shown on the Sync screen, so it's always clear which account this device is actually signed into
     const bizId = await getActiveBusinessId();
     this.readyBusinesses.add(bizId); // brand new account — there is nothing on the server yet to lose for this business, this device's data IS the seed
     await this.push(bizId, true); // force the very first push after signup, regardless of the dirty flag — there's real data to seed the account with
@@ -735,6 +967,7 @@ const ServerAccount = {
     this.token = data.token; this.tenant = data.tenant;
     localStorage.setItem('moborex_server_token', this.token);
     localStorage.setItem('moborex_server_tenant', JSON.stringify(this.tenant));
+    localStorage.setItem('moborex_server_email', email); // shown on the Sync screen, so it's always clear which account this device is actually signed into
     // This is the fix for the real bug: an existing account may already hold real data on
     // the server from other devices. Pulling it down — and merging it into whatever this
     // device has locally — MUST complete before this device is ever allowed to push,
@@ -751,7 +984,7 @@ const ServerAccount = {
   logout(){
     if(this.token) this.api('/api/logout', {method:'POST'}).catch(()=>{}); // revoke server-side too; ignore failure, we're clearing locally regardless
     this.token=null; this.tenant=null; this.readyBusinesses.clear(); this.dirtyBusinesses.clear(); clearInterval(this.pullTimer);
-    localStorage.removeItem('moborex_server_token'); localStorage.removeItem('moborex_server_tenant');
+    localStorage.removeItem('moborex_server_token'); localStorage.removeItem('moborex_server_tenant'); localStorage.removeItem('moborex_server_email');
   },
   markDirty(businessId){
     if(!businessId) return;
@@ -944,11 +1177,10 @@ async function logoutServerAccount(){
    catch(e){ alert('Could not sync your changes before logging out: '+e.message+'\n\nLogout cancelled, to avoid leaving unsynced data behind. Please try again once you have a stable connection.'); return; }
   }
  }
- if(!confirm('Log out of this account on this device? You can sign back in with this account, or a different one, next time.')) return;
+ if(!confirm('Log out of this account on this device? Everything is now safely synced, and this account\'s local data on this device — invoices, customers, staff PIN setup — will be removed from the browser. You can pull it all back down by logging in again. Any other account set up on this device is left untouched.')) return;
+ const loggingOutTenantId = (ServerAccount.tenant && ServerAccount.tenant.id) || null; // captured BEFORE logout() clears it — the wipe below needs it to know whose data to remove
  ServerAccount.logout();
- // No business ID stays "in session" after this — clearing the active-business pointer
- // and every in-memory global means getActiveBusinessId()'s fallback logic has nothing to
- // silently resolve to, and nothing stale can leak into the next login before it's ready.
+ await wipeAccountLocalData(loggingOutTenantId); // the forced sync above is what makes this safe — nothing being removed here exists only on this device by the time it runs
  localStorage.removeItem('moborex_active_business');
  localStorage.removeItem('moborex_device_module_set');
  window.CURRENT_BUSINESS_TYPE=null;
@@ -960,6 +1192,29 @@ async function logoutServerAccount(){
  closeModal();
  showAuthGate();
 }
+// Wipes only the data belonging to the account being logged out of — not every business on
+// the device. If two different accounts have each set up a business here, logging out of one
+// must not destroy the other's local data; that account never logged out and its records are
+// still legitimately theirs. Scoped by ownerTenantId, with each business's own records
+// removed the same way deleteBusiness() does it, then the business record itself.
+async function wipeAccountLocalData(tenantId){
+ const all_biz = await all('business');
+ // Untagged legacy businesses are treated as this account's, matching myBusinesses() — they
+ // predate multi-account use on a device, so there's no other account they could belong to.
+ const mine = all_biz.filter(b => !b.ownerTenantId || b.ownerTenantId === tenantId);
+ const myIds = new Set(mine.map(b=>b.id));
+ if(!myIds.size) return;
+ const scopedStores = ['invoices','customers','products','quotations','commissions','loans','stockPurchases','returns','rooms','bookings','branches','conversions','onlineOrders','bankAccounts','investments','otherIncome','reconciliations','taxSubmissions','auditRecords','taxProfile','expenseTypes','expenses'];
+ for(const store of scopedStores){
+  try{
+   for(const item of (await all(store)).filter(x=>myIds.has(x.businessId))) await del(store, item.id);
+  }catch(e){ console.error('Could not clear store on logout: '+store, e); }
+ }
+ for(const b of mine){
+  try{ await req('business','readwrite',s=>s.delete(b.id)); }
+  catch(e){ console.error('Could not remove business record on logout: '+b.id, e); }
+ }
+}
 // Belt-and-suspenders alongside the auth gate's full-screen overlay — clears every visible
 // figure immediately so nothing stale is even momentarily present in the DOM underneath it.
 function blankDashboardUI(){
@@ -969,6 +1224,8 @@ function blankDashboardUI(){
  const subStatus=document.getElementById('subscriptionCardStatus'); if(subStatus) subStatus.textContent='Checking…';
  const recent=document.getElementById('recent'); if(recent) recent.innerHTML='';
  const bizNameWide=document.getElementById('bizNameWide'); if(bizNameWide) bizNameWide.textContent='Business';
+ const brandName=document.getElementById('brandName'); if(brandName) brandName.textContent='Business';
+ const brandLogo=document.getElementById('brandLogo'); if(brandLogo) brandLogo.innerHTML='▦';
  applyStaffModeUI();
 }
 </script>
@@ -1043,75 +1300,78 @@ function blankDashboardUI(){
 
 <aside class="sidebar">
   <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Business Vault<span class="byLine">by Moborex</span></div><div class="tagline">Run the business. Not just the books.</div><button class="bizname bizSwitch" style="font-size:15px" onclick="showBusinessSwitcher()"><span id="bizNameWide">Business</span> <span class="chev">▾</span></button></div></div>
-  <button class="navbtn ownerOnly" data-min-level="1" onclick="showWarDashboard()" style="background:var(--ink);color:#fff;margin:4px 0 10px"><span class="ic">📡</span> War Dashboard</button>
-  <button class="navbtn ownerOnly" data-min-level="1" onclick="showOwnerAlerts()" style="margin:0 0 10px;position:relative"><span class="ic">🔔</span> Alerts <span id="ownerAlertsBadge" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);background:var(--danger);color:#fff;border-radius:10px;min-width:18px;height:18px;font-size:11px;font-weight:800;align-items:center;justify-content:center;padding:0 5px"></span></button>
+  <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="warDashboard" onclick="showWarDashboard()" style="background:var(--ink);color:#fff;margin:4px 0 10px"><span class="ic">📡</span> War Dashboard</button>
+  <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="alerts" onclick="showOwnerAlerts()" style="margin:0 0 10px;position:relative"><span class="ic">🔔</span> Alerts <span id="ownerAlertsBadge" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);background:var(--danger);color:#fff;border-radius:10px;min-width:18px;height:18px;font-size:11px;font-weight:800;align-items:center;justify-content:center;padding:0 5px"></span></button>
   <div class="navExpandControls"><button onclick="expandAllNavGroups()">Expand All</button><button onclick="collapseAllNavGroups()">Collapse All</button></div>
 
   <div class="navGroup">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Sales &amp; Customers</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn" data-min-level="1" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
-    <button class="navbtn" onclick="showInvoices()"><span class="ic">▤</span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button>
-    <button class="navbtn" data-min-level="1" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
-    <button class="navbtn" onclick="showReturns()"><span class="ic">↩</span> Returns</button>
-    <button class="navbtn" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
-    <button class="navbtn" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
-    <button class="navbtn" data-min-level="3" onclick="showPosTerminal()"><span class="ic">🛒</span> POS Terminal</button>
+    <button class="navbtn" data-min-level="1" data-perm-key="newInvoice" onclick="openInvoice()"><span class="ic">＋</span> New Invoice</button>
+    <button class="navbtn" data-perm-key="invoicesList" onclick="showInvoices()"><span class="ic">▤</span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button>
+    <button class="navbtn" data-min-level="1" data-perm-key="quotations" onclick="showQuotations()"><span class="ic">📝</span> Quotations</button>
+    <button class="navbtn" data-perm-key="returns" onclick="showReturns()"><span class="ic">↩</span> Returns</button>
+    <button class="navbtn" data-perm-key="customers" onclick="showCustomers()"><span class="ic">👥</span> <span id="navCustomersLabel">Customers</span></button>
+    <button class="navbtn" data-perm-key="products" onclick="showProductsDispatch()"><span class="ic">▦</span> <span id="navProductsLabel">Products / Services</span></button>
+    <button class="navbtn" data-min-level="3" data-perm-key="posTerminal" onclick="showPosTerminal()"><span class="ic">🛒</span> POS Terminal</button>
    </div>
   </div>
 
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Delivery &amp; Fulfillment</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn" data-min-level="3" onclick="showDeliveries()"><span class="ic">🚚</span> Deliveries</button>
-    <button class="navbtn ownerOnly" data-min-level="3" onclick="showDeliveryReport()"><span class="ic">📋</span> Delivery Report</button>
-    <button class="navbtn ownerOnly" data-min-level="3" onclick="showBusinessLocation()"><span class="ic">📍</span> Business Location</button>
-    <button class="navbtn" data-min-level="3" onclick="showPhoneOrder()"><span class="ic">📞</span> Phone Order</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="deliveries" onclick="showDeliveries()"><span class="ic">🚚</span> Deliveries</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="deliveryReport" onclick="showDeliveryReport()"><span class="ic">📋</span> Delivery Report</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="businessLocation" onclick="showBusinessLocation()"><span class="ic">📍</span> Business Location</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="phoneOrder" onclick="showPhoneOrder()"><span class="ic">📞</span> Phone Order</button>
    </div>
   </div>
 
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Online Ordering</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn ownerOnly" data-min-level="3" onclick="showOnlineOrderingSettings()"><span class="ic">🔗</span> Online Ordering Setup</button>
-    <button class="navbtn" data-min-level="3" onclick="showIncomingOrders()"><span class="ic">📥</span> Incoming Orders</button>
-    <button class="navbtn" data-min-level="3" onclick="showReadyBoard()"><span class="ic">📣</span> Ready Board</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" onclick="showOnlineOrderingSettings()"><span class="ic">🔗</span> Online Ordering Setup</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" onclick="showIncomingOrders()"><span class="ic">📥</span> Incoming Orders</button>
+    <button class="navbtn" data-min-level="3" data-perm-key="readyBoard" onclick="showReadyBoard()"><span class="ic">📣</span> Ready Board</button>
    </div>
   </div>
 
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Hotel Operations</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn" data-min-level="4" onclick="showHotelDashboard()"><span class="ic">🛏</span> Hotel Dashboard</button>
-    <button class="navbtn" data-min-level="4" onclick="showKitchenBarTerminal()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
-    <button class="navbtn ownerOnly" data-min-level="4" onclick="showOccupancyReport()"><span class="ic">📊</span> Occupancy Report</button>
-    <button class="navbtn ownerOnly" data-min-level="4" onclick="showHotelSalesBreakdown()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
-    <button class="navbtn ownerOnly" data-min-level="4" onclick="showRoomsManagement()"><span class="ic">🏨</span> Rooms</button>
+    <button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" onclick="showHotelDashboard()"><span class="ic">🛏</span> Hotel Dashboard</button>
+    <button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" onclick="showKitchenBarTerminal()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
+    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="occupancyReport" onclick="showOccupancyReport()"><span class="ic">📊</span> Occupancy Report</button>
+    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="hotelBreakdown" onclick="showHotelSalesBreakdown()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
+    <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="rooms" onclick="showRoomsManagement()"><span class="ic">🏨</span> Rooms</button>
    </div>
   </div>
 
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Money &amp; Expenses</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn ownerOnly" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
-    <button class="navbtn ownerOnly" onclick="showDirectorsDrawings()"><span class="ic">◎</span> Director's Drawings</button>
-    <button class="navbtn ownerOnly" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
-    <button class="navbtn ownerOnly" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
+    <button class="navbtn ownerOnly" data-perm-key="businessExpenses" onclick="showExpenses()"><span class="ic">◈</span> Business Expenses</button>
+    <button class="navbtn ownerOnly" data-perm-key="drawings" onclick="showDirectorsDrawings()"><span class="ic">◎</span> Director's Drawings</button>
+    <button class="navbtn ownerOnly" data-perm-key="otherIncome" onclick="showOtherIncome()"><span class="ic">💰</span> Other Income</button>
+    <button class="navbtn ownerOnly" data-perm-key="commissions" onclick="showCommissions()"><span class="ic">🤝</span> Commissions</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="investments" onclick="showInvestments()"><span class="ic">📈</span> Investments</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="loans" onclick="showLoans()"><span class="ic">🏦</span> Loans</button>
-    <button class="navbtn ownerOnly" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
-    <button class="navbtn ownerOnly" onclick="showBankAccounts()"><span class="ic">🏦</span> Bank Accounts</button>
-    <button class="navbtn supervisorOnly" onclick="showPaymentAdviceMenu()"><span class="ic">💸</span> Payment Advice</button>
+    <button class="navbtn ownerOnly" data-perm-key="expenseTypes" onclick="showExpenseTypes()"><span class="ic">≡</span> Expense Types</button>
+    <button class="navbtn ownerOnly" data-perm-key="bankAccounts" onclick="showBankAccounts()"><span class="ic">🏦</span> Bank Accounts</button>
+    <button class="navbtn supervisorOnly" data-perm-key="paymentAdvice" onclick="showPaymentAdviceMenu()"><span class="ic">💸</span> Payment Advice</button>
    </div>
   </div>
 
   <div class="navGroup collapsed">
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Inventory</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
-    <button class="navbtn ownerOnly" data-min-level="2" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
-    <button class="navbtn ownerOnly" data-min-level="2" onclick="showLowStock()"><span class="ic">⚠️</span> Low Stock</button>
-    <button class="navbtn ownerOnly" data-min-level="3" onclick="showConversionMenu()"><span class="ic">🔄</span> Recipes</button>
-    <button class="navbtn ownerOnly" data-min-level="2" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockPurchases" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="issueOut" onclick="showIssueOut()"><span class="ic">🍳</span> Issue / Return Stock</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storeBalances" onclick="showStoreKitchenBalances()"><span class="ic">⚖️</span> Store &amp; Kitchen Balances</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="receivers" onclick="showReceivers()"><span class="ic">👷</span> Receivers</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="lowStock" onclick="showLowStock()"><span class="ic">⚠️</span> Low Stock</button>
+    <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="recipes" onclick="showConversionMenu()"><span class="ic">🔄</span> Recipes</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="productMovement" onclick="showProductMovementReport()"><span class="ic">📊</span> Product Movement</button>
    </div>
   </div>
 
@@ -1119,17 +1379,17 @@ function blankDashboardUI(){
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Tax &amp; Reports</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="openingBalances" onclick="showOpeningBalances()"><span class="ic">⇪</span> Opening Balances</button>
-    <button class="navbtn ownerOnly" onclick="showReports()"><span class="ic">▥</span> Reports</button>
-    <button class="navbtn ownerOnly" data-min-level="2" onclick="showEndOfDayReport()"><span class="ic">📆</span> End of Day</button>
-    <button class="navbtn ownerOnly" onclick="showDailySalesReport()"><span class="ic">🧾</span> Daily Sales Report</button>
-    <button class="navbtn ownerOnly" onclick="showProductSoldReport()"><span class="ic">📦</span> Product/Service Sold</button>
+    <button class="navbtn ownerOnly" data-perm-key="reports" onclick="showReports()"><span class="ic">▥</span> Reports</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="endOfDay" onclick="showEndOfDayReport()"><span class="ic">📆</span> End of Day</button>
+    <button class="navbtn ownerOnly" data-perm-key="dailySales" onclick="showDailySalesReport()"><span class="ic">🧾</span> Daily Sales Report</button>
+    <button class="navbtn ownerOnly" data-perm-key="productSold" onclick="showProductSoldReport()"><span class="ic">📦</span> Product/Service Sold</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="transactionReport" onclick="showTransactionReport()"><span class="ic">📋</span> Transaction Report</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="voidReport" onclick="showVoidReport()"><span class="ic">🚫</span> Void Report</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="paymentChannelReport" onclick="showPaymentChannelReport()"><span class="ic">💳</span> Payment Channel Report</button>
     <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="vendorPurchaseReport" onclick="showVendorPurchaseReport()"><span class="ic">🏭</span> Vendor Purchase Report</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="taxReport" onclick="showTaxReport()"><span class="ic">🏛</span> Tax Report</button>
-    <button class="navbtn ownerOnly" onclick="showTaxConfiguration()"><span class="ic">%</span> Tax Configuration</button>
-    <button class="navbtn ownerOnly" onclick="showCacReport()"><span class="ic">🏢</span> CAC Annual Return Summary</button>
+    <button class="navbtn ownerOnly" data-perm-key="taxConfig" onclick="showTaxConfiguration()"><span class="ic">%</span> Tax Configuration</button>
+    <button class="navbtn ownerOnly" data-perm-key="cacReturn" onclick="showCacReport()"><span class="ic">🏢</span> CAC Annual Return Summary</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="audit" onclick="showAudit()"><span class="ic">🔍</span> Audit of Me</button>
     <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="reconciliation" onclick="showReconciliation()"><span class="ic">⚖</span> Bank Reconciliation</button>
    </div>
@@ -1151,7 +1411,7 @@ function blankDashboardUI(){
    <div class="navGroupItems">
     <button class="navbtn ownerOnly" data-perm-key="businessSwitch" onclick="showBusinessSwitcher()"><span class="ic">🏢</span> Switch Business</button>
     <button class="navbtn ownerOnly" data-perm-key="moduleSwitch" onclick="switchDeviceModule()"><span class="ic">🔁</span> Switch Module</button>
-    <button class="navbtn" onclick="showBranchManagement()"><span class="ic">📍</span> Branches</button>
+    <button class="navbtn" data-perm-key="branches" onclick="showBranchManagement()"><span class="ic">📍</span> Branches</button>
     <button class="navbtn ownerOnly" data-perm-key="branchSwitch" onclick="showSwitchBranch()"><span class="ic">🔀</span> Switch Branch</button>
    </div>
   </div>
@@ -1216,75 +1476,78 @@ function blankDashboardUI(){
 
 <div class="overlay" id="drawerOverlay" onclick="closeDrawer(event)"><aside class="drawer" onclick="event.stopPropagation()">
 <div class="dhead"><div class="dtitle">Menu</div><button class="iconbtn" onclick="closeDrawer()">×</button></div>
-<button class="navbtn ownerOnly" data-min-level="1" onclick="showWarDashboard();closeDrawer()" style="background:var(--ink);color:#fff;margin:4px 0 10px"><span class="ic">📡</span> War Dashboard</button>
-<button class="navbtn ownerOnly" data-min-level="1" onclick="showOwnerAlerts();closeDrawer()" style="margin:0 0 10px;position:relative"><span class="ic">🔔</span> Alerts <span id="ownerAlertsBadgeDrawer" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);background:var(--danger);color:#fff;border-radius:10px;min-width:18px;height:18px;font-size:11px;font-weight:800;align-items:center;justify-content:center;padding:0 5px"></span></button>
+<button class="navbtn ownerOnly" data-min-level="1" data-perm-key="warDashboard" onclick="showWarDashboard();closeDrawer()" style="background:var(--ink);color:#fff;margin:4px 0 10px"><span class="ic">📡</span> War Dashboard</button>
+<button class="navbtn ownerOnly" data-min-level="1" data-perm-key="alerts" onclick="showOwnerAlerts();closeDrawer()" style="margin:0 0 10px;position:relative"><span class="ic">🔔</span> Alerts <span id="ownerAlertsBadgeDrawer" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);background:var(--danger);color:#fff;border-radius:10px;min-width:18px;height:18px;font-size:11px;font-weight:800;align-items:center;justify-content:center;padding:0 5px"></span></button>
 <div class="navExpandControls"><button onclick="expandAllNavGroups()">Expand All</button><button onclick="collapseAllNavGroups()">Collapse All</button></div>
 
 <div class="navGroup">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Sales &amp; Customers</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn" data-min-level="1" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
-  <button class="navbtn" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> <span id="navInvoicesLabelDrawer">Invoices &amp; Sales</span></button>
-  <button class="navbtn" data-min-level="1" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
-  <button class="navbtn" onclick="showReturns();closeDrawer()"><span class="ic">↩</span> Returns</button>
-  <button class="navbtn" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
-  <button class="navbtn" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
-  <button class="navbtn" data-min-level="3" onclick="showPosTerminal();closeDrawer()"><span class="ic">🛒</span> POS Terminal</button>
+  <button class="navbtn" data-min-level="1" data-perm-key="newInvoice" onclick="openInvoice();closeDrawer()"><span class="ic">＋</span> New Invoice</button>
+  <button class="navbtn" data-perm-key="invoicesList" onclick="showInvoices();closeDrawer()"><span class="ic">▤</span> <span id="navInvoicesLabelDrawer">Invoices &amp; Sales</span></button>
+  <button class="navbtn" data-min-level="1" data-perm-key="quotations" onclick="showQuotations();closeDrawer()"><span class="ic">📝</span> Quotations</button>
+  <button class="navbtn" data-perm-key="returns" onclick="showReturns();closeDrawer()"><span class="ic">↩</span> Returns</button>
+  <button class="navbtn" data-perm-key="customers" onclick="showCustomers();closeDrawer()"><span class="ic">👥</span> <span id="navCustomersLabelDrawer">Customers</span></button>
+  <button class="navbtn" data-perm-key="products" onclick="showProductsDispatch();closeDrawer()"><span class="ic">▦</span> <span id="navProductsLabelDrawer">Products / Services</span></button>
+  <button class="navbtn" data-min-level="3" data-perm-key="posTerminal" onclick="showPosTerminal();closeDrawer()"><span class="ic">🛒</span> POS Terminal</button>
  </div>
 </div>
 
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Delivery &amp; Fulfillment</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn" data-min-level="3" onclick="showDeliveries();closeDrawer()"><span class="ic">🚚</span> Deliveries</button>
-  <button class="navbtn ownerOnly" data-min-level="3" onclick="showDeliveryReport();closeDrawer()"><span class="ic">📋</span> Delivery Report</button>
-  <button class="navbtn ownerOnly" data-min-level="3" onclick="showBusinessLocation();closeDrawer()"><span class="ic">📍</span> Business Location</button>
-  <button class="navbtn" data-min-level="3" onclick="showPhoneOrder();closeDrawer()"><span class="ic">📞</span> Phone Order</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="deliveries" onclick="showDeliveries();closeDrawer()"><span class="ic">🚚</span> Deliveries</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="deliveryReport" onclick="showDeliveryReport();closeDrawer()"><span class="ic">📋</span> Delivery Report</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="businessLocation" onclick="showBusinessLocation();closeDrawer()"><span class="ic">📍</span> Business Location</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="phoneOrder" onclick="showPhoneOrder();closeDrawer()"><span class="ic">📞</span> Phone Order</button>
  </div>
 </div>
 
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Online Ordering</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn ownerOnly" data-min-level="3" onclick="showOnlineOrderingSettings();closeDrawer()"><span class="ic">🔗</span> Online Ordering Setup</button>
-  <button class="navbtn" data-min-level="3" onclick="showIncomingOrders();closeDrawer()"><span class="ic">📥</span> Incoming Orders</button>
-  <button class="navbtn" data-min-level="3" onclick="showReadyBoard();closeDrawer()"><span class="ic">📣</span> Ready Board</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" onclick="showOnlineOrderingSettings();closeDrawer()"><span class="ic">🔗</span> Online Ordering Setup</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" onclick="showIncomingOrders();closeDrawer()"><span class="ic">📥</span> Incoming Orders</button>
+  <button class="navbtn" data-min-level="3" data-perm-key="readyBoard" onclick="showReadyBoard();closeDrawer()"><span class="ic">📣</span> Ready Board</button>
  </div>
 </div>
 
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Hotel Operations</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn" data-min-level="4" onclick="showHotelDashboard();closeDrawer()"><span class="ic">🛏</span> Hotel Dashboard</button>
-  <button class="navbtn" data-min-level="4" onclick="showKitchenBarTerminal();closeDrawer()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
-  <button class="navbtn ownerOnly" data-min-level="4" onclick="showOccupancyReport();closeDrawer()"><span class="ic">📊</span> Occupancy Report</button>
-  <button class="navbtn ownerOnly" data-min-level="4" onclick="showHotelSalesBreakdown();closeDrawer()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
-  <button class="navbtn ownerOnly" data-min-level="4" onclick="showRoomsManagement();closeDrawer()"><span class="ic">🏨</span> Rooms</button>
+  <button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" onclick="showHotelDashboard();closeDrawer()"><span class="ic">🛏</span> Hotel Dashboard</button>
+  <button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" onclick="showKitchenBarTerminal();closeDrawer()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
+  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="occupancyReport" onclick="showOccupancyReport();closeDrawer()"><span class="ic">📊</span> Occupancy Report</button>
+  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="hotelBreakdown" onclick="showHotelSalesBreakdown();closeDrawer()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
+  <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="rooms" onclick="showRoomsManagement();closeDrawer()"><span class="ic">🏨</span> Rooms</button>
  </div>
 </div>
 
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Money &amp; Expenses</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn ownerOnly" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
-  <button class="navbtn ownerOnly" onclick="showDirectorsDrawings();closeDrawer()"><span class="ic">◎</span> Director's Drawings</button>
-  <button class="navbtn ownerOnly" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
-  <button class="navbtn ownerOnly" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
+  <button class="navbtn ownerOnly" data-perm-key="businessExpenses" onclick="showExpenses();closeDrawer()"><span class="ic">◈</span> Business Expenses</button>
+  <button class="navbtn ownerOnly" data-perm-key="drawings" onclick="showDirectorsDrawings();closeDrawer()"><span class="ic">◎</span> Director's Drawings</button>
+  <button class="navbtn ownerOnly" data-perm-key="otherIncome" onclick="showOtherIncome();closeDrawer()"><span class="ic">💰</span> Other Income</button>
+  <button class="navbtn ownerOnly" data-perm-key="commissions" onclick="showCommissions();closeDrawer()"><span class="ic">🤝</span> Commissions</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="investments" onclick="showInvestments();closeDrawer()"><span class="ic">📈</span> Investments</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="loans" onclick="showLoans();closeDrawer()"><span class="ic">🏦</span> Loans</button>
-  <button class="navbtn ownerOnly" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
-  <button class="navbtn ownerOnly" onclick="showBankAccounts();closeDrawer()"><span class="ic">🏦</span> Bank Accounts</button>
-  <button class="navbtn supervisorOnly" onclick="showPaymentAdviceMenu();closeDrawer()"><span class="ic">💸</span> Payment Advice</button>
+  <button class="navbtn ownerOnly" data-perm-key="expenseTypes" onclick="showExpenseTypes();closeDrawer()"><span class="ic">≡</span> Expense Types</button>
+  <button class="navbtn ownerOnly" data-perm-key="bankAccounts" onclick="showBankAccounts();closeDrawer()"><span class="ic">🏦</span> Bank Accounts</button>
+  <button class="navbtn supervisorOnly" data-perm-key="paymentAdvice" onclick="showPaymentAdviceMenu();closeDrawer()"><span class="ic">💸</span> Payment Advice</button>
  </div>
 </div>
 
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Inventory</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn ownerOnly" data-min-level="2" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
-  <button class="navbtn ownerOnly" data-min-level="2" onclick="showLowStock();closeDrawer()"><span class="ic">⚠️</span> Low Stock</button>
-  <button class="navbtn ownerOnly" data-min-level="3" onclick="showConversionMenu();closeDrawer()"><span class="ic">🔄</span> Recipes</button>
-  <button class="navbtn ownerOnly" data-min-level="2" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockPurchases" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="issueOut" onclick="showIssueOut();closeDrawer()"><span class="ic">🍳</span> Issue / Return Stock</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storeBalances" onclick="showStoreKitchenBalances();closeDrawer()"><span class="ic">⚖️</span> Store &amp; Kitchen Balances</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="receivers" onclick="showReceivers();closeDrawer()"><span class="ic">👷</span> Receivers</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="lowStock" onclick="showLowStock();closeDrawer()"><span class="ic">⚠️</span> Low Stock</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="recipes" onclick="showConversionMenu();closeDrawer()"><span class="ic">🔄</span> Recipes</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="productMovement" onclick="showProductMovementReport();closeDrawer()"><span class="ic">📊</span> Product Movement</button>
  </div>
 </div>
 
@@ -1292,17 +1555,17 @@ function blankDashboardUI(){
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Tax &amp; Reports</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="openingBalances" onclick="showOpeningBalances();closeDrawer()"><span class="ic">⇪</span> Opening Balances</button>
-  <button class="navbtn ownerOnly" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
-  <button class="navbtn ownerOnly" data-min-level="2" onclick="showEndOfDayReport();closeDrawer()"><span class="ic">📆</span> End of Day</button>
-  <button class="navbtn ownerOnly" onclick="showDailySalesReport();closeDrawer()"><span class="ic">🧾</span> Daily Sales Report</button>
-  <button class="navbtn ownerOnly" onclick="showProductSoldReport();closeDrawer()"><span class="ic">📦</span> Product/Service Sold</button>
+  <button class="navbtn ownerOnly" data-perm-key="reports" onclick="showReports();closeDrawer()"><span class="ic">▥</span> Reports</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="endOfDay" onclick="showEndOfDayReport();closeDrawer()"><span class="ic">📆</span> End of Day</button>
+  <button class="navbtn ownerOnly" data-perm-key="dailySales" onclick="showDailySalesReport();closeDrawer()"><span class="ic">🧾</span> Daily Sales Report</button>
+  <button class="navbtn ownerOnly" data-perm-key="productSold" onclick="showProductSoldReport();closeDrawer()"><span class="ic">📦</span> Product/Service Sold</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="transactionReport" onclick="showTransactionReport();closeDrawer()"><span class="ic">📋</span> Transaction Report</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="voidReport" onclick="showVoidReport();closeDrawer()"><span class="ic">🚫</span> Void Report</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="paymentChannelReport" onclick="showPaymentChannelReport();closeDrawer()"><span class="ic">💳</span> Payment Channel Report</button>
   <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="vendorPurchaseReport" onclick="showVendorPurchaseReport();closeDrawer()"><span class="ic">🏭</span> Vendor Purchase Report</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="taxReport" onclick="showTaxReport();closeDrawer()"><span class="ic">🏛</span> Tax Report</button>
-  <button class="navbtn ownerOnly" onclick="showTaxConfiguration();closeDrawer()"><span class="ic">%</span> Tax Configuration</button>
-  <button class="navbtn ownerOnly" onclick="showCacReport();closeDrawer()"><span class="ic">🏢</span> CAC Annual Return Summary</button>
+  <button class="navbtn ownerOnly" data-perm-key="taxConfig" onclick="showTaxConfiguration();closeDrawer()"><span class="ic">%</span> Tax Configuration</button>
+  <button class="navbtn ownerOnly" data-perm-key="cacReturn" onclick="showCacReport();closeDrawer()"><span class="ic">🏢</span> CAC Annual Return Summary</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="audit" onclick="showAudit();closeDrawer()"><span class="ic">🔍</span> Audit of Me</button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="reconciliation" onclick="showReconciliation();closeDrawer()"><span class="ic">⚖</span> Bank Reconciliation</button>
  </div>
@@ -1324,7 +1587,7 @@ function blankDashboardUI(){
  <div class="navGroupItems">
   <button class="navbtn ownerOnly" data-perm-key="businessSwitch" onclick="showBusinessSwitcher();closeDrawer()"><span class="ic">🏢</span> Switch Business</button>
   <button class="navbtn ownerOnly" data-perm-key="moduleSwitch" onclick="switchDeviceModule();closeDrawer()"><span class="ic">🔁</span> Switch Module</button>
-  <button class="navbtn" onclick="showBranchManagement();closeDrawer()"><span class="ic">📍</span> Branches</button>
+  <button class="navbtn" data-perm-key="branches" onclick="showBranchManagement();closeDrawer()"><span class="ic">📍</span> Branches</button>
   <button class="navbtn ownerOnly" data-perm-key="branchSwitch" onclick="showSwitchBranch();closeDrawer()"><span class="ic">🔀</span> Switch Branch</button>
  </div>
 </div>
@@ -1404,7 +1667,7 @@ async function refresh(){
 
 /* ---------------- Business Switcher ---------------- */
 async function showBusinessSwitcher(){ if(!requireOwnerMode('Switching business','businessSwitch'))return;
- const list=await all('business'), activeId=await getActiveBusinessId();
+ const list=await myBusinesses(), activeId=await getActiveBusinessId(); // this account's businesses only — never another account's
  openModal(`<h2>Switch Business ${hb("Each business keeps its own invoices, customers, products, settings, and Director's Drawings, completely separate.")}</h2>
  <div class="notice">Each business keeps its own invoices, customers, products, settings, and Director's Drawings — completely separate books.</div>
  <div class="list" id="bizList"></div>
@@ -1419,7 +1682,12 @@ async function showBusinessSwitcher(){ if(!requireOwnerMode('Switching business'
    </div>
   </div>`).join('') || '<div class="empty">No businesses yet.</div>';
 }
-async function switchBusiness(id){localStorage.setItem('moborex_active_business',id);window.currentBranchId=null;window.currentBranchName='';closeModal();await refresh();ServerAccount.onBusinessSwitch(id);}
+async function switchBusiness(id){
+ // Hard guard, not just a filtered list — this is the actual switch, so it re-verifies
+ // ownership rather than trusting that whatever called it showed a correctly-scoped list.
+ const mine = await myBusinesses();
+ if(!mine.some(b=>b.id===id)){ alert('That business belongs to a different account. Log out and sign in with that account to open it.'); return; }
+ localStorage.setItem('moborex_active_business',id);window.currentBranchId=null;window.currentBranchName='';closeModal();await refresh();ServerAccount.onBusinessSwitch(id);}
 async function showSwitchBranch(){
  if(!requireOwnerMode('Switching branch','branchSwitch'))return;
  const branches=(await bizBranches()).filter(b=>b.active!==false);
@@ -1472,11 +1740,26 @@ async function createBusinessForModule(name, module){
  // (basic/stock/full_retail) all run the same regular-business screens, just gated to
  // different feature levels once a matching plan is subscribed to.
  const bizType = module==='personal' ? 'salary' : module==='hotel' ? 'hotel' : 'business';
- const nb={id:crypto.randomUUID(),...defaults.business,name,type:bizType};
+ const newId = crypto.randomUUID();
+ // Registered with the server FIRST — it enforces one-module-per-account and no duplicate
+ // business names, server-side so a modified client can't bypass either. Doing this before
+ // any local write means a rejection leaves nothing half-created on this device.
+ if(ServerAccount.token){
+  try{
+   await ServerAccount.api('/api/business/register', {method:'POST', body: JSON.stringify({businessId:newId, businessName:name, module})});
+  }catch(e){
+   alert(e.message);
+   throw e; // callers stop here — nothing was created locally or on the server
+  }
+ }
+ // Tagged with the owning account. Without this, businesses created under different email
+ // accounts all sat together in one local store with nothing distinguishing them, so the
+ // business switcher listed — and would happily switch into — a business belonging to a
+ // completely different account. Real data isolation failure, not just a display bug.
+ const nb={id:newId,...defaults.business,name,type:bizType,module,ownerTenantId:(ServerAccount.tenant&&ServerAccount.tenant.id)||null};
  await put('business',nb,true); // skipDirty — handled explicitly below, since a brand new business needs to be marked ready BEFORE markDirty() would otherwise silently block its first push
  localStorage.setItem('moborex_active_business',nb.id);
  localStorage.setItem('moborex_device_module_set','1'); // this device now has a definite module — the login-time picker won't re-ask until "Switch Module" is used
- registerBusinessWithServer(nb.id); // fire-and-forget — the business ID exists locally either way; this just gets the server aware of it immediately instead of waiting for a first billing/menu touch
  if(ServerAccount.token){ ServerAccount.readyBusinesses.add(nb.id); ServerAccount.push(nb.id, true); } // brand new — nothing on the server to lose, this device's data IS the seed, same reasoning as signup()
  return nb;
 }
@@ -1484,7 +1767,9 @@ async function submitAddBusiness(){
  const name=nbName.value.trim();
  if(!name){ alert('Enter a business name.'); return; }
  const module=nbModule.value;
- await createBusinessForModule(name, module);
+ try{
+  await createBusinessForModule(name, module);
+ }catch(e){ return; } // server rejected it (duplicate module or name) — it already told the user why; leave the form open so they can change it
  closeModal();await refresh();
  if(confirm('Business created. Go to Subscription now to activate the '+PLAN_LABELS[module]+' plan?')) await showBillingScreen();
  if(window.__addBusinessResolve){ window.__addBusinessResolve(true); window.__addBusinessResolve=null; }
@@ -1494,7 +1779,7 @@ function registerBusinessWithServer(businessId){
  ServerAccount.api('/api/billing/status?businessId='+encodeURIComponent(businessId)).catch(()=>{}); // reuses the existing lazy-create-on-first-check logic server-side — no new endpoint needed
 }
 async function deleteBusiness(id){
- const list=await all('business');
+ const list=await myBusinesses();
  if(list.length<=1){alert('You need at least one business.');return;}
  const biz=list.find(b=>b.id===id);
  if(!biz)return;
@@ -1583,11 +1868,66 @@ function collapseAllNavGroups(){ document.querySelectorAll('.navGroup').forEach(
    requireOwnerMode() can stay a plain synchronous check, matching every
    existing call site instead of needing them all converted to async. ---------------- */
 window.rolePermissions = {};
-const PERMISSION_KEYS = {
- investments:'Investments', loans:'Loans', taxReport:'Tax Report', audit:'Audit of Me',
- reconciliation:'Bank Reconciliation', transactionReport:'Transaction Report', openingBalances:'Opening Balances',
- voidReport:'Void Report', paymentChannelReport:'Payment Channel Report', vendorPurchaseReport:'Vendor Purchase Report',
- staffAccess:'Staff Access', businessSwitch:'Switch Business', branchSwitch:'Switch Branch', moduleSwitch:'Switch Module',
+/* Every feature the owner can hand out, grouped for a usable settings screen. Owner always
+   has everything and is never listed here. Four things are deliberately absent and stay
+   owner-only permanently: Role Permissions itself (granting it would let a role widen its
+   own access), Business Settings, Sync & Backup, and App Lock — the controls that define
+   or protect the account rather than run the business day to day. */
+const PERMISSION_GROUPS = {
+ 'Sales & Customers': {
+  newInvoice:'New Invoice', invoicesList:'Invoices & Sales', quotations:'Quotations', returns:'Returns',
+  customers:'Customers', products:'Products / Services', posTerminal:'POS Terminal',
+ },
+ 'Delivery & Fulfillment': {
+  deliveries:'Deliveries', deliveryReport:'Delivery Report', businessLocation:'Business Location', phoneOrder:'Phone Order',
+ },
+ 'Online Ordering': {
+  onlineOrderingSetup:'Online Ordering Setup', incomingOrders:'Incoming Orders', readyBoard:'Ready Board',
+ },
+ 'Hotel Operations': {
+  hotelDashboard:'Hotel Dashboard', kitchenBarTerminal:'Kitchen / Bar Terminal', occupancyReport:'Occupancy Report',
+  hotelBreakdown:'Room/Kitchen/Bar Breakdown', rooms:'Rooms',
+ },
+ 'Money & Expenses': {
+  businessExpenses:'Business Expenses', drawings:"Director's Drawings", otherIncome:'Other Income',
+  commissions:'Commissions', expenseTypes:'Expense Types', bankAccounts:'Bank Accounts',
+  paymentAdvice:'Payment Advice (raise)', investments:'Investments', loans:'Loans',
+ },
+ 'Inventory': {
+  stockPurchases:'Stock Purchases', lowStock:'Low Stock', recipes:'Recipes', productMovement:'Product Movement',
+  issueOut:'Issue / Return Stock', storeBalances:'Store & Kitchen Balances', receivers:'Receivers',
+ },
+ 'Reports': {
+  reports:'Reports', endOfDay:'End of Day', dailySales:'Daily Sales Report', productSold:'Product/Service Sold',
+  taxReport:'Tax Report', taxConfig:'Tax Configuration', cacReturn:'CAC Annual Return',
+  audit:'Audit of Me', reconciliation:'Bank Reconciliation', transactionReport:'Transaction Report',
+  openingBalances:'Opening Balances', voidReport:'Void Report', paymentChannelReport:'Payment Channel Report',
+  vendorPurchaseReport:'Vendor Purchase Report', warDashboard:'War Dashboard', alerts:'Alerts',
+ },
+ 'Staff & Switching': {
+  staffAccess:'Staff Access', businessSwitch:'Switch Business', branchSwitch:'Switch Branch',
+  moduleSwitch:'Switch Module', branches:'Branches',
+ },
+};
+// Flat lookup, derived — everything else in the app iterates this, so the grouping above
+// stays purely a presentation concern and nothing else needs to know about it.
+const PERMISSION_KEYS = Object.assign({}, ...Object.values(PERMISSION_GROUPS));
+// The three roles an owner can hand permissions to. The specialised roles (hotel front
+// desk, kitchen, bar, production) are deliberately not here: each is locked into its own
+// single screen with all other nav hidden, so a permission grid would have nothing to act on.
+const GRANTABLE_ROLES = { supervisor:'Supervisor', staff:'Staff', pos_clerk:'POS' };
+// Sensible starting point, applied when a business has never had permissions configured.
+// The owner can change any of it — this is a preset, not a rule.
+const DEFAULT_ROLE_PERMISSIONS = {
+ newInvoice:['supervisor','staff'], invoicesList:['supervisor','staff'], quotations:['supervisor','staff'],
+ returns:['supervisor'], customers:['supervisor','staff'], products:['supervisor','staff'],
+ posTerminal:['supervisor','staff','pos_clerk'],
+ deliveries:['supervisor','staff'], deliveryReport:['supervisor'], phoneOrder:['supervisor','staff'],
+ incomingOrders:['supervisor','staff'], readyBoard:['supervisor','staff'],
+ hotelDashboard:['supervisor'], kitchenBarTerminal:['supervisor'],
+ businessExpenses:['supervisor'], stockPurchases:['supervisor'], lowStock:['supervisor'],
+ paymentAdvice:['supervisor'],
+ dailySales:['supervisor'], endOfDay:['supervisor'], branches:['supervisor'], branchSwitch:['supervisor'],
 };
 async function refreshRolePermissions(){
  try{ const b=await getBusiness(); window.rolePermissions=b.rolePermissions||{}; }catch(e){ window.rolePermissions={}; }
@@ -1602,11 +1942,14 @@ function applyRolePermissionsUI(){
  document.querySelectorAll('[data-perm-key]').forEach(el=>{
   const key=el.dataset.permKey;
   const minLevel=Number(el.dataset.minLevel||0);
-  if(level<minLevel){ el.style.display='none'; el.classList.remove('permGranted'); return; }
-  if(role==='owner'){ el.style.display=''; return; }
+  if(level<minLevel){ el.style.display='none'; el.classList.remove('permGranted'); el.classList.remove('permDenied'); return; }
+  if(role==='owner'){ el.style.display=''; el.classList.remove('permGranted'); el.classList.remove('permDenied'); return; }
   const granted=(window.rolePermissions[key]||[]).includes(role);
-  if(granted){ el.style.display=''; el.classList.add('permGranted'); }
-  else{ el.classList.remove('permGranted'); }
+  if(granted){ el.style.display=''; el.classList.add('permGranted'); el.classList.remove('permDenied'); }
+  // permDenied matters for features that AREN'T ownerOnly — those are visible to every
+  // staff role by default, so removing permGranted alone would leave them on screen.
+  // This actively hides anything the current role hasn't been granted.
+  else{ el.classList.remove('permGranted'); el.classList.add('permDenied'); }
  });
 }
 function requireOwnerMode(actionLabel, permKey){
@@ -1620,21 +1963,42 @@ async function showRolePermissionsSettings(){
  if(!requireOwnerMode('Role Permissions'))return;
  const b=await getBusiness();
  const perms=b.rolePermissions||{};
- openModal(`<h2>Role Permissions ${hb("Everything here is owner-only by default. Tick a box to let Supervisors (or regular Staff) into that specific screen too — nothing changes until you explicitly grant it.")}</h2>
- <div class="list">${Object.entries(PERMISSION_KEYS).map(([key,label])=>{
+ const roleKeys=Object.keys(GRANTABLE_ROLES);
+ openModal(`<h2>Role Permissions ${hb("Owner always has everything. Tick a box to let that role into that feature. Role Permissions, Business Settings, Sync & Backup, and App Lock stay owner-only permanently and aren't listed here.")}</h2>
+ <div class="notice">Tick what each role is allowed to use. Nothing is granted unless you tick it.</div>
+ <button class="btn secondary full" style="margin-bottom:10px" onclick="applyDefaultRolePermissions()">Load Suggested Defaults</button>
+ <div class="list">${Object.entries(PERMISSION_GROUPS).map(([groupName, keys])=>`
+  <div style="margin-top:10px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">${esc(groupName)}</div>
+  ${Object.entries(keys).map(([key,label])=>{
    const granted=perms[key]||[];
-   return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px"><b>${label}</b><div class="row2"><label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm_${key}_supervisor" ${granted.includes('supervisor')?'checked':''}> Supervisor</label><label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm_${key}_staff" ${granted.includes('staff')?'checked':''}> Staff</label></div></div>`;
-  }).join('')}</div>
+   return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
+    <b style="font-size:13px">${esc(label)}</b>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${roleKeys.map(r=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px"><input type="checkbox" id="perm_${key}_${r}" ${granted.includes(r)?'checked':''}> ${esc(GRANTABLE_ROLES[r])}</label>`).join('')}</div>
+   </div>`;
+  }).join('')}
+ `).join('')}</div>
  <button class="btn accent full" style="margin-top:10px" onclick="saveRolePermissions()">Save</button>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+// Ticks the boxes to match the suggested preset without saving — the owner still reviews
+// and presses Save, so this is a starting point they can adjust, never an applied change.
+function applyDefaultRolePermissions(){
+ for(const key of Object.keys(PERMISSION_KEYS)){
+  for(const r of Object.keys(GRANTABLE_ROLES)){
+   const el=document.getElementById('perm_'+key+'_'+r);
+   if(el) el.checked = (DEFAULT_ROLE_PERMISSIONS[key]||[]).includes(r);
+  }
+ }
+ alert('Suggested defaults loaded below — adjust anything you want, then press Save.');
 }
 async function saveRolePermissions(){
  const b=await getBusiness();
  const perms={};
  for(const key of Object.keys(PERMISSION_KEYS)){
   const roles=[];
-  if(document.getElementById('perm_'+key+'_supervisor')?.checked) roles.push('supervisor');
-  if(document.getElementById('perm_'+key+'_staff')?.checked) roles.push('staff');
+  for(const r of Object.keys(GRANTABLE_ROLES)){
+   if(document.getElementById('perm_'+key+'_'+r)?.checked) roles.push(r);
+  }
   if(roles.length) perms[key]=roles;
  }
  b.rolePermissions=perms;
@@ -1953,7 +2317,7 @@ async function saveProduct(){if(!requireActiveSubscription('Adding a product'))r
  const department=deptEl?(deptEl.value||null):null; // only rendered for hotel businesses at all — unlike pKind, which always exists just sometimes CSS-hidden
  if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;p.trackStock=trackStock;p.kind=kind;p.department=department;if(trackStock){p.costPrice=Number(pCost.value)||0;p.lowStockThreshold=Number(pLowStockThreshold.value)||0;}await put('products',p);} // stockQty deliberately not touched here — locked after creation, see toggleProductStockFields()
  else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId(),trackStock,kind,department,costPrice:trackStock?(Number(pCost.value)||0):0,stockQty:trackStock?(Number(pQty.value)||0):0,lowStockThreshold:trackStock?(Number(pLowStockThreshold.value)||0):0,createdBy:currentActorName()};await put('products',p);pCache.push(p);}
- cancelEditProduct();drawProducts()}
+ cancelEditProduct();drawProducts();republishMenuIfLive()} // fire-and-forget: keeps a live public menu in step with a price/name change without blocking the save
 async function deleteProduct(id){
  const p=pCache.find(x=>x.id===id); if(!p)return;
  if(isStaffMode()){
@@ -2745,7 +3109,7 @@ async function loadTaxReport(){
  const year=Number(taxYear.value)||new Date().getFullYear();
  const curYear=new Date().getFullYear();
  const from=year+'-01-01', to=year+'-12-31';
- const businesses=await all('business');
+ const businesses=await myBusinesses();
  const currencies=new Set(businesses.map(b=>b.currency||'NGN'));
  taxCurrencyWarning.innerHTML = currencies.size>1 ? `<div class="notice" style="background:var(--dangerSoft);border-color:#e0b3b3;color:var(--danger)">Your businesses use different currencies (${[...currencies].join(', ')}) — the combined totals below add these together directly, which isn't meaningful across currencies. Treat the per-business figures as the accurate ones.</div>` : '';
  const taxProfile=await getTaxProfile();
@@ -2916,7 +3280,7 @@ async function unmarkTaxSubmission(id){
 async function exportTaxReportCSV(){
  const year=Number(taxYear.value)||new Date().getFullYear();
  const from=year+'-01-01', to=year+'-12-31';
- const businesses=await all('business');
+ const businesses=await myBusinesses();
  const rows=[['Business','Type','Currency','Revenue','Expenses','Profit']];
  for(const b of businesses){
   const invs=(await all('invoices')).filter(i=>i.businessId===b.id && i.status!=='void' && i.date>=from && i.date<=to);
@@ -2941,7 +3305,7 @@ async function downloadTaxReportPDF(){
 /* ---------------- Audit of Me ---------------- */
 async function runAudit(){
  const findings=[];
- const businesses=await all('business');
+ const businesses=await myBusinesses();
  const allInvoices=await all('invoices');
  const allExpenses=await all('expenses');
  for(const b of businesses){
@@ -3602,8 +3966,17 @@ async function saveStockPurchase(){
  } else {
   const unitCost=Number(spCost.value)||0;
   purchase={id:crypto.randomUUID(), businessId:await getActiveBusinessId(), productId, productName:p.name, qty, unitCost, totalCost:qty*unitCost, type:'purchase', vendorName:spVendor.value.trim(), date:spDate.value, journalNumber, createdBy:currentActorName()};
-  p.stockQty=(Number(p.stockQty)||0)+qty;
-  if(unitCost>0) p.costPrice=unitCost; // keep the product's cost price current for next time
+  const existingQty=Number(p.stockQty)||0, existingCost=Number(p.costPrice)||0;
+  p.stockQty=existingQty+qty;
+  // Weighted average cost, not "last purchase wins". Overwriting outright was a real
+  // accounting error: buying 10 units at a one-off high price would reprice ALL existing
+  // stock at that price, wildly distorting profit on everything bought cheaply before it.
+  // Averaging by quantity is what the reference stock implementation does too.
+  if(unitCost>0){
+   p.costPrice = existingQty>0 && existingCost>0
+    ? Number((((existingQty*existingCost)+(qty*unitCost))/(existingQty+qty)).toFixed(4))
+    : unitCost; // no meaningful prior stock or cost to average against — this purchase sets the baseline
+  }
  }
  await put('stockPurchases',purchase);
  await put('products',p);
@@ -3965,14 +4338,16 @@ async function showBillingScreen(){
    <button class="btn accent full" onclick="startSubscribe('${plan}','yearly')">₦${PLAN_PRICES_DISPLAY[plan].yearly.toLocaleString()}/yr — 2 months free</button>
   </div>`;
 
- openModal(`<h2>Subscription ${hb("Five modules, each built for a real kind of business — pick the one that matches what you actually do, not a generic tier.")}</h2>
+ // Only this business's own module is shown. The account can hold several modules, but each
+ // business IS one module — showing all five here invited paying for the wrong one against
+ // the wrong business. Adding a different module is a deliberate, separate flow: log out and
+ // pick it from the front page, where it gets its own business and its own trial/payment.
+ const myPlan = (bs.plan && PLAN_LABELS[bs.plan]) ? bs.plan : 'full_retail';
+ openModal(`<h2>Subscription ${hb("This is the module this business is registered for. To take on a different module, log out and select it from the front page — it becomes its own business, with its own subscription.")}</h2>
  <div class="notice">${statusLine}</div>
  ${bs.status==='lifetime'?'':`
- ${planCard('personal')}
- ${planCard('business_basic')}
- ${planCard('business_stock')}
- ${planCard('full_retail')}
- ${planCard('hotel')}
+ ${planCard(myPlan)}
+ <div class="notice" style="font-size:12px">This business is registered as <b>${esc(PLAN_LABELS[myPlan])}</b>. To add a different module, log out and choose it from the front page — it'll be set up as its own separate business.</div>
  `}
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
 }
@@ -4207,6 +4582,23 @@ async function downloadHelpFaqPDF(){
 window.posCart = []; // {productId, name, price, qty}
 window.posTabInvoiceId = null; // set when resuming a saved tab, so finalizing updates it instead of creating a new one
 
+/* Distinct tile colour per product, stable across sessions. Derived from the product's own
+   id rather than its position in the list, so a tile keeps the same colour even when other
+   products are added, removed, or reordered — muscle memory at a busy counter depends on a
+   tile staying where it is AND looking the same. All colours are dark enough for white text
+   to stay legible, which is the actual point of colour-coding here. */
+const POS_TILE_COLORS = [
+ {bg:'#1F6F5C', fg:'#fff'}, {bg:'#8C3A2B', fg:'#fff'}, {bg:'#2C5282', fg:'#fff'},
+ {bg:'#7A4E8C', fg:'#fff'}, {bg:'#A65B1E', fg:'#fff'}, {bg:'#3D6B35', fg:'#fff'},
+ {bg:'#9B2C4E', fg:'#fff'}, {bg:'#1F5F6F', fg:'#fff'}, {bg:'#6B4A1F', fg:'#fff'},
+ {bg:'#4A3F8C', fg:'#fff'}, {bg:'#8C6B1F', fg:'#fff'}, {bg:'#2F5D4A', fg:'#fff'},
+];
+function posTileColor(p, idx){
+ const key=String(p && p.id || idx);
+ let h=0;
+ for(let i=0;i<key.length;i++){ h=((h<<5)-h+key.charCodeAt(i))|0; }
+ return POS_TILE_COLORS[Math.abs(h)%POS_TILE_COLORS.length];
+}
 function posRequireFullTier(){
  if(window.billingStatus && window.billingStatus.status!=='lifetime' && currentModuleLevel()<3){
   alert('The POS Terminal needs Full Stock Module & Sales (or Hotel) — upgrade to use it.');
@@ -4219,22 +4611,31 @@ async function showPosTerminal(){
  if(!posRequireFullTier())return;
  if(window.currentBranchId===null) await promptSelectBranchIfNeeded(); // only prompts if multiple branches exist and none picked yet this session
  window.posCart=[]; window.posTabInvoiceId=null; window.posDiscount=0;
- const products=(await bizProducts()).filter(p=>p.trackStock);
+ // Every product, not just stock-tracked ones — requiring trackStock hid made-to-order
+ // items (most of a restaurant's actual menu) from its own counter. Out-of-stock tracked
+ // items are still shown here rather than hidden, because the tile already carries an
+ // OUT OF STOCK badge and a cashier needs to see that the item exists but can't be sold,
+ // rather than have it silently vanish from the grid.
+ const products=await bizProducts();
  const b=await getBusiness();
  const bizId=await getActiveBusinessId();
  const todaysSales=(await all('invoices')).filter(i=>i.businessId===bizId && i.source==='pos' && i.date===new Date().toISOString().slice(0,10));
  const visibleSales=(isSupervisorOrHigher()?todaysSales:todaysSales.filter(i=>i.createdBy===currentActorName())).sort((a,b2)=>(a.number||'').localeCompare(b2.number||''));
  openModal(`<h2>${esc(b.name||'POS Terminal')} — POS Terminal ${hb("Tap a product to add it to the cart — tap again to add another. Only stock-tracked products show up here.")}</h2>
- ${!products.length?`<div class="notice">No stock-tracked products yet. Turn on stock tracking for a product under Products / Services first.</div>`:''}
+ ${!products.length?`<div class="notice">No products yet. Add them under Products / Services first.</div>`:''}
  <div class="row2" style="margin-bottom:8px">
   <button class="btn secondary" onclick="showPosDashboard()">My Sales Today</button>
   ${b.posAllowTabs && b.type!=='salary' ? `<button class="btn secondary" onclick="showPosOpenTabs()">Open Tabs</button>` : ''}
  </div>
  <div id="posTileGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;max-height:38vh;overflow-y:auto;padding:2px">
-  ${products.map(p=>`<button class="posTile" onclick="posAddToCart('${p.id}')" style="border:1.4px solid var(--line);border-radius:12px;padding:10px 6px;background:#fff;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:4px;min-height:70px;justify-content:center">
-    <b style="font-size:12.5px;line-height:1.2">${esc(p.name)}</b><small style="color:var(--brass2)">${money(p.price)}</small>
-    ${(Number(p.stockQty)||0)<=0?'<small style="color:var(--danger)">Out of stock</small>':((Number(p.lowStockThreshold)||0)>0 && (Number(p.stockQty)||0)<=(Number(p.lowStockThreshold)||0))?'<small style="color:var(--brass2)">Low stock</small>':''}
-  </button>`).join('')}
+  ${products.map((p,idx)=>{
+    const c=posTileColor(p,idx);
+    return `<button class="posTile" onclick="posAddToCart('${p.id}')" style="border:0;border-radius:12px;padding:10px 6px;background:${c.bg};color:${c.fg};text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:3px;min-height:76px;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.18)">
+    <b style="font-size:13.5px;line-height:1.2;font-weight:800">${esc(p.name)}</b>
+    <small style="font-size:12.5px;font-weight:800;opacity:.95">${money(p.price)}</small>
+    ${(Number(p.stockQty)||0)<=0?'<small style="font-size:10.5px;font-weight:800;background:rgba(0,0,0,.28);border-radius:6px;padding:1px 5px">OUT OF STOCK</small>':((Number(p.lowStockThreshold)||0)>0 && (Number(p.stockQty)||0)<=(Number(p.lowStockThreshold)||0))?'<small style="font-size:10.5px;font-weight:800;background:rgba(0,0,0,.28);border-radius:6px;padding:1px 5px">LOW</small>':''}
+  </button>`;
+  }).join('')}
  </div>
  <div class="sectionhead" style="margin-top:14px"><h3>Cart</h3></div>
  <div id="posCartList" class="list"></div>
@@ -4436,13 +4837,85 @@ async function resumePosTab(id){
  closeModal();
  await showPosTerminal();
 }
+/* ---------------- POS thermal receipt ----------------
+   A POS sale must never print as A4 — it goes to a roll printer. This renders a proper
+   narrow receipt and prints it with an injected @page rule sized for thermal paper.
+   Previously this reused the A4 invoice preview, which produced a full-page invoice on
+   every counter sale. A regular invoice still prints as A4 through printInvoice(). */
+function receiptPaperWidthMm(){
+ const w=Number(localStorage.getItem('moborex_receipt_width_mm'));
+ return (w===58||w===80) ? w : 80; // 80mm is the common default; 58mm is the small-roll alternative
+}
+function setReceiptPaperWidth(mm){
+ localStorage.setItem('moborex_receipt_width_mm', String(mm));
+ alert('Receipt width set to '+mm+'mm.');
+}
+// @page is document-level and can't be scoped to a class, so the rule is injected only for
+// the duration of a receipt print and removed immediately after — otherwise it would also
+// shrink A4 invoice printing.
+function withReceiptPageSize(fn){
+ const mm=receiptPaperWidthMm();
+ const style=document.createElement('style');
+ style.id='receiptPageStyle';
+ style.textContent='@page{size:'+mm+'mm auto;margin:0}';
+ document.head.appendChild(style);
+ const cleanup=()=>{ const el=document.getElementById('receiptPageStyle'); if(el) el.remove(); window.removeEventListener('afterprint',cleanup); };
+ window.addEventListener('afterprint',cleanup);
+ try{ fn(); } finally { setTimeout(cleanup,4000); } // fallback — afterprint doesn't fire reliably on some mobile browsers
+}
+function receiptHtml(inv, b){
+ const paid=(inv.payments||[]).reduce((a,p)=>a+(Number(p.amount)||0),0);
+ const method=(inv.payments||[])[0]?.method||'';
+ // Tax is NOT stored separately on the invoice — finalizePosSale() pushes each exclusive
+ // tax into items as its own line. So every line here is simply listed as-is; adding a
+ // separate tax section would double-count it. Subtotal is therefore the sum of all lines
+ // before the discount, which is exactly what inv.total + discount comes to.
+ const lineSum=(inv.items||[]).reduce((a,x)=>a+(Number(x.qty)||0)*(Number(x.price)||0),0);
+ const discount=Number(inv.discount)||0;
+ return `<div class="receipt" id="receiptTarget">
+  <div class="rHead">
+   <div class="rBiz">${esc(b.name||'')}</div>
+   ${b.address?`<div class="rSmall">${esc(b.address)}</div>`:''}
+   ${b.phone?`<div class="rSmall">${esc(b.phone)}</div>`:''}
+   ${b.taxId?`<div class="rSmall">Tax ID: ${esc(b.taxId)}</div>`:''}
+  </div>
+  <div class="rRule"></div>
+  <div class="rRow rSmall"><span>${esc(inv.number||'')}</span><span>${esc(inv.date||'')}</span></div>
+  ${inv.branchName?`<div class="rSmall">Branch: ${esc(inv.branchName)}</div>`:''}
+  ${inv.customer?`<div class="rSmall">Customer: ${esc(inv.customer)}</div>`:''}
+  <div class="rSmall">Served by: ${esc(inv.createdBy||'')}</div>
+  <div class="rRule"></div>
+  ${(inv.items||[]).map(x=>`<div class="rItem">
+   <div class="rItemName">${esc(x.description)}</div>
+   <div class="rRow"><span>${x.qty} × ${money(x.price)}</span><span>${money((Number(x.qty)||0)*(Number(x.price)||0))}</span></div>
+  </div>`).join('')}
+  <div class="rRule"></div>
+  ${discount?`<div class="rRow"><span>Subtotal</span><span>${money(lineSum)}</span></div><div class="rRow"><span>Discount</span><span>-${money(discount)}</span></div>`:''}
+  <div class="rRow rTotal"><span>TOTAL</span><span>${money(inv.total)}</span></div>
+  ${paid?`<div class="rRow"><span>Paid${method?' ('+esc(method)+')':''}</span><span>${money(paid)}</span></div>`:''}
+  ${paid && paid<Number(inv.total)?`<div class="rRow"><span>Balance</span><span>${money(Number(inv.total)-paid)}</span></div>`:''}
+  <div class="rRule"></div>
+  <div class="rFoot">${esc(b.footerComment||'Thank you.')}</div>
+ </div>`;
+}
 async function printPosReceipt(invoiceId){
- // Reuses the existing invoice preview/print pipeline — this is just a normal invoice
- // under the hood, so the same PDF/print machinery already works for it. Auto-triggers
- // the print dialog immediately, but the preview stays open after for a manual reprint.
  const inv=(await all('invoices')).find(x=>x.id===invoiceId); if(!inv)return;
- await previewInvoice(invoiceId);
- printInvoice(inv.number);
+ const b=await getBusiness();
+ openModal(`<h2>Receipt</h2>
+ ${receiptHtml(inv,b)}
+ <div class="pdfActions">
+  <button class="btn secondary" onclick="reprintPosReceipt()">Print Again</button>
+  <button class="btn secondary" onclick="promptReceiptWidth()">Paper Width</button>
+ </div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ withReceiptPageSize(()=>window.print());
+}
+function reprintPosReceipt(){ withReceiptPageSize(()=>window.print()); }
+function promptReceiptWidth(){
+ const cur=receiptPaperWidthMm();
+ if(confirm('Receipt paper width is currently '+cur+'mm.\n\nOK = switch to '+(cur===80?58:80)+'mm\nCancel = keep '+cur+'mm')){
+  setReceiptPaperWidth(cur===80?58:80);
+ }
 }
 
 /* ---------------- POS void/refund: clerk initiates, a Supervisor's own PIN finishes it ---------------- */
@@ -4885,14 +5358,17 @@ async function removeFolioItem(bookingId, itemIdx){
  await showGuestFolio(bookingId);
 }
 async function showAddFolioItem(bookingId){
- let products=(await bizProducts()).filter(p=>p.trackStock);
+ // Not filtered by trackStock — bar drinks and kitchen dishes charged to a room folio are
+ // usually made or poured to order, not inventory-counted, so requiring it left the folio
+ // with nothing to add. Department filtering below is what actually scopes this.
+ let products=await bizProducts();
  // Kitchen/Bar staff only ever see their own department's items — they shouldn't be
  // choosing from the other department's menu, or from anything un-departmented.
  if(isHotelKitchen()) products=products.filter(p=>p.department==='kitchen');
  else if(isHotelBar()) products=products.filter(p=>p.department==='bar');
  openModal(`<h2>Add Item to Folio${isHotelKitchen()?' — Kitchen':isHotelBar()?' — Bar':''}</h2>
  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px">
-  ${products.map(p=>`<button onclick="addFolioItem('${bookingId}','${p.id}')" style="border:1.4px solid var(--line);border-radius:12px;padding:10px 6px;background:#fff;text-align:center;cursor:pointer;min-height:60px"><b style="font-size:12px">${esc(p.name)}</b><br><small>${money(p.price)}</small></button>`).join('') || '<div class="empty">No stock-tracked products yet.</div>'}
+  ${products.map(p=>`<button onclick="addFolioItem('${bookingId}','${p.id}')" style="border:1.4px solid var(--line);border-radius:12px;padding:10px 6px;background:#fff;text-align:center;cursor:pointer;min-height:60px"><b style="font-size:12px">${esc(p.name)}</b><br><small>${money(p.price)}</small></button>`).join('') || '<div class="empty">No items available. Add them under Bar &amp; Kitchen Menu first.</div>'}
  </div>
  <button class="btn secondary full" style="margin-top:10px" onclick="showGuestFolio('${bookingId}')">Back to Folio</button>`);
 }
@@ -5228,8 +5704,13 @@ async function renderVendorPurchaseReport(){
    only exists to cover that routing) never applies to this channel. ---------------- */
 window.phoneOrderPeople = [];
 window.phoneOrderCurrentIdx = 0;
-function phoneOrderSellable(products){ return products.filter(p=>p.trackStock && (!p.kind || p.kind==='regular' || p.kind==='food')); }
-function phoneOrderPackaging(products){ return products.filter(p=>p.trackStock && p.kind && ['food_pack','food_nylon','nonfood_packaging'].includes(p.kind)); }
+// Same reasoning as publishMenu(): requiring trackStock hid every made-to-order item, which
+// is most of a restaurant's actual menu. A stock-tracked item still disappears when it runs
+// out (nothing orderable should be shown that can't be supplied); an untracked one has no
+// stock count to check against and is always offerable.
+function phoneOrderInStock(p){ return p.trackStock ? (Number(p.stockQty)||0)>0 : true; }
+function phoneOrderSellable(products){ return products.filter(p=>phoneOrderInStock(p) && (!p.kind || p.kind==='regular' || p.kind==='food')); }
+function phoneOrderPackaging(products){ return products.filter(p=>phoneOrderInStock(p) && p.kind && ['food_pack','food_nylon','nonfood_packaging'].includes(p.kind)); }
 async function showPhoneOrder(){
  if(!posRequireFullTier())return;
  window.phoneOrderPeople = [{ label:'Person 1', cart:{} }];
@@ -5242,7 +5723,7 @@ async function renderPhoneOrder(){
  openModal(`<h2>Phone Order ${hb("For a customer who called in — build their order the same way, packaging auto-added the same way, then send it to Deliveries just like any other delivery order.")}</h2>
  <div class="sectionhead">Ordering for</div>
  <div id="phonePersonTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
- ${sellable.length ? `<div id="phoneTileGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;max-height:32vh;overflow-y:auto"></div>` : '<div class="notice">No stock-tracked products yet.</div>'}
+ ${sellable.length ? `<div id="phoneTileGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;max-height:32vh;overflow-y:auto"></div>` : '<div class="notice">No products available to order. Add them under Products / Services — stock-tracked ones also need stock on hand.</div>'}
  ${packaging.length ? `<div class="sectionhead" style="margin-top:12px">Extra Packaging</div><div id="phonePackagingGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px"></div>` : ''}
  <div id="phoneOrderTotal" style="font-size:16px;font-weight:800;text-align:right;margin:10px 0"></div>
  <button class="btn accent full" onclick="showPhoneOrderCheckout()">Checkout</button>
@@ -6005,15 +6486,44 @@ async function showOnlineOrderingSettings(){
  <button class="btn secondary full" style="margin-top:10px" onclick="showIncomingOrders()">View Incoming Orders</button>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
 }
+// Keeps the public menu in step with the product list, but only for a business that has
+// already published once — publishing is an explicit opt-in, and this never makes a menu
+// public on its own. Silent and best-effort: a failure here must never block saving a
+// product, and the owner can always re-publish manually from Online Ordering Setup.
+async function republishMenuIfLive(){
+ try{
+  const businessId = await getActiveBusinessId();
+  if(!localStorage.getItem('moborex_menu_published_'+businessId)) return; // never published — nothing public to keep in sync
+  if(!ServerAccount.token) return;
+  const allProducts = await bizProducts();
+  const products = allProducts.filter(p => p.trackStock ? (Number(p.stockQty)||0)>0 : true);
+  const b = await getBusiness();
+  const items = products.map(p=>({productId:p.id, name:p.name, priceKobo:Math.round((Number(p.price)||0)*100), description:'', kind:p.kind||'regular'}));
+  await ServerAccount.api('/api/menu/publish', {method:'POST', body: JSON.stringify({businessId, businessName:b.name, items})});
+ }catch(e){ console.error('Could not auto-refresh the published menu', e); }
+}
 async function publishMenu(){
- const products=(await bizProducts()).filter(p=>p.trackStock && (Number(p.stockQty)||0)>0); // out-of-stock items are deliberately excluded, not just shown — nothing a customer sees should be unorderable
- if(!products.length){ publishStatus.textContent='No stock-tracked products in stock to publish yet.'; return; }
+ // Two different kinds of item, two different rules. Anything stock-tracked is excluded
+ // when it's genuinely out of stock — nothing a customer can see should be unorderable.
+ // But an item that ISN'T stock-tracked (made-to-order food, a service) has no meaningful
+ // stock count at all, and requiring one is why menus were publishing empty: restaurants
+ // don't inventory "jollof rice", they cook it on demand.
+ const allProducts = await bizProducts();
+ const products = allProducts.filter(p => p.trackStock ? (Number(p.stockQty)||0)>0 : true);
+ if(!products.length){
+  publishStatus.textContent = allProducts.length
+   ? 'Nothing to publish — every product is stock-tracked and currently out of stock.'
+   : 'No products yet. Add them under Products / Services first.';
+  return;
+ }
  try{
   const businessId = await getActiveBusinessId();
   const b = await getBusiness();
   const items = products.map(p=>({productId:p.id, name:p.name, priceKobo:Math.round((Number(p.price)||0)*100), description:'', kind:p.kind||'regular'}));
   await ServerAccount.api('/api/menu/publish', {method:'POST', body: JSON.stringify({businessId, businessName:b.name, items})});
-  publishStatus.textContent = `Published ${products.length} item(s) — live now.`;
+  localStorage.setItem('moborex_menu_published_'+businessId,'1'); // opts this business into automatic re-publishing on future product changes
+  const excluded = allProducts.length - products.length;
+  publishStatus.textContent = `Published ${products.length} item(s) — live now.` + (excluded?` (${excluded} out-of-stock item(s) not shown.)`:'');
  }catch(e){ publishStatus.textContent = 'Could not publish: '+e.message; }
 }
 window.ordersPollInterval = null;
@@ -6440,7 +6950,7 @@ function showCloudSync(){
  } else if(ServerAccount.token && ServerAccount.tenant) {
    const lastServerPush=localStorage.getItem('moborex_server_last_push'), lastServerPull=localStorage.getItem('moborex_server_last_pull');
    const isLite = currentModuleLevel()===0;
-   accountSyncModeLine = `<b>${esc(ServerAccount.tenant.name)}</b> — status: ${esc(ServerAccount.tenant.status)}${ServerAccount.tenant.status==='trialing'&&ServerAccount.tenant.trialEndsAt?' (trial ends '+esc(new Date(ServerAccount.tenant.trialEndsAt).toLocaleDateString())+')':''}. This data is stored on the server as-is — protected by your account login, not end-to-end encrypted.`;
+   accountSyncModeLine = `<b>${esc(ServerAccount.tenant.name)}</b><br>Signed in as: <b>${esc(localStorage.getItem('moborex_server_email')||'—')}</b><br>Status: ${esc(ServerAccount.tenant.status)}${ServerAccount.tenant.status==='trialing'&&ServerAccount.tenant.trialEndsAt?' (trial ends '+esc(new Date(ServerAccount.tenant.trialEndsAt).toLocaleDateString())+')':''}. This data is stored on the server as-is — protected by your account login, not end-to-end encrypted.`;
    if(isLite){
     serverStatusHtml = `<div class="notice">Multi-device sync isn't included on the Personal plan — it keeps your account and trial/subscription status working, but doesn't push data between devices. <button class="btn accent full" style="margin-top:8px" onclick="closeModal();showBillingScreen()">Upgrade to Sync</button></div>`;
     serverActionsHtml = `<button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
@@ -6539,6 +7049,16 @@ async function submitAuthGateSignup(){
       createdBizIdForCleanup=nb.id;
     }
     await ServerAccount.signup(email, pw, name); // this also pushes any existing local data up, per its own logic
+    // Registered only now, because createBusinessForModule() above ran before there was any
+    // token to authenticate with — it skips registration in that case. Without this the
+    // business would later be lazily created by /api/billing/status with the DEFAULT plan,
+    // not the module the person actually chose on the landing page. No duplicate check is
+    // meaningful here (the account is brand new), so a failure is logged, not fatal.
+    if(createdBizIdForCleanup){
+      try{
+        await ServerAccount.api('/api/business/register', {method:'POST', body: JSON.stringify({businessId:createdBizIdForCleanup, businessName:name, module:window.chosenSignupModule})});
+      }catch(regErr){ console.error('Could not register the new business module with the server', regErr); }
+    }
     createdBizIdForCleanup=null; // signup succeeded — this business is now real, don't clean it up
     agBusy.style.display='none'; hideAuthGate();
     await continueStartupAfterAuth();
@@ -6584,9 +7104,16 @@ async function submitAuthGateLogin(){
       // whatever else this account already had.
       const chosen=window.pendingModuleAfterLogin; window.pendingModuleAfterLogin=null;
       const bizName=prompt('Name for this new business ('+PLAN_LABELS[chosen]+'):');
-      if(bizName && bizName.trim()) await createBusinessForModule(bizName.trim(), chosen);
-      await continueStartupAfterAuth();
-      if(bizName && bizName.trim() && confirm('Added. Start your free trial of '+PLAN_LABELS[chosen]+' now, or go straight to payment?\n\nOK = view trial/payment options')) await showBillingScreen();
+      let created=false;
+      if(bizName && bizName.trim()){
+       // Caught here rather than by the outer handler: the auth gate is already hidden by
+       // this point, so its error line would never be seen. createBusinessForModule() has
+       // already shown the specific reason (module already registered, or duplicate name).
+       try{ await createBusinessForModule(bizName.trim(), chosen); created=true; }
+       catch(e){ created=false; }
+      }
+      await continueStartupAfterAuth(); // still runs either way — they're logged in, and their existing businesses should load normally
+      if(created && confirm('Added. Start your free trial of '+PLAN_LABELS[chosen]+' now, or go straight to payment?\n\nOK = view trial/payment options')) await showBillingScreen();
     } else {
       await continueStartupAfterAuth(); // handles per-business discovery/pull correctly — see doServerLogin() for why the old blind pull(true) prompt here never actually worked
     }
