@@ -251,7 +251,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 61;
+const APP_VERSION = 62;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -7921,7 +7921,7 @@ function showCloudSync(){
     serverActionsHtml = `<button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
    } else {
     serverStatusHtml = `<div class="cloudLast">Last sent: ${lastServerPush?new Date(lastServerPush).toLocaleString():'Never'} · Last received: ${lastServerPull?new Date(lastServerPull).toLocaleString():'Never'}</div>`;
-    serverActionsHtml = `<button class="btn secondary full" onclick="syncNow()">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button><button class="btn secondary full ownerOnly" style="margin-top:14px" onclick="showTwoFactorSettings()">🔐 Two-Factor Authentication</button><button class="btn secondary full ownerOnly" style="margin-top:8px;color:var(--danger);border-color:var(--danger)" onclick="showDeleteAccountForever()">Delete Account Forever</button>`;
+    serverActionsHtml = `<div class="notice" style="font-size:12px">App build <b>v${APP_VERSION}</b> · local data v${DB_VERSION}${window.__syncUsagePercent!=null?' · sync usage '+window.__syncUsagePercent+'%':''}</div><button class="btn secondary full" onclick="syncNow()">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button><button class="btn secondary full ownerOnly" style="margin-top:14px" onclick="showTwoFactorSettings()">🔐 Two-Factor Authentication</button><button class="btn secondary full ownerOnly" style="margin-top:8px;color:var(--danger);border-color:var(--danger)" onclick="showDeleteAccountForever()">Delete Account Forever</button>`;
    }
  } else {
    accountSyncModeLine = 'Sign up once, then log into the same account on every phone — all synced automatically, no PIN to remember.';
