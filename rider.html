@@ -74,6 +74,113 @@ let audioCtx = null;
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function money(kobo){ return '₦' + (kobo/100).toLocaleString('en-NG', {maximumFractionDigits:2}); }
 
+/* ---------------- Offline outbox ----------------
+   A rider is the user most likely to lose signal mid-job, and the delivery lifecycle is
+   strictly ordered: picked-up must reach the server before delivered. Previously these
+   calls went straight to fetch() with no queue at all — offline, they were simply lost,
+   and there was nothing to reorder because nothing was kept.
+
+   The queue is an IndexedDB store with an auto-incrementing key, so insertion order IS
+   the send order. It is drained strictly first-in-first-out and STOPS at the first
+   failure rather than skipping ahead, because sending "delivered" after "picked-up"
+   failed would record a lifecycle that never happened. ---------------- */
+const OUTBOX_DB = 'MoborexRiderOutbox', OUTBOX_STORE = 'outbox';
+let outboxDb = null;
+function openOutbox(){
+  return new Promise((resolve, reject) => {
+    if (outboxDb) return resolve(outboxDb);
+    const r = indexedDB.open(OUTBOX_DB, 1);
+    r.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains(OUTBOX_STORE)) {
+        // autoIncrement gives a monotonically increasing key — that key ordering is what
+        // guarantees FIFO, rather than relying on a timestamp that could tie or skew.
+        d.createObjectStore(OUTBOX_STORE, { keyPath: 'seq', autoIncrement: true });
+      }
+    };
+    r.onsuccess = () => { outboxDb = r.result; resolve(outboxDb); };
+    r.onerror = () => reject(r.error);
+  });
+}
+function outboxTx(mode, fn){
+  return openOutbox().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(OUTBOX_STORE, mode);
+    const req = fn(t.objectStore(OUTBOX_STORE));
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+async function enqueueMutation(path, body, label){
+  await outboxTx('readwrite', s => s.add({ path, body: body || null, label: label || path, queuedAt: new Date().toISOString() }));
+  updateOutboxBadge();
+}
+async function outboxCount(){ try { return await outboxTx('readonly', s => s.count()); } catch(e){ return 0; } }
+async function updateOutboxBadge(){
+  const n = await outboxCount();
+  const el = document.getElementById('outboxBadge');
+  if (el) {
+    el.style.display = n > 0 ? 'block' : 'none';
+    el.textContent = n === 0 ? '' : (n + ' update' + (n === 1 ? '' : 's') + ' waiting to send — they will go automatically when you are back online.');
+  }
+}
+let flushing = false;
+async function flushOutbox(){
+  if (flushing || !navigator.onLine || !riderToken) return;
+  flushing = true;
+  try {
+    // Re-read the oldest entry each pass rather than snapshotting the whole queue, so an
+    // item added while flushing still lands behind what is already queued.
+    for (;;) {
+      const all = await outboxTx('readonly', s => s.getAll());
+      if (!all || !all.length) break;
+      all.sort((a, b) => a.seq - b.seq);
+      const item = all[0];
+      try {
+        await apiDirect(item.path, { method: 'POST', body: item.body ? JSON.stringify(item.body) : undefined });
+      } catch (e) {
+        const msg = (e && e.message || '').toLowerCase();
+        const transport = msg.includes('failed to fetch') || msg.includes('network') || msg.includes('offline');
+        if (transport) break; // still offline — leave the whole queue intact and try again later
+        // A real server rejection (the job moved on, the code was wrong). Retrying forever
+        // would block every later item behind it, so it is dropped and reported.
+        console.warn('Dropping an outbox item the server rejected:', item.label, e);
+        await outboxTx('readwrite', s => s.delete(item.seq));
+        updateOutboxBadge();
+        continue;
+      }
+      await outboxTx('readwrite', s => s.delete(item.seq));
+      updateOutboxBadge();
+    }
+  } finally { flushing = false; }
+}
+window.addEventListener('online', () => { flushOutbox(); });
+setInterval(() => { flushOutbox(); }, 20000);
+
+// Sends immediately, no queueing — used by the flusher itself and by calls that need a
+// real response right now (login, account verification).
+async function apiDirect(path, opts={}){
+  const headers = { 'Content-Type':'application/json', ...(opts.headers||{}) };
+  if(riderToken) headers['Authorization'] = 'Bearer ' + riderToken;
+  const res = await fetch(SERVER + path, { ...opts, headers });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || 'Something went wrong.');
+  return data;
+}
+/* Lifecycle mutations go through here. If anything is already queued, this one queues too
+   even when online — otherwise a new action could overtake an older one still waiting,
+   which is exactly the out-of-order delivery this queue exists to prevent. */
+async function apiQueued(path, body, label){
+  const pending = await outboxCount();
+  if (navigator.onLine && pending === 0) {
+    try { return await apiDirect(path, { method:'POST', body: body ? JSON.stringify(body) : undefined }); }
+    catch (e) {
+      const msg = (e && e.message || '').toLowerCase();
+      if (!(msg.includes('failed to fetch') || msg.includes('network'))) throw e; // genuine rejection — surface it
+    }
+  }
+  await enqueueMutation(path, body, label);
+  return { queued: true };
+}
 async function api(path, opts={}){
   const headers = { 'Content-Type':'application/json', ...(opts.headers||{}) };
   if(riderToken) headers['Authorization'] = 'Bearer ' + riderToken;
@@ -161,6 +268,7 @@ function logout(){
 
 let riderStatus = 'offline';
 async function showDashboard(){
+  setTimeout(()=>{ updateOutboxBadge(); flushOutbox(); }, 0); // after this render paints
   document.getElementById('app').innerHTML = `
     <div class="bizName">${riderInfo ? esc(riderInfo.name) : 'Rider'}</div>
     <div class="tagline">${riderInfo ? esc(riderInfo.vehicleType) : ''}</div>
@@ -169,6 +277,7 @@ async function showDashboard(){
       <button class="btn good" onclick="setStatus('available')">Go Available</button>
       <button class="btn secondary" onclick="setStatus('offline')">Go Offline</button>
     </div>
+    <div id="outboxBadge" class="notice" style="display:none;background:#FFF4E0;border-color:#E0B15C;font-size:12px"></div>
     <div id="jobArea"></div>
     <button class="btn secondary" style="margin-top:20px" onclick="showPayoutAccount()">💳 Payout Account</button>
     <button class="btn secondary" style="margin-top:8px" onclick="logout()">Log Out</button>
@@ -372,7 +481,14 @@ function showActiveJob(job){
 }
 async function markPickedUp(jobId){
   try{
-    await api(`/api/delivery-jobs/${jobId}/picked-up`, {method:'POST'});
+    // Queued rather than sent directly: this is a lifecycle step whose ORDER matters, and
+    // it must never arrive after the delivery confirmation that follows it.
+    const r = await apiQueued(`/api/delivery-jobs/${jobId}/picked-up`, null, 'Picked up');
+    if(r && r.queued){
+      alert('Saved. You are offline, so this will be sent automatically the moment you reconnect — carry on with the delivery.');
+      updateOutboxBadge();
+      return;
+    }
     await checkCurrentJob();
   }catch(e){ alert(e.message); }
 }
@@ -381,7 +497,15 @@ async function markDelivered(jobId){
   const code = document.getElementById('deliveryCodeInput').value.trim();
   if(!code){ alert('Enter the code the customer gives you.'); return; }
   try{
-    const data = await api(`/api/delivery-jobs/${jobId}/confirm-code`, {method:'POST', body: JSON.stringify({code})});
+    const data = await apiQueued(`/api/delivery-jobs/${jobId}/confirm-code`, {code}, 'Delivered');
+    if(data && data.queued){
+      // Confirmation cannot be answered offline — the payment gate needs a real reply from
+      // the server. The code is safely queued behind any earlier step, and the rider is told
+      // plainly rather than being shown a success that has not actually happened.
+      alert('Saved. You are offline, so this delivery will be completed automatically once you reconnect. Do not collect payment outside the app.');
+      updateOutboxBadge();
+      return;
+    }
     if(data.awaitingPayment){
       // Code confirmed, but not done yet — stays busy until the customer's payment is
       // actually confirmed. No way to skip this by telling the customer "just pay me cash".

@@ -251,7 +251,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 58;
+const APP_VERSION = 60;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -288,7 +288,7 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=34;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=35;
 let idb;
 const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0,staffMembers:[],posAllowTabs:true,taxRates:[{id:'default-vat',name:'VAT',rate:7.5,inclusive:false}]}};
 function deriveInitials(name){
@@ -326,6 +326,11 @@ function openDB(){
    // finished counter units it produced. Store balance = purchased - issued + returned.
    if(!d.objectStoreNames.contains('receivers')){let s=d.createObjectStore('receivers',{keyPath:'id'});s.createIndex('businessId','businessId')}
    if(!d.objectStoreNames.contains('stockMovements')){let s=d.createObjectStore('stockMovements',{keyPath:'id'});s.createIndex('businessId','businessId');s.createIndex('date','date')}
+   // Tombstones. Incremental sync sends only what CHANGED, so a plain delete is invisible
+   // to it — the record simply stops being mentioned, which is indistinguishable from "no
+   // change". Without a tombstone a deleted invoice reappears on the next pull from any
+   // other device. Recorded here so deletion is itself a change that syncs.
+   if(!d.objectStoreNames.contains('tombstones')){let s=d.createObjectStore('tombstones',{keyPath:'key'});s.createIndex('businessId','businessId')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};
   r.onerror=()=>reject(r.error);
@@ -838,8 +843,18 @@ async function put(store,obj,skipDirty){
  return r;
 }
 async function del(store,id){
+ // Read the record BEFORE deleting so the tombstone can carry its real businessId. Falling
+ // back to the active business would misattribute a deletion made while another business
+ // was selected, and that record would then never be removed on other devices.
+ let owner=null;
+ try{ const existing=await req(store,'readonly',s=>s.get(id)); owner = existing && (existing.businessId || (store==='business' ? existing.id : null)); }catch(e){}
  let r=await req(store,'readwrite',s=>s.delete(id));
- const bizId = await getActiveBusinessId(); // the record is already gone, so this is the best available attribution — deletion while a business is active almost always belongs to it
+ const bizId = owner || await getActiveBusinessId();
+ // Written after the delete succeeds, so a failed delete never leaves a tombstone claiming
+ // something was removed when it is still there.
+ try{
+  await req('tombstones','readwrite',s=>s.put({key:store+':'+id, store, recordId:id, businessId:bizId, deletedAt:Date.now()}));
+ }catch(e){ console.error('Could not record a tombstone for '+store+':'+id, e); }
  Sync.markDirty(bizId); ServerAccount.markDirty(bizId);
  return r;
 }
@@ -924,6 +939,165 @@ async function restoreBackup(ev){
    Unlike Google Drive sync, the server stores the snapshot as-is — protected
    by account login, not end-to-end encrypted. That's the standard model for
    a real hosted account, same as most business software. ---------------- */
+/* ---------------- Sync payload compression ----------------
+   D1 refuses any single value over ~2MB with "string or blob too big". Measured against
+   realistic data, that ceiling is hit at roughly 2,900 invoices — a normal year for a busy
+   shop — at which point syncing stops working entirely and the error means nothing to the
+   person seeing it. Gzip achieves about 25x on this kind of repetitive JSON, moving the
+   ceiling past 90,000 invoices.
+
+   The "GZ1:" prefix marks a compressed payload. Anything without it is plain JSON from
+   before this change and is still read normally, so existing accounts keep working. If the
+   browser lacks CompressionStream, the payload is sent uncompressed — smaller businesses
+   are unaffected, and nothing breaks. */
+const GZIP_PREFIX = 'GZ1:';
+function canCompress(){ return typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined'; }
+async function compressPayload(text){
+  if(!canCompress()) return text;
+  try{
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+    const buf = await new Response(stream).arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    // Chunked to avoid blowing the call stack on a large payload, which String.fromCharCode
+    // with a spread would do well before the size limit we are trying to solve.
+    let bin = '';
+    const CH = 0x8000;
+    for(let i=0;i<bytes.length;i+=CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
+    return GZIP_PREFIX + btoa(bin);
+  }catch(e){ console.warn('Could not compress sync payload — sending it uncompressed', e); return text; }
+}
+async function decompressPayload(text){
+  if(typeof text !== 'string' || !text.startsWith(GZIP_PREFIX)) return text; // plain JSON from before compression existed
+  const b64 = text.slice(GZIP_PREFIX.length);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return await new Response(stream).text();
+}
+/* ---------------- Incremental sync engine ----------------
+   Sends only records whose updatedAt has moved since this device's last successful push,
+   and applies only what changed on the server since its last pull cursor. This replaces
+   re-uploading the entire business every time, which had a hard ~2MB ceiling — reached in
+   about 100 days by a restaurant doing 900 sales a day, after which sync failed forever
+   while the app carried on working locally and nobody noticed.
+
+   Cursors are stored per business per device. The pull cursor is the SERVER's timestamp,
+   never the device's: phone clocks are frequently wrong and can be set by the user, and
+   trusting one for ordering would silently skip records. */
+const SYNCED_STORES = ['invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','otherIncome','taxProfile','quotations','commissions','investments','loans','reconciliations','stockPurchases','returns','rooms','bookings','branches','conversions','onlineOrders','bankAccounts','receivers','stockMovements','business'];
+function pushCursorKey(bizId){ return 'moborex_push_cursor_' + bizId; }
+function pullCursorKey(bizId){ return 'moborex_pull_cursor_' + bizId; }
+
+async function collectChangedRecords(businessId, sinceMs){
+  const out = [];
+  for(const store of SYNCED_STORES){
+    let rows = [];
+    try{ rows = await all(store); }catch(e){ continue; }
+    for(const rec of rows){
+      const belongs = store==='business' ? rec.id===businessId : rec.businessId===businessId;
+      if(!belongs) continue;
+      // A record with no updatedAt predates change tracking; treat it as changed once so it
+      // gets uploaded, rather than being invisible to sync forever.
+      const u = Number(rec.updatedAt) || 0;
+      if(u > sinceMs || u === 0) out.push({ store, id: rec.id, payload: rec, updatedAt: u || Date.now(), deleted:false });
+    }
+  }
+  let tombs = [];
+  try{ tombs = await all('tombstones'); }catch(e){}
+  for(const t of tombs){
+    if(t.businessId !== businessId) continue;
+    if((Number(t.deletedAt)||0) > sinceMs) out.push({ store:t.store, id:t.recordId, payload:null, updatedAt:Number(t.deletedAt)||Date.now(), deleted:true });
+  }
+  return out;
+}
+
+async function pushRecords(businessId){
+  if(!ServerAccount.token) return { skipped:true };
+  const since = Number(localStorage.getItem(pushCursorKey(businessId))) || 0;
+  const changed = await collectChangedRecords(businessId, since);
+  if(!changed.length) return { written:0, batches:0 };
+  // Batched because the endpoint caps a single push, and because a device offline for
+  // weeks could otherwise try to send everything at once and fail on all of it.
+  let written = 0, batches = 0;
+  const BATCH = 400;
+  for(let i=0;i<changed.length;i+=BATCH){
+    const slice = changed.slice(i, i+BATCH);
+    const res = await ServerAccount.api('/api/sync/records/push', {method:'POST', body: JSON.stringify({businessId, records: slice})});
+    written += (res && res.written) || 0; batches++;
+  }
+  // Advanced only after every batch succeeded. If one throws, the cursor stays where it was
+  // and the whole set is retried next time — re-sending a record is harmless, losing one is not.
+  localStorage.setItem(pushCursorKey(businessId), String(Date.now()));
+  return { written, batches };
+}
+
+async function pullRecords(businessId){
+  if(!ServerAccount.token) return { applied:0 };
+  let cursor = localStorage.getItem(pullCursorKey(businessId)) || '';
+  let applied = 0, guard = 0;
+  for(;;){
+    if(++guard > 50) break; // a runaway cursor must not loop forever
+    const res = await ServerAccount.api('/api/sync/records/pull?businessId='+encodeURIComponent(businessId)+'&since='+encodeURIComponent(cursor));
+    const recs = (res && res.records) || [];
+    for(const r of recs){
+      if(!SYNCED_STORES.includes(r.store)) continue; // ignore a store this app version doesn't know
+      try{
+        if(r.deleted){
+          await req(r.store,'readwrite',s=>s.delete(r.id));
+          await req('tombstones','readwrite',s=>s.put({key:r.store+':'+r.id, store:r.store, recordId:r.id, businessId, deletedAt:r.updatedAt||Date.now()}));
+        } else if(r.payload){
+          // Local wins only if it is genuinely newer — otherwise an edit made on this device
+          // while offline would be silently overwritten by an older server copy.
+          const local = await req(r.store,'readonly',s=>s.get(r.id)).catch(()=>null);
+          if(local && (Number(local.updatedAt)||0) > (Number(r.updatedAt)||0)) continue;
+          await req(r.store,'readwrite',s=>s.put(r.payload));
+        }
+        applied++;
+      }catch(e){ console.error('Could not apply a synced record', r.store, r.id, e); }
+    }
+    if(res && res.cursor) cursor = res.cursor;
+    if(!res || !res.hasMore) break;
+  }
+  localStorage.setItem(pullCursorKey(businessId), cursor);
+  return { applied };
+}
+/* Which sync path a business uses. Resolved from the server, cached per business for the
+   session so every push does not cost an extra request. A business still on the old blob
+   model is migrated automatically the first time it is touched — migration runs entirely
+   server-side from the snapshot already stored, so there is nothing for the device to
+   upload and no half-finished state if the connection drops. */
+const syncModeCache = {};
+async function resolveSyncMode(businessId){
+  if(syncModeCache[businessId]) return syncModeCache[businessId];
+  try{
+    const st = await ServerAccount.api('/api/sync/records/state?businessId='+encodeURIComponent(businessId));
+    let mode = (st && st.mode) || 'blob';
+    if(mode === 'blob'){
+      // Attempt the switch once. If it fails for any reason the business simply stays on
+      // the old path and keeps working — migration refuses rather than half-converting.
+      try{
+        // Migration is batched server-side so no single request can hit the execution
+        // limit, so this drives it to completion. Until it reports done the business stays
+        // on the OLD path, so an interrupted migration leaves a working account rather
+        // than a half-converted one — and resuming just continues from its offset.
+        let offset = 0, guard = 0, finished = false;
+        for(;;){
+          if(++guard > 200) break; // a business large enough to need 200 batches needs looking at, not looping
+          const m = await ServerAccount.api('/api/sync/records/migrate', {method:'POST', body: JSON.stringify({businessId, offset})});
+          if(!m){ break; }
+          if(m.alreadyMigrated || m.done || m.migrated){ finished = true; break; }
+          if(typeof m.offset !== 'number' || m.offset <= offset){ break; } // no forward progress — stop rather than spin
+          offset = m.offset;
+          if(m.percent != null) console.log('Migrating this business to record-level sync: '+m.percent+'%');
+        }
+        if(finished) mode = 'records';
+      }catch(e){ console.warn('Could not migrate this business to record-level sync yet — continuing on the existing method.', e); }
+    }
+    syncModeCache[businessId] = mode;
+    return mode;
+  }catch(e){ return 'blob'; } // offline or unreachable: the old path is the safe default
+}
 const ServerAccount = {
   configured:false, token:null, tenant:null,
   dirtyBusinesses:new Set(), readyBusinesses:new Set(), pushTimers:{}, pullTimer:null, busy:false,
@@ -967,6 +1141,9 @@ const ServerAccount = {
   },
   async login(email, password){
     const data = await this.api('/api/login', { method:'POST', body: JSON.stringify({email,password}) });
+    // 2FA is on: the password alone produced no session. Hand the challenge back to the
+    // caller so it can collect the code — nothing is stored and nothing is accessible yet.
+    if (data && data.requires2FA) return { requires2FA: true, challengeId: data.challengeId, hint: data.hint, emailSent: data.emailSent };
     this.token = data.token; this.tenant = data.tenant;
     localStorage.setItem('moborex_server_token', this.token);
     localStorage.setItem('moborex_server_tenant', JSON.stringify(this.tenant));
@@ -980,6 +1157,22 @@ const ServerAccount = {
     // businesses yet) pulls that business's own data separately, see switchBusiness().
     const bizId = await getActiveBusinessId();
     await this.pull(bizId, true);
+    await this.discoverAndPullAllBusinesses();
+    this.startAutoPull();
+    return data;
+  },
+  // Second half of a 2FA login. Deliberately mirrors login()'s post-token work exactly —
+  // same storage, same first-pull ordering — so a 2FA account ends up in an identical
+  // state to a normal one rather than a subtly different code path.
+  async verify2FA(challengeId, code, email){
+    const data = await this.api('/api/login/verify-2fa', { method:'POST', body: JSON.stringify({challengeId, code}) });
+    this.token = data.token; this.tenant = data.tenant;
+    localStorage.setItem('moborex_server_token', this.token);
+    localStorage.setItem('moborex_server_tenant', JSON.stringify(this.tenant));
+    if(email) localStorage.setItem('moborex_server_email', email);
+    const bizId = await getActiveBusinessId();
+    await this.pull(bizId, true);
+    this.readyBusinesses.add(bizId);
     await this.discoverAndPullAllBusinesses();
     this.startAutoPull();
     return data;
@@ -1004,10 +1197,34 @@ const ServerAccount = {
   async push(businessId, force){
     if(!this.token || !businessId) return;
     if(!this.dirtyBusinesses.has(businessId) && !force) return;
+    const mode = await resolveSyncMode(businessId);
+    if(mode === 'records'){
+      this.busy=true;
+      try{
+        await pushRecords(businessId);
+        this.dirtyBusinesses.delete(businessId);
+        localStorage.setItem('moborex_server_last_push', new Date().toISOString());
+      }catch(e){
+        // Left dirty on purpose so the next cycle retries. Re-sending a record is harmless;
+        // dropping one is not.
+        console.error('Record sync push failed — will retry', e);
+      }
+      this.busy=false;
+      return;
+    }
     this.busy=true;
     try{
       const data = await Sync.exportBusiness(businessId);
-      await this.api('/api/sync/push', { method:'POST', body: JSON.stringify({businessId, businessName:data.businessName, payload: JSON.stringify(data)}) });
+      const payload = await compressPayload(JSON.stringify(data));
+      const res = await this.api('/api/sync/push', { method:'POST', body: JSON.stringify({businessId, businessName:data.businessName, payload}) });
+      // Surfaced once per session, not on every sync — a warning that appears every few
+      // seconds gets dismissed reflexively and stops being a warning at all.
+      if(res && res.warning && !window.__syncWarningShown){
+        window.__syncWarningShown = true;
+        console.warn('Sync capacity warning:', res.usagePercent + '% of limit');
+        setTimeout(()=>alert('Heads up: this business\'s data is at '+res.usagePercent+'% of the size limit for syncing. It still works, but please contact support so this is sorted before backups stop.'), 1200);
+      }
+      if(res && typeof res.usagePercent === 'number') window.__syncUsagePercent = res.usagePercent;
       this.dirtyBusinesses.delete(businessId);
       localStorage.setItem('moborex_server_last_push', new Date().toISOString());
     }catch(e){ console.error('Server push failed', e); }
@@ -1016,11 +1233,23 @@ const ServerAccount = {
   async pull(businessId, force){
     if(!this.token || !businessId) return;
     if(this.dirtyBusinesses.has(businessId) && !force) return;
+    const mode = await resolveSyncMode(businessId);
+    if(mode === 'records'){
+      this.busy=true;
+      try{
+        const r = await pullRecords(businessId);
+        this.readyBusinesses.add(businessId); // this device has now seen the server's state for this business
+        localStorage.setItem('moborex_server_last_pull', new Date().toISOString());
+        if(r && r.applied) await refresh();
+      }catch(e){ console.error('Record sync pull failed — will retry', e); }
+      this.busy=false;
+      return;
+    }
     this.busy=true;
     try{
       const data = await this.api('/api/sync/pull?businessId='+encodeURIComponent(businessId), { method:'GET' });
       if(data && data.payload){
-        const parsed = JSON.parse(data.payload);
+        const parsed = JSON.parse(await decompressPayload(data.payload));
         try{
           await Sync.importBusiness(businessId, parsed); // throws on a businessId mismatch — the integrity check
         }catch(mismatchErr){
@@ -1163,6 +1392,91 @@ async function syncNow(){
  await ServerAccount.push(bizId, true);
  await showCloudSync();
 }
+/* Permanent account deletion. Deliberately harder to reach and harder to confirm than
+   anything else in the app: it needs the account password AND an exact typed phrase,
+   because there is no undo and no backup on our side afterwards. Owner-only — a staff PIN
+   can never reach this, since staff mode hides it and the server checks the account
+   password regardless of what the client claims. */
+/* Owner-activated 2FA. Deliberately optional: these accounts are opened at a till by shop
+   staff on patchy connections, and forcing an email round-trip on every login would lock a
+   trader out mid-trade over a delivery failure. Backup codes exist for exactly that risk. */
+async function showTwoFactorSettings(){
+ if(!requireOwnerMode('Two-factor authentication'))return;
+ if(!ServerAccount.token){ alert('Log in to your account first.'); return; }
+ let st;
+ try{ st = await ServerAccount.api('/api/account/2fa/status'); }
+ catch(e){ alert('Could not check status: '+e.message); return; }
+ openModal(`<h2>Two-Factor Authentication ${hb("An extra code at sign-in, on top of your password. It protects the ACCOUNT login only — staff PIN entry at the till is unaffected, so your counter keeps working normally.")}</h2>
+ <div class="notice">Currently <b>${st.enabled?'ON':'OFF'}</b>.${st.enabled?` You have <b>${st.backupCodesRemaining}</b> unused backup code(s).`:''}</div>
+ ${st.enabled?`
+  <div class="notice">Backup codes are your way in if an email is delayed or does not arrive. If you are running low, turn this off and on again to issue a fresh set.</div>
+  <div class="field"><label>Your account password</label><input id="tfaPassword" type="password" autocomplete="off"></div>
+  <button class="btn danger full" onclick="submitToggle2FA(false)">Turn Off</button>
+ `:`
+  <div class="notice">When on, signing in asks for a 6-digit code sent to your email. You will be given 8 single-use backup codes — save them somewhere safe, because they are shown once and cannot be retrieved again.</div>
+  <div class="field"><label>Your account password</label><input id="tfaPassword" type="password" autocomplete="off"></div>
+  <button class="btn accent full" onclick="submitToggle2FA(true)">Turn On</button>
+ `}
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function submitToggle2FA(enable){
+ const password=document.getElementById('tfaPassword').value||'';
+ if(!password){ alert('Enter your account password.'); return; }
+ try{
+  const res = await ServerAccount.api('/api/account/2fa/'+(enable?'enable':'disable'), {method:'POST', body: JSON.stringify({password})});
+  if(enable && res.backupCodes){
+   // Shown once. The server stores only hashes, so there is genuinely no way to show
+   // these again later — the owner has to save them now.
+   openModal(`<h2>Save Your Backup Codes</h2>
+    <div class="notice" style="border-color:var(--danger);background:var(--dangerSoft)"><b>Write these down now.</b> Each works once, and they cannot be shown again. They are how you get in if an email code does not arrive.</div>
+    <div style="font-family:var(--font-mono),monospace;font-size:15px;line-height:2;letter-spacing:.08em;text-align:center;background:#fff;border:1.4px solid var(--line);border-radius:10px;padding:12px">
+     ${res.backupCodes.map(c=>esc(c)).join('<br>')}
+    </div>
+    <button class="btn accent full" style="margin-top:12px" onclick="closeModal()">I have saved them</button>`);
+   return;
+  }
+  alert('Two-factor authentication is now '+(enable?'ON':'OFF')+'.');
+  closeModal();
+ }catch(e){ alert('Could not update: '+e.message); }
+}
+async function showDeleteAccountForever(){
+ if(!requireOwnerMode('Deleting the account'))return;
+ if(!ServerAccount.token){ alert('Log in to your account first.'); return; }
+ openModal(`<h2 style="color:var(--danger)">Delete Account Forever</h2>
+ <div class="notice" style="border-color:var(--danger);background:var(--dangerSoft)">
+  <b>This cannot be undone.</b><br><br>
+  Everything belonging to this account will be permanently removed from our servers and from
+  this device: every business, invoice, customer, product, expense, staff PIN, delivery
+  record and menu. We keep no copy and cannot restore it for you afterwards.
+  <br><br>If you only want to stop using it for now, close this and deactivate the business
+  instead — that keeps your data and can be undone.
+ </div>
+ <div class="field"><label>Type this exactly to confirm: <b>DELETE MY ACCOUNT</b></label><input id="delPhrase" autocomplete="off" placeholder="DELETE MY ACCOUNT"></div>
+ <div class="field"><label>Your account password</label><input id="delPassword" type="password" autocomplete="off"></div>
+ <div id="delError" style="display:none;color:var(--danger);font-size:12px;margin-bottom:8px">—</div>
+ <button class="btn danger full" onclick="submitDeleteAccountForever()">Permanently Delete Everything</button>
+ <button class="btn secondary full" onclick="closeModal()">Cancel — keep my account</button>`);
+}
+async function submitDeleteAccountForever(){
+ const phrase=(delPhrase.value||'').trim();
+ const password=delPassword.value||'';
+ if(phrase!=='DELETE MY ACCOUNT'){ delError.textContent='Type the phrase exactly: DELETE MY ACCOUNT'; delError.style.display='block'; return; }
+ if(!password){ delError.textContent='Enter your account password.'; delError.style.display='block'; return; }
+ if(!confirm('Last check: this permanently deletes everything and cannot be undone. Continue?')) return;
+ try{
+  await ServerAccount.api('/api/account/delete-forever', {method:'POST', body: JSON.stringify({password, confirmPhrase:phrase})});
+ }catch(e){ delError.textContent=e.message; delError.style.display='block'; return; }
+ // Server side is gone; now clear this device completely. Deliberately wipes ALL local
+ // data rather than one account's, because the account it belonged to no longer exists.
+ try{
+  const stores=['business','invoices','expenses','products','customers','expenseTypes','taxSubmissions','auditRecords','taxProfile','quotations','commissions','investments','otherIncome','loans','reconciliations','stockPurchases','returns','rooms','bookings','branches','conversions','onlineOrders','bankAccounts','receivers','stockMovements'];
+  for(const s of stores){ try{ await req(s,'readwrite',st=>st.clear()); }catch(e){} }
+ }catch(e){ console.error('Local wipe after account deletion failed', e); }
+ try{ ServerAccount.logout(); }catch(e){}
+ localStorage.clear(); // includes the account-scoped App Lock key, which has nothing left to protect
+ alert('Your account and all its data have been permanently deleted.');
+ location.reload();
+}
 async function logoutServerAccount(){
  if(!ServerAccount.token){ alert('Not logged in.'); return; }
  // Forced sync before logout — this device might genuinely never be used again by this
@@ -1193,7 +1507,12 @@ async function logoutServerAccount(){
  window.staffModeActive=false; window.currentStaffName=null; window.currentRole=null;
  blankDashboardUI();
  closeModal();
- showAuthGate();
+ // Hard reload rather than just showing the auth gate over a still-live app. Showing the
+ // gate alone left every screen, cache and in-memory global intact underneath it — the
+ // dashboard sat there with a blank business name and products could still be created
+ // against nothing. A logout must genuinely end the session, so the app is torn down and
+ // restarted from scratch, coming back up at the login page with no state carried over.
+ location.reload();
 }
 // Wipes only the data belonging to the account being logged out of — not every business on
 // the device. If two different accounts have each set up a business here, logging out of one
@@ -1234,7 +1553,16 @@ function blankDashboardUI(){
 </script>
 </head>
 <body>
-<script>if(localStorage.getItem('moborex_applock_hash'))document.body.classList.add('locked')</script>
+<script>
+/* Inlined deliberately: this runs in its own script block before the main app script has
+   parsed, so getAppLockHash() does not exist yet — calling it here would throw and the
+   lock would silently never apply. Reads the tenant straight from storage for the same
+   reason. Kept in step with appLockKey() below. */
+(function(){try{
+  var t=JSON.parse(localStorage.getItem('moborex_server_tenant')||'null');
+  if(t&&t.id&&localStorage.getItem('moborex_applock_hash_'+t.id))document.body.classList.add('locked');
+}catch(e){}})();
+</script>
 <div class="lockScreen" id="lockScreen">
   <div style="max-width:320px;width:100%;text-align:center;color:#fff">
     <div style="font-family:var(--font-display);font-size:22px;margin-bottom:6px">🔒 Locked</div>
@@ -1268,6 +1596,12 @@ function blankDashboardUI(){
       <input id="agLoginPassword" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Password" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
       <button class="btn accent full" onclick="submitAuthGateLogin()">Log In</button>
       <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showAuthGateLanding()">← Back</button>
+    </div>
+    <div id="ag2faPane" style="display:none">
+      <div id="ag2faHint" style="font-size:12px;opacity:.8;margin-bottom:10px;text-align:center">—</div>
+      <input id="ag2faCode" inputmode="text" autocomplete="one-time-code" placeholder="6-digit code, or a backup code" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:16px;letter-spacing:.12em;text-align:center;margin-bottom:8px">
+      <button class="btn accent full" onclick="submitAuthGate2FA()">Verify &amp; Sign In</button>
+      <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showAuthGateLanding()">← Cancel</button>
     </div>
     <div id="agError" style="display:none;color:#f2a5a5;font-size:12px;margin-top:10px;text-align:center">—</div>
     <div id="agBusy" style="display:none;color:#fff;font-size:12px;margin-top:10px;text-align:center;opacity:.7">Working…</div>
@@ -1849,9 +2183,19 @@ async function deactivateBusiness(id){
 /* ---------------- App Lock ---------------- */
 async function sha256Hex(str){const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('')}
 function pinInputHtml(id,placeholder){return `<input id="${id}" type="password" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;padding:14px;border-radius:12px;border:1.4px solid var(--line);text-align:center;font-size:18px;letter-spacing:.2em;margin-top:6px" placeholder="${placeholder||'••••'}">`}
+/* The App Lock PIN is scoped to the signed-in ACCOUNT, not the device. It was previously a
+   single device-wide key, so a PIN set by one company unlocked a completely different
+   company's data on the same device — and it kept working after logout, when there was no
+   session at all. Keyed by tenant so each account's lock is genuinely its own. */
+function appLockKey(){
+ const t = (typeof ServerAccount!=='undefined' && ServerAccount.tenant && ServerAccount.tenant.id) || null;
+ return t ? ('moborex_applock_hash_' + t) : null; // no account signed in: there is no lock to check
+}
+function getAppLockHash(){ const k=appLockKey(); return k ? localStorage.getItem(k) : null; }
 function showAppLockSettings(){
  if(!requireOwnerMode('App Lock settings'))return;
- const enabled=!!localStorage.getItem('moborex_applock_hash');
+ if(!appLockKey()){ alert('Log in to your account first — the App Lock belongs to your account, not to this device.'); return; }
+ const enabled=!!getAppLockHash();
  openModal(`<h2>App Lock ${hb("A PIN that locks the whole app on this device. Separate from the Sync PIN — this one just keeps someone else from opening the app if they pick up your phone.")}</h2>
  <div class="notice">${enabled?'A PIN is required to open this app on this device.':'Add a PIN so this app can\'t be opened without it — useful if this device is shared with others.'}</div>
  ${enabled?`<button class="btn danger full" onclick="turnOffAppLock()">Turn Off App Lock</button><button class="btn secondary full" onclick="promptSetAppLockPin()">Change PIN</button>`:`<button class="btn accent full" onclick="promptSetAppLockPin()">Set a PIN</button>`}
@@ -1863,11 +2207,13 @@ async function promptSetAppLockPin(){
  const p2=prompt('Confirm PIN:');
  if(p1!==p2){alert('PINs did not match.');return;}
  if(p1.length<4){alert('Use at least 4 characters.');return;}
- localStorage.setItem('moborex_applock_hash',await sha256Hex(p1));
+ const k=appLockKey();
+ if(!k){ alert('Log in to your account first.'); return; }
+ localStorage.setItem(k, await sha256Hex(p1));
  alert('App Lock PIN set.');
  closeModal();showAppLockSettings();
 }
-function turnOffAppLock(){if(!confirm('Turn off App Lock?'))return;localStorage.removeItem('moborex_applock_hash');closeModal();}
+function turnOffAppLock(){if(!confirm('Turn off App Lock?'))return;const k=appLockKey();if(k)localStorage.removeItem(k);closeModal();}
 
 /* ---------------- Staff Mode ----------------
    A restricted mode for staff who need to capture sales without seeing
@@ -1970,6 +2316,11 @@ function applyRolePermissionsUI(){
  document.querySelectorAll('[data-perm-key]').forEach(el=>{
   const key=el.dataset.permKey;
   const minLevel=Number(el.dataset.minLevel||0);
+  // Module exclusivity is decided by applyModuleGatingUI() and must survive this pass.
+  // Without this guard the owner branch below reset display to '' on every element with a
+  // permission key — and since almost every nav item has both attributes, that silently
+  // undid all module hiding and showed the owner hotel screens on a non-hotel business.
+  if(el.classList.contains('moduleHidden')){ el.style.display='none'; return; }
   if(level<minLevel){ el.style.display='none'; el.classList.remove('permGranted'); el.classList.remove('permDenied'); return; }
   if(role==='owner'){ el.style.display=''; el.classList.remove('permGranted'); el.classList.remove('permDenied'); return; }
   const granted=(window.rolePermissions[key]||[]).includes(role);
@@ -2104,6 +2455,7 @@ async function submitChangeStaffRole(id){
   s.branchId=branchId||null; s.branchName=branch?branch.name:null;
  }
  await put('business',b);
+ await syncStaffPinsToServer(b);
  closeModal();showStaffAccessSettings();
 }
 async function submitAddStaffMember(){
@@ -2125,6 +2477,7 @@ async function submitAddStaffMember(){
  const branch=branches.find(x=>x.id===branchId);
  b.staffMembers.push({id:crypto.randomUUID(), name, role:newStaffRole.value, pinHash:newHash, branchId:branchId||null, branchName:branch?branch.name:null});
  await put('business',b);
+ await syncStaffPinsToServer(b);
  closeModal();showStaffAccessSettings();
 }
 async function promptChangeStaffPin(id){
@@ -2147,6 +2500,7 @@ async function submitChangeStaffPin(id){
  if((b.staffMembers||[]).some(x=>x.id!==id && x.pinHash===newHash)){ chgStaffError.textContent='This PIN is already in use by another staff member — choose a different one.'; chgStaffError.style.display='block'; chgStaffPin1.value=''; chgStaffPin2.value=''; chgStaffPin1.focus(); return; }
  s.pinHash=newHash;
  await put('business',b);
+ await syncStaffPinsToServer(b);
  closeModal();showStaffAccessSettings();
 }
 async function removeStaffMember(id){
@@ -2154,6 +2508,7 @@ async function removeStaffMember(id){
  const b=await getBusiness();
  b.staffMembers=(b.staffMembers||[]).filter(x=>x.id!==id);
  await put('business',b);
+ await syncStaffPinsToServer(b);
  closeModal();showStaffAccessSettings();
 }
 async function promptEnterStaffMode(){
@@ -2169,11 +2524,107 @@ async function promptEnterStaffMode(){
  sePin.addEventListener('keydown', e=>{ if(e.key==='Enter') submitEnterStaffMode(); });
  sePin.focus();
 }
+/* Verifies a staff PIN against the SERVER, which is the authority. The local staff list is
+   only consulted when the device is genuinely offline — that is what local data is for here:
+   surviving a dropped connection, not deciding who may log in. Two things this fixes: a PIN
+   could previously be accepted purely on local data (so a modified client, or data cached
+   from another company, could satisfy it), and a staff member removed on one device kept
+   working on another until that device happened to sync. */
+// Pushes the staff list to the server so PINs can be verified there. Called after any
+// change to staff — add, PIN change, role/branch change, or removal — because a removed
+// staff member's PIN has to stop working on every device, not just this one.
+async function syncStaffPinsToServer(b){
+ try{
+  if(!ServerAccount.token) return;
+  const staff=(b.staffMembers||[]).map(s=>({id:s.id, name:s.name, role:s.role||'staff', branchId:s.branchId||null, branchName:s.branchName||null, pinHash:s.pinHash}));
+  await ServerAccount.api('/api/staff-pins/sync', {method:'POST', body: JSON.stringify({businessId:b.id, staff})});
+ }catch(e){ console.error('Could not sync staff PINs to the server', e); }
+}
+async function verifyStaffPin(b, pinHash){
+ if(ServerAccount.token && navigator.onLine){
+  try{
+   const res = await ServerAccount.api('/api/staff-pins/verify', {method:'POST', body: JSON.stringify({businessId:b.id, pinHash})});
+   if(res && res.ok && res.staff){
+    rememberStaffCredential(b.id, pinHash, false); // server-confirmed
+    return res.staff;
+   }
+   return null; // server said no — that is final, never fall through to the local list
+  }catch(e){
+   // Only a transport failure reaches here (a wrong PIN returns a clean 401 above and is
+   // already handled). Fall back so a shop with no internet isn't locked out of its own till.
+   console.warn('Could not reach the server to verify this PIN — falling back to the local list', e);
+  }
+ }
+ const staff=b.staffMembers||[];
+ const local = staff.find(s=>s.pinHash===pinHash) || null;
+ // Admitted on local data only. Flagged as unverified so the moment this device gets a
+ // connection back, the session is re-checked against the server and ended if the PIN has
+ // since been changed, the staff member removed, or the business deactivated.
+ if(local) rememberStaffCredential(b.id, pinHash, true);
+ return local;
+}
+/* ---------------- Staff session revocation ----------------
+   A staff session was previously a one-time check followed by an in-memory flag that was
+   never looked at again — so revoking a PIN had no effect on anyone already signed in, and
+   a session admitted offline stayed valid forever. The credential used to enter is kept in
+   memory and re-checked against the server: as soon as connectivity returns, on a timer
+   while online, and whenever the app is brought back to the foreground. If the server no
+   longer accepts it, the session is ended immediately. Kept in memory only — never
+   persisted — so it cannot outlive the page. */
+function rememberStaffCredential(businessId, pinHash, unverified){
+ window.__staffCred = { businessId, pinHash, unverified: !!unverified };
+}
+function clearStaffCredential(){ window.__staffCred = null; }
+async function revalidateStaffSession(reason){
+ if(!isStaffMode() || !window.__staffCred) return;
+ if(!ServerAccount.token || !navigator.onLine) return; // nothing to check against yet
+ const cred = window.__staffCred;
+ try{
+  const res = await ServerAccount.api('/api/staff-pins/verify', {method:'POST', body: JSON.stringify({businessId:cred.businessId, pinHash:cred.pinHash})});
+  if(res && res.ok && res.staff){
+   cred.unverified = false;
+   // Role or branch may have been changed by the owner while this session was open — take
+   // the server's version rather than keeping whatever was true at sign-in.
+   window.currentRole = res.staff.role || 'staff';
+   window.currentStaffName = res.staff.name || window.currentStaffName;
+   if(res.staff.branchId){ window.currentBranchId=res.staff.branchId; window.currentBranchName=res.staff.branchName||''; }
+   applyStaffModeUI();
+   return;
+  }
+  endStaffSession('Your access has been changed or withdrawn. Please sign in again.');
+ }catch(e){
+  // A 401/403 from the server is a real revocation and is thrown by api(); a genuine
+  // network failure is not. Only treat an explicit rejection as revocation, so a flaky
+  // connection never locks out a legitimate person mid-shift.
+  const msg = (e && e.message || '').toLowerCase();
+  if(msg.includes('incorrect pin') || msg.includes('not authorized') || msg.includes('not signed in')){
+   endStaffSession('Your access has been changed or withdrawn. Please sign in again.');
+  } else {
+   console.warn('Could not revalidate the staff session (connection) — will retry', e);
+  }
+ }
+}
+function endStaffSession(message){
+ clearStaffCredential();
+ window.staffModeActive=false; window.currentStaffName=null; window.currentRole=null;
+ window.currentBranchId=null; window.currentBranchName=null;
+ applyStaffModeUI();
+ try{ closeModal(); }catch(e){}
+ alert(message);
+ location.reload(); // full teardown, same reasoning as logout — no stale screen left usable
+}
+// Re-check the moment connectivity returns: this is the case that matters most, because an
+// offline-admitted session has never been checked by the server at all.
+window.addEventListener('online', ()=>revalidateStaffSession('reconnected'));
+// And periodically while online, so a revocation reaches an already-connected device too.
+setInterval(()=>revalidateStaffSession('interval'), 60000);
+// Coming back to the app after it was backgrounded — common on a phone, and a natural
+// moment to confirm the session is still good before the person carries on.
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) revalidateStaffSession('foreground'); });
 async function submitEnterStaffMode(){
  const b=await getBusiness();
- const staff=b.staffMembers||[];
  const hash=await sha256Hex(sePin.value||'');
- const match=staff.find(s=>s.pinHash===hash);
+ const match=await verifyStaffPin(b, hash);
  if(!match){ sePinError.style.display='block'; sePin.value=''; sePin.focus(); return; }
  window.staffModeActive=true;
  window.currentStaffName=match.name;
@@ -2186,7 +2637,7 @@ async function submitEnterStaffMode(){
  await refresh();
 }
 function exitStaffMode(){
- const appLockHash=localStorage.getItem('moborex_applock_hash');
+ const appLockHash=getAppLockHash();
  if(!appLockHash){ alert('No App Lock PIN is set on this device, so there\'s no owner PIN to verify against. Set one under App Lock first, or ask whoever set up Staff Mode to add one.'); return; }
  openModal(`<h2>Exit Staff Mode</h2>
  <div class="notice">Enter the App Lock PIN to return to full access.</div>
@@ -2199,11 +2650,12 @@ function exitStaffMode(){
 }
 async function submitExitStaffMode(){
  const hash=await sha256Hex(exPin.value||'');
- const appLockHash=localStorage.getItem('moborex_applock_hash');
+ const appLockHash=getAppLockHash();
  if(hash!==appLockHash){ exPinError.style.display='block'; exPin.value=''; exPin.focus(); return; }
  window.staffModeActive=false;
  window.currentStaffName='';
  window.currentRole='';
+ clearStaffCredential(); // so the revalidation timer stops checking a session that has ended
  applyStaffModeUI();
  closeModal();
  await refresh();
@@ -2239,6 +2691,43 @@ function applyStaffModeUI(){
 
 /* ---------------- Business Settings ---------------- */
 
+/* Logos are stored inline in the business record as a base64 data URL. Uploaded straight
+   from a phone camera that record becomes 3-11MB — far past D1's ~2MB per-value ceiling —
+   so the business record would fail to sync permanently, taking staff PINs and settings
+   with it. Resized and re-encoded as JPEG before storage: a logo never needs to be larger
+   than this, and the result is a few tens of KB rather than megabytes. */
+const LOGO_MAX_PX = 512;
+function resizeLogoToDataUrl(file){
+ return new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error('Could not read that image.'));
+  reader.onload = () => {
+   const img = new Image();
+   img.onerror = () => reject(new Error('That file does not look like an image.'));
+   img.onload = () => {
+    try{
+     let { width, height } = img;
+     const scale = Math.min(1, LOGO_MAX_PX / Math.max(width, height));
+     width = Math.round(width * scale); height = Math.round(height * scale);
+     const canvas = document.createElement('canvas');
+     canvas.width = width; canvas.height = height;
+     const ctx = canvas.getContext('2d');
+     // White backdrop: a transparent PNG turned into JPEG would otherwise render black.
+     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, width, height);
+     ctx.drawImage(img, 0, 0, width, height);
+     let out = canvas.toDataURL('image/jpeg', 0.82);
+     // Belt and braces — if an unusual image still comes out large, step the quality down
+     // rather than storing something that will silently break syncing later.
+     let q = 0.82;
+     while(out.length > 300000 && q > 0.4){ q -= 0.15; out = canvas.toDataURL('image/jpeg', q); }
+     resolve(out);
+    }catch(e){ reject(e); }
+   };
+   img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+ });
+}
 async function showSettings(){ if(!requireOwnerMode('Business settings'))return;
  let b=await getBusiness();
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
@@ -2288,7 +2777,11 @@ function toggleFixedAssets(){fixedAssetsField.style.display = blegal.value==='li
 async function saveSettings(){
  let b=await getBusiness();
  let done=async logo=>{b.name=bn.value;b.type=btype.value;b.module=bmodule.value;b.retailKind=(bmodule.value==='full_retail'?(document.getElementById('bretailKind')?.value||'restaurant'):null);b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;b.numberPrefix=bprefix.value.trim();b.posAllowTabs=bposTabs.value==='1';if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}else{b.legalForm=blegal.value;if(blegal.value==='limited')b.fixedAssets=Number(bassets.value)||0;}if(logo!==undefined)b.logo=logo;await put('business',b);window.CURRENT_BUSINESS_MODULE=b.module;applyModuleGatingUI();closeModal();refresh()};
- if(bl.files[0]){let r=new FileReader();r.onload=()=>done(r.result);r.readAsDataURL(bl.files[0])}else done();
+ if(bl.files[0]){
+  resizeLogoToDataUrl(bl.files[0])
+   .then(dataUrl=>done(dataUrl))
+   .catch(err=>{ alert('Could not use that image: '+err.message+'\n\nYour other changes were not saved — try again with a different image.'); });
+ } else done();
 }
 
 /* ---------------- Products / Services (or Salary Setup, for salary-type businesses) ---------------- */
@@ -3154,6 +3647,15 @@ async function loadTaxReport(){
  const taxProfile=await getTaxProfile();
 
  let bizRows='', totalRevenue=0, totalExpenses=0, totalProfit=0, totalCommission=0, totalStockPurchases=0, totalLoanInterest=0, totalReturns=0;
+ // Summed across THIS ACCOUNT's businesses only. The old code referenced a `globalBalance`
+ // variable that was removed when balances became per-business — the display line survived
+ // the removal, so opening the Tax Report threw a ReferenceError and the screen never
+ // rendered at all. Personal income tax spans everything the person owns, so a combined
+ // figure is right here; it is just no longer a cross-account one.
+ let combinedBalance=0;
+ for(const b of businesses){
+  try{ const f=await businessFinancials(b.id); if(f) combinedBalance += Number(f.bankBalance)||0; }catch(e){}
+ }
  let personalIncomeBase=0; // salary + business-name profit + taxable other income, feeds PIT
  let bizTaxSections='', broughtForwardRows='', broughtForwardUntaxedTotal=0;
  for(const b of businesses){
@@ -3273,8 +3775,8 @@ async function loadTaxReport(){
  </div>
  <div class="notice">Based on the Nigeria Tax Act 2025 (effective 1 January 2026): 0% up to ₦800,000, then 15/18/21/23/25% progressive bands. Limited company profit is <b>not</b> included here — it's taxed separately via Company Income Tax above.</div>
 
- <h3 style="font-size:14px;margin-top:16px">Current Bank Balance (all businesses)</h3>
- <div class="totalBox"><div class="totalRow grand"><span>As of today</span><b>${money(globalBalance)}</b></div></div>
+ <h3 style="font-size:14px;margin-top:16px">Current Cash &amp; Bank Balance (your businesses)</h3>
+ <div class="totalBox"><div class="totalRow grand"><span>As of today</span><b>${money(combinedBalance)}</b></div></div>
 
  <h3 style="font-size:14px;margin-top:16px">Government Submission — ${year}</h3>
  ${submission ? `<div class="notice" style="${submission.status==='closed'?'background:var(--goodSoft);border-color:#bfe0d1;color:var(--good)':'background:var(--brassSoft);border-color:#e6cf9f;color:#7a5a1f'}"><b>${submission.status==='closed'?'Closed — fully paid.':'Balance still owed.'}</b> ${money(submission.amountPaid)} paid in total for ${year}${submission.dateSubmitted?' (last payment '+esc(submission.dateSubmitted)+')':''}.${submission.payments&&submission.payments.length>1?' ('+submission.payments.length+' payments recorded.)':''}${submission.note?' Note: '+esc(submission.note):''}</div>
@@ -3463,6 +3965,10 @@ async function generateAuditReport(){
 }
 async function showAuditReportPreview(id){
  const rec=(await all('auditRecords')).find(x=>x.id===id);
+ // A stale link or a deleted record would otherwise throw on rec.findings with an error
+ // that tells the person nothing about what went wrong.
+ if(!rec){ alert('That audit record could not be found — it may have been deleted.'); return; }
+ if(!Array.isArray(rec.findings)) rec.findings=[];
  const highCount=rec.findings.filter(f=>f.severity==='high').length;
  const mediumCount=rec.findings.filter(f=>f.severity==='medium').length;
  const lowCount=rec.findings.filter(f=>f.severity==='low').length;
@@ -4453,13 +4959,159 @@ async function submitAdminLogin(){
   showAdminSearch();
  }catch(e){ adminLoginError.textContent = e.message; adminLoginError.style.display='block'; }
 }
-function showAdminSearch(){
- openModal(`<h2>Admin — Accounts</h2>
+/* Admin dashboard. Replaces a bare email-search box that showed a name and an id and
+   nothing else — no way to see who was subscribed, on what module, how many modules were
+   actually in use, or whose trial was about to lapse. */
+async function showAdminSearch(){ await showAdminDashboard(); }
+async function showAdminDashboard(){
+ openModal(`<h2>Admin Dashboard</h2><div id="admDash"><div class="empty">Loading…</div></div>`);
+ let d;
+ try{ d = await adminApi('/api/admin/overview'); }
+ catch(e){ document.getElementById('admDash').innerHTML = `<div class="notice">Could not load: ${esc(e.message)}</div><button class="btn secondary full" onclick="showAdminLogin()">Back</button>`; return; }
+ const b=d.businesses||{};
+ const stat=(label,val,accent)=>`<div class="stat${accent?' accent':''}"><div class="lbl">${esc(label)}</div><div class="val">${val}</div></div>`;
+ const modRows=(d.byModule||[]).map(m=>`<div class="row-item">
+   <div><b>${esc(PLAN_LABELS[m.module]||m.module||'(unset)')}</b><small>${m.paying||0} paying · ${m.trialing||0} on trial · ${m.explicitly_chosen||0} explicitly chosen</small></div>
+   <div class="row-right"><strong class="money">${m.total||0}</strong></div>
+  </div>`).join('') || '<div class="empty">No businesses registered yet.</div>';
+ document.getElementById('admDash').innerHTML = `
+  <div class="stats">
+   ${stat('Accounts', d.accounts||0)}
+   ${stat('Businesses', b.total||0)}
+   ${stat('Paying', b.active||0, true)}
+   ${stat('On trial', b.trialing||0)}
+   ${stat('Lifetime', b.lifetime||0)}
+   ${stat('Deactivated', b.deactivated||0)}
+  </div>
+  <div class="notice" style="${(b.trialsExpiringWithin7Days||0)>0?'border-color:var(--brass);':''}">
+   <b>${b.trialsExpiringWithin7Days||0}</b> trial(s) ending within 7 days ·
+   <b>${b.withSyncedData||0}</b> of ${b.total||0} businesses have real synced data
+  </div>
+  <div class="sectionhead" style="margin-top:14px"><h3>Module take-up</h3></div>
+  <div class="list">${modRows}</div>
+  ${(()=>{ const sc=d.syncCapacity||{}; const near=sc.nearLimit||[];
+    const pct = sc.largestPayloadBytes ? Math.round((sc.largestPayloadBytes/(sc.limitBytes||2097152))*100) : 0;
+    return `<div class="sectionhead" style="margin-top:14px"><h3>Sync capacity</h3></div>
+    <div class="notice" style="${near.length?'border-color:var(--danger);background:var(--dangerSoft)':''}">
+     Largest business payload: <b>${(sc.largestPayloadBytes/1024).toFixed(0)} KB</b> (${pct}% of the ${Math.round((sc.limitBytes||2097152)/1048576)}MB limit).
+     ${near.length?`<br><b>${near.length} business(es) past 70%</b> — contact these before syncing stops for them.`:'<br>No business is near the limit.'}
+    </div>
+    ${near.length?`<div class="list">${near.map(n=>`<div class="row-item"><div><b>${esc(n.businessName||n.businessId)}</b><small>${(n.bytes/1024).toFixed(0)} KB</small></div><div class="row-right"><span class="stamp overdue">${n.percent}%</span></div></div>`).join('')}</div>`:''}`;
+  })()}
+  <div class="sectionhead" style="margin-top:14px"><h3>Platform activity</h3></div>
+  <div class="stats">
+   ${stat('Online orders', (d.activity||{}).onlineOrders||0)}
+   ${stat('Deliveries', (d.activity||{}).deliveryJobs||0)}
+   ${stat('Payment advices', (d.activity||{}).paymentAdvices||0)}
+   ${stat('Riders', (d.riders||{}).total||0)}
+   ${stat('Flagged riders', (d.riders||{}).flagged||0)}
+   ${stat('Open issues', d.openIssues||0)}
+  </div>
+  <button class="btn accent full" style="margin-top:14px" onclick="showAdminBusinessList()">📋 All Businesses &amp; Subscribers</button>
+  <button class="btn secondary full" onclick="showAdminSearchAccounts()">🔍 Search Accounts</button>
+  <button class="btn secondary full" onclick="showAdminIssues()">Issue Reports</button>
+  <button class="btn secondary full" onclick="showAdminPlanPrices()">Plan Pricing</button>
+  <button class="btn secondary full" onclick="showAdminFlaggedRiders()">Flagged Riders</button>
+  <button class="btn danger full" onclick="localStorage.removeItem('moborex_admin_token');closeModal()">Log Out of Admin</button>`;
+}
+async function showAdminBusinessList(filterModule, filterStatus){
+ window.admFilterModule = filterModule!==undefined ? filterModule : (window.admFilterModule||'');
+ window.admFilterStatus = filterStatus!==undefined ? filterStatus : (window.admFilterStatus||'');
+ openModal(`<h2>Businesses &amp; Subscribers</h2>
+  <input id="admBizSearch" placeholder="Search email, business name, or id" style="width:100%;padding:11px;border-radius:10px;border:1.4px solid var(--line);font-size:14px;margin-bottom:8px" oninput="runAdminBizSearch()" value="${esc(window.admBizQuery||'')}">
+  <div class="row2">
+   <div class="field"><label>Module</label><select id="admModFilter" onchange="showAdminBusinessList(this.value, window.admFilterStatus)">
+    <option value="">All modules</option>
+    ${['personal','business_basic','business_stock','full_retail','hotel'].map(m=>`<option value="${m}" ${window.admFilterModule===m?'selected':''}>${esc(PLAN_LABELS[m])}</option>`).join('')}
+   </select></div>
+   <div class="field"><label>Status</label><select id="admStatFilter" onchange="showAdminBusinessList(window.admFilterModule, this.value)">
+    <option value="">All statuses</option>
+    ${['trialing','active','lifetime','grace','locked'].map(s=>`<option value="${s}" ${window.admFilterStatus===s?'selected':''}>${s}</option>`).join('')}
+   </select></div>
+  </div>
+  <div id="admBizList"><div class="empty">Loading…</div></div>
+  <button class="btn secondary full" style="margin-top:10px" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+ await runAdminBizSearch();
+}
+let admBizDebounce;
+async function runAdminBizSearch(){
+ clearTimeout(admBizDebounce);
+ admBizDebounce = setTimeout(async ()=>{
+  const q = document.getElementById('admBizSearch')?.value.trim() || '';
+  window.admBizQuery = q;
+  const el = document.getElementById('admBizList');
+  if(!el) return;
+  try{
+   const params = new URLSearchParams();
+   if(q) params.set('search', q);
+   if(window.admFilterModule) params.set('module', window.admFilterModule);
+   if(window.admFilterStatus) params.set('status', window.admFilterStatus);
+   const d = await adminApi('/api/admin/businesses?'+params.toString());
+   const list = d.businesses||[];
+   el.innerHTML = list.map(b=>{
+    const trial = b.trial_ends_at ? new Date(b.trial_ends_at) : null;
+    const daysLeft = trial ? Math.ceil((trial - new Date())/86400000) : null;
+    return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px${b.deactivated?';opacity:.55':''}">
+     <div style="display:flex;justify-content:space-between;gap:8px">
+      <b>${esc(b.business_name||'(unnamed)')}</b>
+      <span class="stamp ${b.status==='active'||b.status==='lifetime'?'paid':'overdue'}">${esc(b.status)}${b.deactivated?' · OFF':''}</span>
+     </div>
+     <small>${esc(b.owner_email||'—')}</small>
+     <small>${esc(PLAN_LABELS[b.plan]||b.plan||'(no module)')}${b.module_explicit?'':' · not explicitly chosen'}${b.has_data?' · has data':' · no data yet'}${b.transfers_enabled?' · transfers ON':''}</small>
+     ${daysLeft!==null&&b.status==='trialing'?`<small style="color:${daysLeft<=7?'var(--danger)':'var(--muted)'}">Trial ends in ${daysLeft} day(s)</small>`:''}
+     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
+      <button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="promptAdminExtendTrial('${b.id}')">Extend Trial</button>
+      <button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="promptAdminSetStatus('${b.id}','${esc(b.plan||'full_retail')}')">Set Status</button>
+     </div>
+    </div>`;
+   }).join('') || '<div class="empty">No businesses match.</div>';
+  }catch(e){ el.innerHTML = `<div class="notice">Could not load: ${esc(e.message)}</div>`; }
+ }, 250);
+}
+async function promptAdminExtendTrial(businessId){
+ const days = prompt('Extend this trial by how many days?', '14');
+ if(days===null) return;
+ const n = Number(days);
+ if(!n || n<=0){ alert('Enter a positive number of days.'); return; }
+ try{
+  await adminApi('/api/admin/businesses/'+businessId+'/extend-trial', {method:'POST', body: JSON.stringify({days:n})});
+  alert('Trial extended by '+n+' day(s).');
+  await runAdminBizSearch();
+ }catch(e){ alert('Could not extend: '+e.message); }
+}
+async function promptAdminSetStatus(businessId, currentPlan){
+ const status = prompt('Set status to: trialing, active, lifetime, grace, or locked', 'active');
+ if(status===null) return;
+ const allowed=['trialing','active','lifetime','grace','locked'];
+ if(!allowed.includes(status)){ alert('Must be one of: '+allowed.join(', ')); return; }
+ try{
+  await adminApi('/api/admin/businesses/'+businessId+'/set-status', {method:'POST', body: JSON.stringify({status, plan:currentPlan})});
+  alert('Status set to '+status+'.');
+  await runAdminBizSearch();
+ }catch(e){ alert('Could not set status: '+e.message); }
+}
+async function showAdminFlaggedRiders(){
+ openModal(`<h2>Flagged Riders</h2><div id="admRiders"><div class="empty">Loading…</div></div>
+  <button class="btn secondary full" style="margin-top:10px" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+ try{
+  const d = await adminApi('/api/admin/flagged-riders');
+  const rs = d.riders||[];
+  document.getElementById('admRiders').innerHTML = rs.map(r=>`<div class="row-item">
+    <div><b>${esc(r.name||'')}</b><small>${esc(r.phone||'')} · ${r.watchlist_count||0} strike(s)${r.deactivated?' · DEACTIVATED':''}</small></div>
+    ${r.deactivated?`<button class="btn accent" style="padding:5px 9px;font-size:11px" onclick="adminReactivateRider('${r.id}')">Reactivate</button>`:''}
+   </div>`).join('') || '<div class="empty">No flagged riders.</div>';
+ }catch(e){ document.getElementById('admRiders').innerHTML = `<div class="notice">Could not load: ${esc(e.message)}</div>`; }
+}
+async function adminReactivateRider(riderId){
+ if(!confirm('Reactivate this rider? Their strike count resets to zero.')) return;
+ try{ await adminApi('/api/admin/riders/'+riderId+'/reactivate', {method:'POST'}); await showAdminFlaggedRiders(); }
+ catch(e){ alert('Could not reactivate: '+e.message); }
+}
+function showAdminSearchAccounts(){
+ openModal(`<h2>Search Accounts</h2>
  <input id="adminSearch" placeholder="Search by email, business name, or account ID" style="width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:14px;margin-bottom:10px" oninput="runAdminSearch()">
  <div id="adminResults"><div class="empty">Type to search.</div></div>
- <button class="btn secondary full" style="margin-top:10px" onclick="showAdminIssues()">View Issue Reports</button>
- <button class="btn secondary full" onclick="showAdminPlanPrices()">Manage Plan Pricing</button>
- <button class="btn danger full" onclick="localStorage.removeItem('moborex_admin_token');closeModal()">Log Out of Admin</button>`);
+ <button class="btn secondary full" style="margin-top:10px" onclick="showAdminDashboard()">Back to Dashboard</button>`);
  adminSearch.focus();
 }
 let adminSearchDebounce;
@@ -4998,7 +5650,7 @@ async function promptPosSupervisorPin(actionLabel){
 }
 async function submitPosApprovalPin(){
  const hash=await sha256Hex(posApprovalPin.value||'');
- const appLockHash=localStorage.getItem('moborex_applock_hash');
+ const appLockHash=getAppLockHash();
  const b=await getBusiness();
  const supervisor=(b.staffMembers||[]).find(s=>s.role==='supervisor' && s.pinHash===hash);
  if(hash===appLockHash || supervisor){
@@ -7030,7 +7682,7 @@ function showCloudSync(){
     serverActionsHtml = `<button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
    } else {
     serverStatusHtml = `<div class="cloudLast">Last sent: ${lastServerPush?new Date(lastServerPush).toLocaleString():'Never'} · Last received: ${lastServerPull?new Date(lastServerPull).toLocaleString():'Never'}</div>`;
-    serverActionsHtml = `<button class="btn secondary full" onclick="syncNow()">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
+    serverActionsHtml = `<button class="btn secondary full" onclick="syncNow()">Sync Now</button><button class="btn danger full" onclick="logoutServerAccount()">Log Out</button><button class="btn secondary full ownerOnly" style="margin-top:14px" onclick="showTwoFactorSettings()">🔐 Two-Factor Authentication</button><button class="btn secondary full ownerOnly" style="margin-top:8px;color:var(--danger);border-color:var(--danger)" onclick="showDeleteAccountForever()">Delete Account Forever</button>`;
    }
  } else {
    accountSyncModeLine = 'Sign up once, then log into the same account on every phone — all synced automatically, no PIN to remember.';
@@ -7078,6 +7730,7 @@ function hideAuthGate(){ authGate.classList.remove('show'); }
 // actually inside the app — that's handled by the existing module-level gating.
 function showAuthGateLanding(){
  agLandingPane.style.display='block'; agSignupPane.style.display='none'; agLoginPane.style.display='none';
+ const p2=document.getElementById('ag2faPane'); if(p2) p2.style.display='none';
  agTagline.textContent='Run the business. Not just the books.';
  agError.style.display='none';
  populateAuthGateModuleList();
@@ -7095,6 +7748,30 @@ function chooseSignupModule(key){
  agLandingPane.style.display='none'; agSignupPane.style.display='block';
  agSignupModuleContext.innerHTML=`Signing up for <b>${esc(PLAN_LABELS[key])}</b>. <span style="opacity:.7;cursor:pointer;text-decoration:underline" onclick="showAuthGateLanding()">Change</span>`;
  agTagline.textContent=PLAN_DESCRIPTIONS[key];
+}
+function showAuthGate2FA(challengeId, hint, email){
+ window.__2faChallenge = challengeId; window.__2faEmail = email;
+ agLandingPane.style.display='none'; agSignupPane.style.display='none'; agLoginPane.style.display='none';
+ const pane = document.getElementById('ag2faPane');
+ pane.style.display='block';
+ document.getElementById('ag2faHint').textContent = hint || 'Enter the 6-digit code we sent to your email.';
+ agTagline.textContent='One more step.';
+ agError.style.display='none';
+ setTimeout(()=>{ const el=document.getElementById('ag2faCode'); if(el) el.focus(); }, 50);
+}
+async function submitAuthGate2FA(){
+ const code=(document.getElementById('ag2faCode').value||'').trim();
+ agError.style.display='none';
+ if(!code){ agError.textContent='Enter the code.'; agError.style.display='block'; return; }
+ agBusy.style.display='block';
+ try{
+  const res = await ServerAccount.verify2FA(window.__2faChallenge, code, window.__2faEmail);
+  agBusy.style.display='none'; hideAuthGate();
+  if(res && res.usedBackupCode){
+   alert('Signed in with a backup code. You have '+(res.backupCodesRemaining||0)+' left — generate new ones from Sync & Backup if you are running low.');
+  }
+  await continueStartupAfterAuth();
+ }catch(e){ agBusy.style.display='none'; agError.textContent=e.message||'That code is not correct.'; agError.style.display='block'; }
 }
 function showAuthGateLoginFromLanding(){
  window.chosenSignupModule=null; // this is a plain login, not part of an "add a module" flow
@@ -7169,7 +7846,12 @@ async function submitAuthGateLogin(){
   if(!email||!pw){ agError.textContent='Enter your email and password.'; agError.style.display='block'; return; }
   agBusy.style.display='block';
   try{
-    await ServerAccount.login(email, pw);
+    const res = await ServerAccount.login(email, pw);
+    if(res && res.requires2FA){
+      agBusy.style.display='none';
+      showAuthGate2FA(res.challengeId, res.hint, email);
+      return; // no session yet — nothing proceeds until the code is verified
+    }
     agBusy.style.display='none'; hideAuthGate();
     if(window.pendingModuleAfterLogin){
       // Carried over from the landing page — this is a returning customer adding a new
@@ -7265,11 +7947,11 @@ openDB().then(async ()=>{
 
 /* ---------------- App Lock unlock handler ---------------- */
 window.addEventListener('DOMContentLoaded', ()=>{
-  if(localStorage.getItem('moborex_applock_hash')){
+  if(getAppLockHash()){
     lockScreen.classList.add('show');
     const tryUnlock=async()=>{
       const h=await sha256Hex(lockInput.value||'');
-      if(h===localStorage.getItem('moborex_applock_hash')){
+      if(h===getAppLockHash()){
         document.body.classList.remove('locked');
         lockScreen.classList.remove('show');
         if(window.proceedToAccountGateAfterAppLock) window.proceedToAccountGateAfterAppLock();
@@ -7282,7 +7964,10 @@ window.addEventListener('DOMContentLoaded', ()=>{
         if(!idb) await openDB();
         const activeId=await getActiveBusinessId();
         const b=(await all('business')).find(x=>x.id===activeId);
-        const match=(b && b.staffMembers || []).find(s=>s.pinHash===h);
+        // Server-verified, same as the normal Enter Staff Mode path — a PIN must never be
+        // accepted on local data alone. verifyStaffPin() falls back to the local list only
+        // when the device is genuinely offline.
+        const match = b ? await verifyStaffPin(b, h) : null;
         if(match){
           window.staffModeActive=true;
           window.currentStaffName=match.name;
