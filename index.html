@@ -251,7 +251,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 65;
+const APP_VERSION = 66;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -3115,6 +3115,7 @@ function blankDashboardUI(){
 <aside class="sidebar">
   <div class="brandmark"><div class="seal" id="brandLogoWide">▦</div><div><div class="appname">Business Vault<span class="byLine">by Moborex</span></div><div class="tagline">Run the business. Not just the books.</div><button class="bizname bizSwitch" style="font-size:15px" onclick="showBusinessSwitcher()"><span id="bizNameWide">Business</span> <span class="chev">▾</span></button></div></div>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="warDashboard" onclick="showWarDashboard()" style="background:var(--ink);color:#fff;margin:4px 0 10px"><span class="ic">📡</span> War Dashboard</button>
+  <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="customerFeedback" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showCustomerFeedback()" style="margin:0 0 10px;position:relative"><span class="ic">💬</span> Customer Feedback <span data-feedback-badge style="display:none;background:var(--danger);color:#fff;border-radius:9px;padding:1px 6px;font-size:10.5px;font-weight:800;margin-left:4px"></span></button>
   <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="alerts" onclick="showOwnerAlerts()" style="margin:0 0 10px;position:relative"><span class="ic">🔔</span> Alerts <span id="ownerAlertsBadge" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);background:var(--danger);color:#fff;border-radius:10px;min-width:18px;height:18px;font-size:11px;font-weight:800;align-items:center;justify-content:center;padding:0 5px"></span></button>
   <div class="navExpandControls"><button onclick="expandAllNavGroups()">Expand All</button><button onclick="collapseAllNavGroups()">Collapse All</button></div>
 
@@ -3303,6 +3304,7 @@ function blankDashboardUI(){
 <div class="overlay" id="drawerOverlay" onclick="closeDrawer(event)"><aside class="drawer" onclick="event.stopPropagation()">
 <div class="dhead"><div class="dtitle">Menu</div><button class="iconbtn" onclick="closeDrawer()">×</button></div>
 <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="warDashboard" onclick="showWarDashboard();closeDrawer()" style="background:var(--ink);color:#fff;margin:4px 0 10px"><span class="ic">📡</span> War Dashboard</button>
+<button class="navbtn ownerOnly" data-min-level="1" data-perm-key="customerFeedback" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showCustomerFeedback();closeDrawer()" style="margin:0 0 10px;position:relative"><span class="ic">💬</span> Customer Feedback <span data-feedback-badge style="display:none;background:var(--danger);color:#fff;border-radius:9px;padding:1px 6px;font-size:10.5px;font-weight:800;margin-left:4px"></span></button>
 <button class="navbtn ownerOnly" data-min-level="1" data-perm-key="alerts" onclick="showOwnerAlerts();closeDrawer()" style="margin:0 0 10px;position:relative"><span class="ic">🔔</span> Alerts <span id="ownerAlertsBadgeDrawer" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);background:var(--danger);color:#fff;border-radius:10px;min-width:18px;height:18px;font-size:11px;font-weight:800;align-items:center;justify-content:center;padding:0 5px"></span></button>
 <div class="navExpandControls"><button onclick="expandAllNavGroups()">Expand All</button><button onclick="collapseAllNavGroups()">Collapse All</button></div>
 
@@ -3766,7 +3768,7 @@ const PERMISSION_GROUPS = {
   stockPurchases:'Stock Purchases', lowStock:'Low Stock', recipes:'Recipes', productMovement:'Product Movement',
   issueOut:'Issue / Return Stock', storeBalances:'Store & Kitchen Balances', receivers:'Receivers',
   purchaseEntry:'Record a Purchase', suppliers:'Suppliers', storekeepers:'Storekeepers', stockLoss:'Refund / Bad Stock',
-  counterAccountability:'Counter Accountability', utilities:'Utility Readings', buySellReport:'Buy vs Sell Report', forecastReport:'Forecast', productProfit:'Product Profitability', buyers:'Buyers', stockAsOf:'Stock As Of a Date',
+  counterAccountability:'Counter Accountability', utilities:'Utility Readings', customerFeedback:'Customer Feedback', buySellReport:'Buy vs Sell Report', forecastReport:'Forecast', productProfit:'Product Profitability', buyers:'Buyers', stockAsOf:'Stock As Of a Date',
  },
  'Reports': {
   reports:'Reports', endOfDay:'End of Day', dailySales:'Daily Sales Report', productSold:'Product/Service Sold',
@@ -4612,6 +4614,76 @@ async function saveBusinessLocation(lat, lng){
 /* ---------------- Owner Alerts — the business-side half of the delivery watchlist/
    deactivation mechanism. Nothing new to set up: same account, same login, just a
    screen that shows what the server has flagged. ---------------- */
+/* Customer feedback inbox.
+   Given its own permission rather than being owner-only: the person who should read
+   complaints is usually a supervisor or whoever runs the floor, not the owner sitting at
+   home. Making it owner-only would mean nobody reads it, which is the same as not having
+   it. */
+async function showCustomerFeedback(){
+ if(!requireOwnerMode('Customer feedback','customerFeedback'))return;
+ if(!ServerAccount.token){ alert('Log in to your account to read customer feedback.'); return; }
+ openModal(`<h2>Customer Feedback ${hb("Messages left by customers from your online link or QR code. They need no account to send one, so this is often the only warning you get before someone simply stops coming back.")}</h2>
+ <div id="fbBody"><div class="empty">Loading…</div></div>
+ <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Close</button>`);
+ await loadCustomerFeedback();
+}
+async function loadCustomerFeedback(){
+ const el=document.getElementById('fbBody'); if(!el)return;
+ let d;
+ try{
+  const bizId=await getActiveBusinessId();
+  d=await ServerAccount.api('/api/feedback?businessId='+encodeURIComponent(bizId));
+ }catch(e){ el.innerHTML=`<div class="notice">Could not load: ${esc(e.message)}</div>`; return; }
+ const rows=d.feedback||[];
+ if(!rows.length){ el.innerHTML='<div class="empty">No feedback yet. Customers can leave a message from your online link or QR code.</div>'; return; }
+ const kindLabel={complaint:'Complaint', compliment:'Compliment', suggestion:'Suggestion', other:'Message'};
+ el.innerHTML = rows.map(f=>{
+  const stars=f.rating?'★'.repeat(f.rating)+'☆'.repeat(5-f.rating):'';
+  const isNew=f.status==='new', done=f.status==='resolved';
+  return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px${done?';opacity:.6':''}${isNew?';border-left:3px solid var(--brass)':''}">
+   <div style="display:flex;justify-content:space-between;gap:8px">
+    <b>${esc(kindLabel[f.kind]||'Message')}${stars?` <span style="color:var(--brass2)">${stars}</span>`:''}</b>
+    <small>${esc((f.created_at||'').slice(0,10))}</small>
+   </div>
+   ${f.message?`<div style="font-size:13.5px">${esc(f.message)}</div>`:''}
+   <small style="color:var(--muted)">${esc(f.customer_name||'Anonymous')}${f.customer_phone?' · '+esc(f.customer_phone):''}${f.order_id?' · about an order':''}</small>
+   ${done&&f.resolved_note?`<small style="color:var(--brass2)">Resolved: ${esc(f.resolved_note)}</small>`:''}
+   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
+    ${f.customer_phone?`<a class="btn secondary" style="padding:5px 9px;font-size:11px;text-decoration:none" href="tel:${esc(f.customer_phone)}">Call back</a>`:''}
+    ${!done?`<button class="btn accent" style="padding:5px 9px;font-size:11px" onclick="resolveFeedback('${f.id}')">Mark resolved</button>`:''}
+    ${isNew?`<button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="setFeedbackStatus('${f.id}','read')">Mark read</button>`:''}
+   </div>
+  </div>`;
+ }).join('');
+}
+async function setFeedbackStatus(id, status, note){
+ try{
+  await ServerAccount.api('/api/feedback/'+id+'/status', {method:'POST', body: JSON.stringify({status, note:note||''})});
+  await loadCustomerFeedback();
+  updateFeedbackBadge();
+ }catch(e){ alert('Could not update: '+e.message); }
+}
+async function resolveFeedback(id){
+ // The note is what makes this useful a month later — "resolved" alone says nothing about
+ // what was actually done.
+ const note=prompt('What was done about it? (kept on record)');
+ if(note===null) return;
+ await setFeedbackStatus(id, 'resolved', note.trim());
+}
+/* Unread count on the nav button. Feedback nobody looks at is worse than none — it creates
+   the impression of a channel that is being read. */
+async function updateFeedbackBadge(){
+ try{
+  if(!ServerAccount.token) return;
+  const bizId=await getActiveBusinessId();
+  const d=await ServerAccount.api('/api/feedback?businessId='+encodeURIComponent(bizId));
+  const n=d.unread||0;
+  document.querySelectorAll('[data-feedback-badge]').forEach(el=>{
+   el.textContent = n>0 ? String(n) : '';
+   el.style.display = n>0 ? 'inline-block' : 'none';
+  });
+ }catch(e){}
+}
 async function showOwnerAlerts(){
   if(!requireOwnerMode('Alerts'))return;
   if(!ServerAccount.token){ alert('Log in to your account first.'); return; }
@@ -4641,6 +4713,7 @@ async function markOwnerAlertRead(id){
     if(a) a.read_at=new Date().toISOString();
     drawOwnerAlerts();
     updateOwnerAlertsBadge();
+  updateFeedbackBadge();
   }catch(e){ alert('Could not mark this as read: '+e.message); }
 }
 // A dashboard-visible count, not just a buried nav item — this is fraud-relevant, worth
@@ -6728,6 +6801,18 @@ async function showAdminDashboard(){
      ${near.length?`<br><b>${near.length} business(es) past 70%</b> — contact these before syncing stops for them.`:'<br>No business is near the limit.'}
     </div>
     ${near.length?`<div class="list">${near.map(n=>`<div class="row-item"><div><b>${esc(n.businessName||n.businessId)}</b><small>${(n.bytes/1024).toFixed(0)} KB</small></div><div class="row-right"><span class="stamp overdue">${n.percent}%</span></div></div>`).join('')}</div>`:''}`;
+  })()}
+  ${(()=>{ const f=d.feedback||{};
+    const worst=f.worstOffenders||[];
+    return `<div class="sectionhead" style="margin-top:14px"><h3>Customer feedback</h3></div>
+    <div class="stats">
+     ${stat('Total', f.total||0)}
+     ${stat('Unresolved', f.unresolved||0, (f.unresolved||0)>0)}
+     ${stat('Open complaints', f.openComplaints||0)}
+     ${stat('Avg rating', f.averageRating!=null?f.averageRating+' ★':'—')}
+    </div>
+    ${worst.length?`<div class="notice" style="font-size:12px">Businesses with unresolved complaints — often the earliest sign a customer is about to leave the platform:</div>
+      <div class="list">${worst.map(w=>`<div class="row-item"><div><b>${esc(w.businessName||w.businessId)}</b></div><div class="row-right"><span class="stamp overdue">${w.openComplaints} open</span></div></div>`).join('')}</div>`:''}`;
   })()}
   <div class="sectionhead" style="margin-top:14px"><h3>Platform activity</h3></div>
   <div class="stats">
