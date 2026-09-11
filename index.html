@@ -251,7 +251,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 62;
+const APP_VERSION = 65;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -302,7 +302,7 @@ document.addEventListener('click',e=>{
 });
 
 /* ---------------- IndexedDB core ---------------- */
-const DB_NAME='MoborexInvoiceDB', DB_VERSION=35;
+const DB_NAME='MoborexInvoiceDB', DB_VERSION=37;
 let idb;
 const defaults={business:{name:'Your Business Name',address:'',phone:'',email:'',logo:'',headerComment:'',footerComment:'',invoiceMode:'manual',nextNumber:1,nextQuoteNumber:1,nextJournalNumber:1,numberPrefix:'',currency:'NGN',taxId:'',bn:'',bankAccount:'',bankName:'',openingAsOfDate:'',openingRevenue:0,openingExpenses:0,openingBalance:0,type:'business',salaryAmount:0,salaryEmployer:'',salaryAutoGenerate:false,salaryLastGenerated:'',legalForm:'businessName',fixedAssets:0,staffMembers:[],posAllowTabs:true,taxRates:[{id:'default-vat',name:'VAT',rate:7.5,inclusive:false}]}};
 function deriveInitials(name){
@@ -367,6 +367,22 @@ function openDB(){
    // change". Without a tombstone a deleted invoice reappears on the next pull from any
    // other device. Recorded here so deletion is itself a change that syncs.
    if(!d.objectStoreNames.contains('tombstones')){let s=d.createObjectStore('tombstones',{keyPath:'key'});s.createIndex('businessId','businessId')}
+   /* Proper stock control, modelled on the reference implementation.
+      Three things were missing and each one breaks a real workflow:
+      - suppliers and storekeepers as REGISTERED entities, so a purchase records who
+        supplied it and who received it rather than free text nobody can report on;
+      - conversions carrying a RATIO (5kg of rice yields 80 spoons), which is what lets a
+        counter price be costed from raw purchases and a refund be converted backwards;
+      - utilities (gas, fuel) that are consumed rather than sold, measured by meter
+        readings instead of stock counts. */
+   if(!d.objectStoreNames.contains('suppliers')){let s=d.createObjectStore('suppliers',{keyPath:'id'});s.createIndex('businessId','businessId')}
+   if(!d.objectStoreNames.contains('storekeepers')){let s=d.createObjectStore('storekeepers',{keyPath:'id'});s.createIndex('businessId','businessId')}
+   // In-house buyers: the person who went to the market. Distinct from a staff member with
+   // a login, and distinct from the supplier they bought FROM — a name someone else selects
+   // when recording the purchase on their behalf.
+   if(!d.objectStoreNames.contains('buyers')){let s=d.createObjectStore('buyers',{keyPath:'id'});s.createIndex('businessId','businessId')}
+   if(!d.objectStoreNames.contains('utilityReadings')){let s=d.createObjectStore('utilityReadings',{keyPath:'id'});s.createIndex('businessId','businessId');s.createIndex('date','date')}
+   if(!d.objectStoreNames.contains('counterSales')){let s=d.createObjectStore('counterSales',{keyPath:'id'});s.createIndex('businessId','businessId');s.createIndex('date','date')}
   };
   r.onsuccess=()=>{idb=r.result;resolve(idb)};
   /* A database that will not open used to reject into nothing, leaving a blank screen with
@@ -427,6 +443,7 @@ async function getBusiness(){
   window.CURRENT_CURRENCY=b.currency||'NGN';
   window.CURRENT_BUSINESS_TYPE=b.type||'business';
   window.CURRENT_BUSINESS_MODULE=b.module||null; // set at creation; null for businesses that predate module recording
+  window.CURRENT_RETAIL_KIND=b.retailKind||null; // restaurant vs store — drives wording, not behaviour
   return b;
 }
 async function bizInvoices(){const id=await getActiveBusinessId();return (await all('invoices')).filter(x=>x.businessId===id)}
@@ -522,7 +539,311 @@ async function bizQuotations(){const id=await getActiveBusinessId();return (awai
 async function bizCommissions(){const id=await getActiveBusinessId();return (await all('commissions')).filter(x=>x.businessId===id)}
 async function bizLoans(){const id=await getActiveBusinessId();return (await all('loans')).filter(x=>x.businessId===id)}
 async function bizStockPurchases(){const id=await getActiveBusinessId();return (await all('stockPurchases')).filter(x=>x.businessId===id)}
-async function bizReceivers(){const id=await getActiveBusinessId();return (await all('receivers')).filter(x=>x.businessId===id)}
+async function bizSuppliers(){const id=await getActiveBusinessId();return (await all('suppliers')).filter(x=>x.businessId===id && x.active!==false)}
+async function bizStorekeepers(){const id=await getActiveBusinessId();return (await all('storekeepers')).filter(x=>x.businessId===id && x.active!==false)}
+async function bizBuyers(){const id=await getActiveBusinessId();return (await all('buyers')).filter(x=>x.businessId===id && x.active!==false)}
+async function bizUtilityReadings(){const id=await getActiveBusinessId();return (await all('utilityReadings')).filter(x=>x.businessId===id)}
+async function bizCounterSales(){const id=await getActiveBusinessId();return (await all('counterSales')).filter(x=>x.businessId===id)}
+
+/* ---------------- Costing ----------------
+   A product's cost is resolved in the same order the reference implementation uses, because
+   the three cases are genuinely different and one rule cannot serve all of them:
+
+   1. DIRECT — the product itself was purchased, so its own purchase history is the cost.
+      Bottled water bought in a crate and sold by the bottle. One-to-one.
+
+   2. FIXED — a price the owner set deliberately. Used where real ingredient usage varies
+      batch to batch and shouldn't drive the number automatically.
+
+   3. DERIVED THROUGH A CONVERSION — the product is made from something else, so its cost
+      is the SOURCE product's average purchase cost scaled by the conversion ratio.
+      Rice at ₦50,000 for 50kg, 1kg yielding 16 spoons, gives ₦62.50 a spoon. Recomputed
+      from purchase history each time, so it follows what rice actually costs now rather
+      than a figure typed in once and forgotten.
+
+   The supplier average is a simple mean of each supplier's OWN average price, not a single
+   volume-weighted figure across every purchase. If one supplier averages ₦100 and another
+   ₦150, the reference cost is ₦125 — regardless of who sold more. That stops one large
+   cheap delivery from making everything look profitable. */
+async function supplierAverageCost(productId, upToDate){
+  const purchases=(await bizStockPurchases()).filter(p=>p.productId===productId && p.type==='purchase' && p.status!=='voided'
+    && (!upToDate || (p.date||'') <= upToDate));
+  if(!purchases.length) return null;
+  const bySupplier={};
+  for(const p of purchases){
+    const key=p.supplierId || p.vendorName || 'unknown';
+    if(!bySupplier[key]) bySupplier[key]={qty:0,value:0};
+    const q=Number(p.qty)||0, u=Number(p.unitCost)||0;
+    bySupplier[key].qty+=q; bySupplier[key].value+=q*u;
+  }
+  const averages=Object.values(bySupplier).filter(s=>s.qty>0).map(s=>s.value/s.qty);
+  if(!averages.length) return null;
+  return averages.reduce((a,b)=>a+b,0)/averages.length;
+}
+/* The recipe that produces this counter product.
+   NOTHING here is hard-coded: the ratio, the ingredients and the yield are all whatever the
+   owner entered under Recipes. A recipe is {soldProductId, yieldsQty, ingredients:[
+   {sourceProductId, qtyUsed}]} — multi-ingredient by design, which is what pepper + onion
+   + maggi → stew, or rice + pepper + oil → jollof, actually needs. 1kg of garri yielding
+   22 wraps of eba is simply one ingredient with qtyUsed 1 and yieldsQty 22.
+
+   An earlier version of this code read fields (producesProductId, sourceProductId,
+   sourceQty) that the Recipes screen never writes, so every real recipe was invisible to
+   costing, refunds, expected yield and the reports. It matched nothing and failed silently.
+
+   IMPLICIT 1:1: a counter product with no recipe, where a raw product of the SAME NAME
+   exists, is treated as one-for-one — bottled water, beef, a crate of minerals. Bought as
+   itself and sold as itself, so no mapping is worth typing. This mirrors the reference
+   implementation exactly. */
+async function conversionFor(productId){
+  const id=await getActiveBusinessId();
+  const explicit=(await all('conversions')).find(c=>c.businessId===id && c.soldProductId===productId && c.active!==false);
+  if(explicit) return explicit;
+  const products=await bizProducts();
+  const sold=products.find(p=>p.id===productId);
+  if(!sold) return null;
+  // Same name, different record: a raw entry and a counter entry for the same goods.
+  const twin=products.find(p=>p.id!==productId && (p.name||'').trim().toLowerCase()===(sold.name||'').trim().toLowerCase());
+  if(twin){
+    return { soldProductId:productId, yieldsQty:1, unitLabel:sold.unit||'units', implicit:true,
+             ingredients:[{sourceProductId:twin.id, sourceProductName:twin.name, qtyUsed:1}] };
+  }
+  return null;
+}
+// Every raw product a recipe consumes, with how much of each one batch uses.
+function recipeIngredients(conv){
+  return (conv && Array.isArray(conv.ingredients)) ? conv.ingredients.filter(i=>i && i.sourceProductId) : [];
+}
+/* ---------------- Actual batch costing ----------------
+   The real cost of a prepared dish is what was ACTUALLY issued to make it, divided by what
+   was ACTUALLY produced — not a ratio decided in advance.
+
+   A conversion ratio has three weaknesses that only show up in a real kitchen:
+     - a dish has several ingredients (rice AND tomato AND oil AND seasoning), while a
+       ratio names one source, so cost is understated by everything it omits;
+     - yield varies batch to batch — 1kg does not reliably give 16 spoons;
+     - it describes what SHOULD happen and can never reveal what did.
+
+   Averaging real batches fixes all three at once, and the gap between the ratio's expected
+   yield and the actual yield becomes a management figure rather than a hidden loss.
+   The ratio is still needed — for planning, and to convert a refund backwards — so it is
+   kept and used where it genuinely belongs. */
+/* ---------------- Two costing routes, chosen per product ----------------
+   Both are legitimate and they suit different kitchens, so the product decides:
+
+   'recipe'     — cost the ACTUAL batch: everything genuinely issued, divided by units
+                  genuinely produced. Right where a dish has several ingredients and the
+                  owner wants cost to follow reality, including bad yield.
+
+   'conversion' — cost from the ratio: one source product scaled by source_qty:yields_qty.
+                  Right where the menu is stable and the owner prices deliberately rather
+                  than letting daily ingredient noise move the figure. This is what the
+                  reference implementation chose, on the grounds that real ingredient usage
+                  varies batch to batch and should not drive cost automatically.
+
+   The ratio is needed in BOTH routes regardless — it converts refunds backwards and sets
+   the expected yield that the counter is held to. Costing and accountability are separate
+   jobs and only costing is a choice. */
+/* Which costing route a product uses, defaulting to what the business actually does.
+
+   A SUPERMARKET breaks bulk into units: a 50kg sack becomes 50 one-kilo packs, a carcass
+   becomes cuts. One input, a ratio, nothing else consumed — so the conversion route is
+   right, and asking about a multi-ingredient recipe would be asking about something that
+   does not happen there.
+
+   A RESTAURANT combines ingredients: rice and pepper and oil become portions. The batch is
+   what a portion really costs, so the recipe route is the sensible default there.
+
+   Either can be overridden per product — a supermarket with a bakery still makes bread from
+   flour — so this is a starting point, not a rule. */
+function costingRouteOf(product){
+  if(product && product.costingRoute === 'recipe') return 'recipe';
+  if(product && product.costingRoute === 'conversion') return 'conversion';
+  // Not chosen: follow the business. A store breaks bulk down; a kitchen builds dishes up.
+  return (window.CURRENT_RETAIL_KIND === 'store') ? 'conversion' : 'recipe';
+}
+/* The ingredient a recipe is anchored to — the one whose quantity drives the yield and,
+   on the conversion route, the cost.
+
+   Rice is the anchor for jollof: ask for 2kg of rice and everything else in the template
+   scales from it. Without an explicit anchor the first ingredient is used, which is what a
+   person naturally enters first, and the owner can change it on the recipe.
+
+   The same raw product anchors several different counter products — rice → jollof, fried
+   rice, white rice — each its own recipe with its own yield. Nothing about this is fixed
+   in code; it is all whatever was entered under Recipes. */
+function primaryIngredientOf(conv){
+  const ings=recipeIngredients(conv);
+  if(!ings.length) return null;
+  return ings.find(i=>i.isPrimary) || ings[0];
+}
+/* Scales a whole template from one ingredient's quantity.
+   Ask for 2kg of rice against a 1kg template and every other line doubles, with the yield
+   doubling too. Returned as a SUGGESTION, never written directly: the receiver may well
+   take 150g of salt instead of the 400g the template implies, and a system that insisted
+   otherwise would just be worked around. */
+async function scaleTemplate(counterProductId, anchorQty){
+  const conv=await conversionFor(counterProductId);
+  const ings=recipeIngredients(conv);
+  const primary=primaryIngredientOf(conv);
+  if(!conv || !ings.length || !primary) return null;
+  const baseQty=Number(primary.qtyUsed)||0;
+  if(baseQty<=0) return null;
+  const factor=(Number(anchorQty)||0)/baseQty;
+  if(!(factor>0)) return null;
+  const products=await bizProducts();
+  return {
+    factor,
+    expected:(Number(conv.yieldsQty)||0)*factor,
+    anchorId:primary.sourceProductId,
+    lines: ings.map(i=>{
+      const p=products.find(x=>x.id===i.sourceProductId);
+      return { productId:i.sourceProductId, name:p?p.name:'', unit:p?(p.unit||''):'',
+               qty:Number(((Number(i.qtyUsed)||0)*factor).toFixed(4)),
+               isPrimary:i.sourceProductId===primary.sourceProductId };
+    }),
+  };
+}
+async function batchCostFor(productId, upToDate, lookback){
+  const movements=(await bizStockMovements()).filter(m=>
+    m.status!=='voided' && m.type==='issue' && m.counterProductId===productId &&
+    Number(m.counterQty)>0 && (!upToDate || (m.date||'')<=upToDate));
+  if(!movements.length) return null;
+  // Most recent batches only: a price from six months ago is not this month's cost.
+  movements.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const recent=movements.slice(0, lookback||10);
+  /* A batch that was issued only some of its recipe's ingredients produces a cost that is
+     too LOW, not too high — the onions and maggi the kitchen already held are never priced
+     in. Silently averaging those batches makes margin look better than it is, which is the
+     most dangerous direction for a costing error to lean. So incomplete batches are counted
+     and reported, and the caller can say so rather than presenting the figure as whole. */
+  const conv=await conversionFor(productId);
+  const recipeIngs=recipeIngredients(conv).map(i=>i.sourceProductId);
+  let incompleteBatches=0;
+  let totalCost=0, totalUnits=0;
+  for(const m of recent){
+    if(recipeIngs.length){
+      const issued=new Set((m.items||[]).map(i=>i.productId));
+      if(recipeIngs.some(id=>!issued.has(id))) incompleteBatches++;
+    }
+    for(const it of (m.items||[])){
+      // Each ingredient valued at its own supplier average as at the batch date, so the
+      // figure moves with what those ingredients actually cost.
+      const c=await supplierAverageCost(it.productId, m.date);
+      const unit=(c!=null && c>0) ? c : (Number(it.unitCost)||0);
+      totalCost += unit*(Number(it.qty)||0);
+    }
+    totalUnits += Number(m.counterQty)||0;
+  }
+  if(totalUnits<=0 || totalCost<=0) return null;
+  return {cost: totalCost/totalUnits, batches: recent.length, units: totalUnits,
+          incompleteBatches, complete: incompleteBatches===0};
+}
+// What the conversion ratio SAYS a batch should have produced — compared against what it
+// actually did, this is the yield variance.
+/* How many units this issue should produce.
+   Driven by the MAIN ingredient alone. Ask for 2kg of rice against a 1kg : 16 template and
+   the expectation is 32 portions, whatever the accompaniments come to.
+
+   An earlier version took the SCARCEST ingredient as the limit, so issuing 150g of salt
+   against a template calling for 400g cut the expectation from 32 portions to 12. That is
+   wrong about kitchens: the cook may still have salt from the last batch, or may have found
+   the template too heavy on it and used less deliberately. Neither means less rice was
+   cooked, and holding the counter to 12 portions when 32 were made would manufacture a
+   shortfall out of a seasoning decision.
+
+   Accompaniments still matter — they leave stock, and on the batch route they change what a
+   portion costs. They just do not decide how much food came out of the rice. */
+async function expectedYieldDetail(counterProductId, items){
+  const conv=await conversionFor(counterProductId);
+  const yq=Number(conv&&conv.yieldsQty)||0;
+  const ings=recipeIngredients(conv);
+  const anchor=primaryIngredientOf(conv);
+  if(!conv || yq<=0 || !ings.length || !anchor) return null;
+  const baseQty=Number(anchor.qtyUsed)||0;
+  if(baseQty<=0) return null;
+  const line=(items||[]).find(i=>i.productId===anchor.sourceProductId);
+  if(!line) return null;                       // the main ingredient was not issued at all
+  const batches=(Number(line.qty)||0)/baseQty;
+  const products=await bizProducts();
+  const anchorName=(products.find(p=>p.id===anchor.sourceProductId)||{}).name||null;
+
+  /* Accompaniments are compared against the template and REPORTED, not used to limit the
+     yield. Under-issuing is often deliberate; over-issuing may mean a second batch is
+     planned. Either way it belongs in front of the owner as information, not as a silent
+     adjustment to what the counter owes. */
+  const light=[], missing=[];
+  for(const ing of ings){
+    if(ing.sourceProductId===anchor.sourceProductId) continue;
+    const expectQty=(Number(ing.qtyUsed)||0)*batches;
+    if(!(expectQty>0)) continue;
+    const l=(items||[]).find(i=>i.productId===ing.sourceProductId);
+    const nm=(products.find(p=>p.id===ing.sourceProductId)||{}).name||'an ingredient';
+    if(!l){ missing.push(nm); continue; }
+    if((Number(l.qty)||0) < expectQty*0.95) light.push(`${nm} ${l.qty} vs ${Number(expectQty.toFixed(3))}`);
+  }
+  return {expected:batches*yq, batches, limiter:anchorName, anchorName,
+          light, missing, complete:(light.length===0 && missing.length===0)};
+}
+// Kept for callers that only need the number.
+async function expectedYieldFor(counterProductId, items){
+  const d=await expectedYieldDetail(counterProductId, items);
+  return d ? d.expected : null;
+}
+async function resolveUnitCost(productId, upToDate){
+  const products=await bizProducts();
+  const p=products.find(x=>x.id===productId);
+  if(!p) return {cost:0, basis:'none'};
+  const direct=await supplierAverageCost(productId, upToDate);
+  if(direct!=null && direct>0) return {cost:direct, basis:'purchases'};
+  // Only the 'recipe' route lets real batches drive cost. On the 'conversion' route the
+  // owner has deliberately chosen a stable figure, and silently overriding it with batch
+  // noise would be the app second-guessing a decision they made on purpose.
+  if(costingRouteOf(p)==='recipe'){
+    const batch=await batchCostFor(productId, upToDate);
+    if(batch) return {cost:batch.cost, basis:'batches', batches:batch.batches,
+                      incompleteBatches:batch.incompleteBatches, complete:batch.complete};
+  }
+  if(Number(p.costPrice)>0) return {cost:Number(p.costPrice), basis:'fixed'};
+  const conv=await conversionFor(productId);
+  if(conv){
+    // Sum every ingredient at its own supplier average, then divide by the yield. A stew
+    // costed from pepper alone would be wrong by the whole of the onions and the maggi.
+    const yq=Number(conv.yieldsQty)||0;
+    /* Which ingredients count toward cost depends on the route:
+         template  — all of them, because the template says what a portion really consumes;
+         conversion — the anchor only, because that route deliberately prices from one raw
+                      product and treats the rest as accompaniments. They are still issued
+                      and still leave stock; they simply do not drive this figure.
+       Both are legitimate and the owner chose which, per product. */
+    const allIngs=recipeIngredients(conv);
+    const anchor=primaryIngredientOf(conv);
+    const ings = (costingRouteOf(p)==='recipe' || conv.implicit)
+      ? allIngs
+      : (anchor ? [anchor] : allIngs);
+    if(yq>0 && ings.length){
+      let batchCost=0, priced=0;
+      const names=[];
+      for(const ing of ings){
+        const c=await supplierAverageCost(ing.sourceProductId, upToDate);
+        const unit=(c!=null && c>0) ? c : Number((products.find(x=>x.id===ing.sourceProductId)||{}).costPrice)||0;
+        if(unit>0) priced++;
+        batchCost += unit*(Number(ing.qtyUsed)||0);
+        const sp=products.find(x=>x.id===ing.sourceProductId);
+        if(sp) names.push(sp.name);
+      }
+      if(batchCost>0){
+        return {cost:batchCost/yq, basis:conv.implicit?'purchases':'recipe',
+                via:names.join(' + '),
+                // Stated so a cost built from incomplete pricing is not mistaken for a
+                // complete one — two of five ingredients priced is a very different figure.
+                pricedIngredients:priced, totalIngredients:ings.length};
+      }
+    }
+  }
+  return {cost:0, basis:'none'};
+}
+async function bizReceivers(){const id=await getActiveBusinessId();return (await all('receivers')).filter(x=>x.businessId===id && x.active!==false)}
 async function bizStockMovements(){const id=await getActiveBusinessId();return (await all('stockMovements')).filter(x=>x.businessId===id)}
 /* ---------------- Two-location stock, adopted from the BizFlow reference ----------------
    The product's own stockQty is the STORE balance — raw material physically in the store.
@@ -558,25 +879,34 @@ async function showIssueOut(){
  if(!requireOwnerMode('Issue stock','stockPurchases'))return;
  const receivers=await bizReceivers();
  if(!receivers.length){
-  if(confirm('No receivers registered yet. A receiver is who stock is issued to — a kitchen, bar, or department. Set one up now?')) await showReceivers();
+  const bid3=await getActiveBusinessId();
+  const anySus3=(await all('receivers')).some(r=>r.businessId===bid3);
+  if(confirm(anySus3
+   ? 'Every receiver is currently suspended, so there is nobody to issue stock to.\n\nOpen Receivers to restore one?'
+   : 'No receivers registered yet. A receiver is who stock is issued to — a kitchen, bar, or department. Set one up now?')) await showReceivers();
   return;
  }
- const products=(await bizProducts()).filter(p=>p.trackStock);
- if(!products.length){ alert('No stock-tracked products yet. Turn on stock tracking for a product first.'); return; }
+ const allProducts=await bizProducts();
+ const products=allProducts.filter(isRawLike);          // what can be issued OUT of the store
+ const counterOptions=allProducts.filter(isCounterLike); // what a batch can PRODUCE
+ if(!products.length){ alert('Nothing to issue yet.\n\nUnder Products / Services, set a product\'s role to "Raw material" — the things that get issued to a kitchen or department.'); return; }
  window.issueLines=[{productId:products[0].id, qty:''}];
- openModal(`<h2>Issue / Return Stock ${hb("Issuing moves raw stock out of the store to a kitchen or department. Returning brings unused stock back. On an issue you can also declare what the batch produced, so finished counter units are tracked separately from raw material.")}</h2>
+ const T=stockTerms();
+ openModal(`<h2>Issue / Return Stock ${hb("Issuing moves raw stock out of the store to whoever converts it. Returning brings unused stock back. On an issue you also declare what came out, so finished counter units are tracked separately from raw material.")}</h2>
  <div class="row2">
-  <div class="field"><label>Type</label><select id="ioType" onchange="drawIssueLines()"><option value="issue">Issue Out (store → receiver)</option><option value="return">Return (receiver → store)</option></select></div>
+  <div class="field"><label>Type</label><select id="ioType" onchange="drawIssueLines()"><option value="issue">Issue Out (store → ${esc(T.receiver)})</option><option value="return">Return (${esc(T.receiver)} → store)</option></select></div>
   <div class="field"><label for="ioDate">Date</label><input id="ioDate" type="date" value="${todayISO()}"></div>
  </div>
  <div class="field"><label id="ioReceiverLabel" for="ioReceiver">Issued to</label><select id="ioReceiver">${receivers.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select></div>
  <div class="sectionhead" style="margin-top:12px"><h3>Items</h3><button class="linkbtn" onclick="addIssueLine()">＋ Add item</button></div>
+ <div id="ioTemplateBar" class="notice" style="display:none;font-size:12.5px"></div>
  <div id="ioLines"></div>
+ <div id="ioExpected" class="notice" style="display:none;font-size:12.5px">—</div>
  <div id="ioCounterSection">
-  <div class="sectionhead" style="margin-top:12px"><h3>What this batch produced ${hb("Optional. If this issue produced finished units for the counter — say 40 plates from a bag of rice — record it here so counter stock is tracked separately from the raw material.")}</h3></div>
+  <div class="sectionhead" style="margin-top:12px"><h3>What this ${esc(T.batch)} ${esc(T.produce)} ${hb("Optional. If this issue produced finished units for the counter — 40 plates from a bag of rice, or 50 one-kilo packs from a 50kg sack — record it here so counter stock is tracked separately from the raw material.")}</h3></div>
   <div class="row2">
-   <div class="field"><label for="ioCounterProduct">Counter product</label><select id="ioCounterProduct"><option value="">— None —</option>${products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
-   <div class="field"><label for="ioCounterQty">Units produced</label><input id="ioCounterQty" type="number" min="0"></div>
+   <div class="field"><label for="ioCounterProduct">Counter product</label><select id="ioCounterProduct" onchange="drawIssueExpected();drawTemplateBar()"><option value="">— None —</option>${counterOptions.map(p=>`<option value="${p.id}">${esc(p.name)}${p.unit?' ('+esc(p.unit)+')':''}</option>`).join('')}</select></div>
+   <div class="field"><label for="ioCounterQty">Units ${esc(T.produce)}</label><input id="ioCounterQty" type="number" min="0"></div>
   </div>
  </div>
  <div class="field"><label for="ioComment">Comment (optional)</label><input id="ioComment"></div>
@@ -585,6 +915,8 @@ async function showIssueOut(){
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
  window.ioProducts=products;
  drawIssueLines();
+ drawIssueExpected();
+ drawTemplateBar();
 }
 function drawIssueLines(){
  const products=window.ioProducts||[];
@@ -592,7 +924,9 @@ function drawIssueLines(){
  const lbl=document.getElementById('ioReceiverLabel');
  if(lbl) lbl.textContent = isReturn ? 'Returned by' : 'Issued to';
  const counterSec=document.getElementById('ioCounterSection');
- if(counterSec) counterSec.style.display = isReturn ? 'none' : ''; // a return produces nothing — it's stock coming back
+ if(counterSec) counterSec.style.display = isReturn ? 'none' : '';
+ drawIssueExpected();
+ drawTemplateBar(); // a return produces nothing — it's stock coming back
  const el=document.getElementById('ioLines');
  if(!el)return;
  el.innerHTML=window.issueLines.map((ln,i)=>`<div class="row2" style="align-items:end">
@@ -601,9 +935,96 @@ function drawIssueLines(){
   ${window.issueLines.length>1?`<button class="btn danger" style="padding:6px 10px;font-size:11px;margin-bottom:10px" onclick="removeIssueLine(${i})">✕</button>`:''}
  </div>`).join('');
 }
+/* Shows what the recipe says this batch SHOULD produce, at the moment of issue.
+   Without it the cook's declared figure is the only number anyone ever sees, so a short
+   batch is invisible until someone reconciles by hand — which nobody does. Seeing "5kg
+   should give 80" while typing 64 makes the gap a conversation at the point it happens,
+   not a discovery weeks later. */
+/* Offers the rest of the template once the anchor quantity is entered.
+   Ask for 2kg of rice against a 1kg template and this proposes 400g pepper, 200g onion,
+   40g maggi, 400g salt — the accompaniments nobody wants to recalculate by hand every
+   service, and which get forgotten when they have to be.
+
+   Offered, never imposed. The receiver may take 150g of salt rather than 400g, and the
+   figures stay editable afterwards. A system that insisted on the template would simply be
+   worked around, and then the stock records would be fiction. */
+async function drawTemplateBar(){
+ const bar=document.getElementById('ioTemplateBar'); if(!bar)return;
+ const cpEl=document.getElementById('ioCounterProduct');
+ const cp=cpEl?cpEl.value:'';
+ const isReturn=document.getElementById('ioType')?.value==='return';
+ if(!cp || isReturn){ bar.style.display='none'; return; }
+ const conv=await conversionFor(cp);
+ const ings=recipeIngredients(conv);
+ const anchor=primaryIngredientOf(conv);
+ if(!conv || conv.implicit || ings.length<2 || !anchor){ bar.style.display='none'; return; }
+ const line=(window.issueLines||[]).find(l=>l.productId===anchor.sourceProductId && (Number(l.qty)||0)>0);
+ const products=await bizProducts();
+ const ap=products.find(p=>p.id===anchor.sourceProductId);
+ const cpp=products.find(p=>p.id===cp);
+ if(!line){
+  bar.style.display='block';
+  bar.innerHTML=`<b>${esc(cpp?cpp.name:'')}</b> has a recipe of ${ings.length} ingredients. Enter how much <b>${esc(ap?ap.name:'')}</b> is going out and the rest can be filled in for you.`;
+  return;
+ }
+ const scaled=await scaleTemplate(cp, Number(line.qty)||0);
+ if(!scaled){ bar.style.display='none'; return; }
+ bar.style.display='block';
+ bar.innerHTML=`For <b>${line.qty} ${esc(ap?ap.unit||'':'')}</b> of ${esc(ap?ap.name:'')}, the recipe implies:<br>`
+  + scaled.lines.filter(l=>!l.isPrimary).map(l=>`${esc(l.name)} <b>${l.qty}${esc(l.unit)}</b>`).join(' · ')
+  + `<br>Expected yield <b>${scaled.expected.toFixed(1)} ${esc(cpp?cpp.unit||'':'')}</b>.`
+  + `<br><button class="linkbtn" onclick="applyTemplateToIssue()">Fill these in</button> — you can change any of them afterwards.`;
+}
+async function applyTemplateToIssue(){
+ const cp=document.getElementById('ioCounterProduct')?.value; if(!cp)return;
+ const conv=await conversionFor(cp);
+ const anchor=primaryIngredientOf(conv); if(!anchor)return;
+ const line=(window.issueLines||[]).find(l=>l.productId===anchor.sourceProductId && (Number(l.qty)||0)>0);
+ if(!line){ alert('Enter the main ingredient quantity first.'); return; }
+ const scaled=await scaleTemplate(cp, Number(line.qty)||0);
+ if(!scaled)return;
+ for(const l of scaled.lines){
+  if(l.isPrimary) continue;
+  const existing=window.issueLines.find(x=>x.productId===l.productId);
+  // An amount already typed is left alone — the receiver decided that deliberately.
+  if(existing){ if(!(Number(existing.qty)>0)) existing.qty=String(l.qty); }
+  else window.issueLines.push({productId:l.productId, qty:String(l.qty)});
+ }
+ const qtyEl=document.getElementById('ioCounterQty');
+ if(qtyEl && !(Number(qtyEl.value)>0)) qtyEl.value=Math.round(scaled.expected);
+ drawIssueLines();
+ await drawTemplateBar();
+ await drawIssueExpected();
+}
+async function drawIssueExpected(){
+ const el=document.getElementById('ioExpected'); if(!el)return;
+ const cpEl=document.getElementById('ioCounterProduct');
+ const cp=cpEl?cpEl.value:'';
+ if(!cp || document.getElementById('ioType')?.value==='return'){ el.style.display='none'; return; }
+ const items=(window.issueLines||[]).map(l=>({productId:l.productId, qty:Number(l.qty)||0})).filter(l=>l.qty>0);
+ if(!items.length){ el.style.display='none'; return; }
+ const detail=await expectedYieldDetail(cp, items);
+ if(!detail){ el.style.display='none'; return; }
+ const {expected, anchorName, light, missing}=detail;
+ const declared=Number(document.getElementById('ioCounterQty')?.value)||0;
+ const products=await bizProducts();
+ const p=products.find(x=>x.id===cp);
+ el.style.display='block';
+ const gap=expected-declared;
+ const notes=[...missing.map(m=>m+' not issued'), ...light];
+ el.innerHTML = `Based on the <b>${esc(anchorName||'main ingredient')}</b>, this should produce about <b>${expected.toFixed(1)} ${esc(p&&p.unit?p.unit:'units')}</b> of ${esc(p?p.name:'')}.`
+  + (notes.length
+     // Reported, deliberately NOT deducted from the expectation: a cook using less salt
+     // has not cooked less rice.
+     ? `<br><span style="color:var(--muted)">Below the template: ${esc(notes.join(' · '))}. This does not change the expected yield — it changes what a portion costs.</span>`
+     : '')
+  + (declared>0 && Math.abs(gap)>0.05
+     ? `<br><span style="color:${gap>0?'var(--danger)':'var(--brass2)'}">Declared ${declared} — ${gap>0?'short by '+gap.toFixed(1):'over by '+Math.abs(gap).toFixed(1)}.</span>`
+     : '');
+}
 function addIssueLine(){ window.issueLines.push({productId:(window.ioProducts[0]||{}).id, qty:''}); drawIssueLines(); }
 function removeIssueLine(i){ window.issueLines.splice(i,1); drawIssueLines(); }
-function updateIssueLine(i,field,val){ window.issueLines[i][field]=val; }
+function updateIssueLine(i,field,val){ window.issueLines[i][field]=val; drawIssueExpected(); drawTemplateBar(); }
 async function saveStockMovement(){
  if(!requireActiveSubscription('Issuing stock'))return;
  const type=ioType.value, isReturn=type==='return';
@@ -637,6 +1058,9 @@ async function saveStockMovement(){
   receiverId:receiver.id, receiverName:receiver.name,
   items:lines,
   counterProductId:counterProductId||null, counterProductName:counterProduct?counterProduct.name:null, counterQty:counterQty||null,
+  // Stored with the batch so the variance is a fact of record, not something recomputed
+  // later from a recipe that may have been edited since.
+  expectedQty: counterProductId ? await expectedYieldFor(counterProductId, lines) : null,
   comment:(ioComment.value||'').trim(), status:'active',
   journalNumber:await nextJournalNo(), createdBy:currentActorName(),
  };
@@ -688,10 +1112,11 @@ async function showStoreKitchenBalances(){
  if(!requireOwnerMode('Store & Kitchen balances','stockPurchases'))return;
  const products=(await bizProducts()).filter(p=>p.trackStock);
  const kitchen=await kitchenBalances();
- openModal(`<h2>Store &amp; Kitchen Balances ${hb("Store is raw material physically in the store — what purchases add and issues take away. Kitchen is finished counter units — what issued batches declared as produced, minus what's been sold.")}</h2>
+ const T=stockTerms();
+ openModal(`<h2>Store &amp; ${esc(T.placeTitle)} Balances ${hb("Store is raw material physically in the store — what purchases add and issues take away. The other side is finished counter units: what issued runs declared, minus what has been sold.")}</h2>
  <div class="sectionhead"><h3>Store (raw stock)</h3></div>
  <div class="list">${products.map(p=>`<div class="row-item"><div><b>${esc(p.name)}</b><small>unit cost ${money(p.costPrice||0)}</small></div><div class="row-right"><strong class="money">${p.stockQty??0}</strong>${(p.lowStockThreshold>0 && (p.stockQty??0)<=p.lowStockThreshold)?'<span class="stamp overdue">Low</span>':''}</div></div>`).join('')||'<div class="empty">No stock-tracked products.</div>'}</div>
- <div class="sectionhead" style="margin-top:16px"><h3>Kitchen / Counter (finished units)</h3></div>
+ <div class="sectionhead" style="margin-top:16px"><h3>${esc(T.placeTitle)} / Counter (finished units)</h3></div>
  <div class="list">${Object.entries(kitchen).map(([pid,k])=>{
    const p=products.find(x=>x.id===pid) || (window.pCache||[]).find(x=>x.id===pid);
    const name=p?p.name:'(removed product)';
@@ -699,16 +1124,965 @@ async function showStoreKitchenBalances(){
   }).join('')||'<div class="empty">Nothing produced yet — record an issue and declare what the batch produced.</div>'}</div>
  <button class="btn secondary full" style="margin-top:12px" onclick="closeModal()">Close</button>`);
 }
+/* ---------------- Registries: suppliers and storekeepers ----------------
+   Both were free text before. A purchase recorded "vendor name" as whatever was typed, so
+   the same supplier appeared three ways and no per-supplier average could be trusted — and
+   the supplier average is exactly what costs every counter product. Registering them makes
+   that reliable, and records who actually received the goods into the store. */
+/* ---------------- Purchases from a registered supplier ----------------
+   Replaces free-text vendor entry. Three things are recorded that were not before: WHICH
+   registered supplier (so their own average price is trustworthy), WHO received it into the
+   store, and the product's ROLE — raw material, counter item, or utility — because the three
+   behave differently downstream and nothing else can tell them apart. */
+/* Role filters that stay safe for products created before roles existed.
+   Every existing product has role undefined, so filtering strictly on role==='raw' would
+   empty the recipe and issue screens for anyone upgrading. The old signal was stock
+   tracking, so an untagged product that is stock-tracked is treated as raw-like, and an
+   untagged one is always allowed to be a counter product. Tagging a product later makes
+   it exact; until then nothing disappears. */
+function isRawLike(p){
+  if(!p) return false;
+  if(p.role==='raw') return true;
+  if(p.role==='counter' || p.role==='utility') return false;
+  return !!p.trackStock;                 // untagged: the old rule
+}
+function isCounterLike(p){
+  if(!p) return false;
+  if(p.role==='counter') return true;
+  if(p.role==='utility') return false;
+  if(p.role==='raw') return false;
+  return true;                           // untagged: could be sold
+}
+/* Wording that follows what the business actually is.
+   Full Stock covers a restaurant AND a supermarket, and they run the same mechanics under
+   different names. A supermarket breaks a 50kg bag into 50 one-kilo packs, or a carcass
+   into cuts; a restaurant turns rice and pepper into portions. Both issue raw stock to
+   somebody who converts it and sends the result to the counter — but calling a packing
+   bench a "kitchen", or a butcher a "cook", makes the app read as though it was built for
+   somebody else's business.
+
+   Only the words change. The stock movements, costing and reconciliation are identical,
+   which is why this is a label lookup and not a second implementation. */
+function stockTerms(){
+  const store = (window.CURRENT_RETAIL_KIND === 'store');
+  return store
+    ? { receiver:'department', receiverTitle:'Departments', receiverEg:'e.g. Packing Bench',
+        place:'processing', placeTitle:'Processing', worker:'packer',
+        recipe:'Pack-down', recipeTitle:'Pack-downs', recipePlural:'pack-downs',
+        produce:'packed', batch:'run',
+        recipeHelp:'How a bulk item breaks into sellable units — a 50kg bag into 50 one-kilo packs, a carcass into cuts.' }
+    : { receiver:'cook', receiverTitle:'Receivers', receiverEg:'e.g. Kitchen',
+        place:'kitchen', placeTitle:'Kitchen', worker:'cook',
+        recipe:'Recipe', recipeTitle:'Recipes', recipePlural:'recipes',
+        produce:'produced', batch:'batch',
+        recipeHelp:'What a dish is made from and how many portions a batch yields.' };
+}
+function productRoleLabel(role){
+  return role==='raw' ? 'Raw material (issued to a kitchen or department)'
+       : role==='utility' ? 'Utility (consumed, never sold at the counter)'
+       : 'Counter item (sold as bought)';
+}
+/* ---------------- Refund and bad-stock register ----------------
+   Both events here are WRITE-OFFS. Neither returns anything to stock, because in a kitchen
+   neither actually does:
+
+   REFUND — a customer brings back food already served. It is not put back on the counter
+   and sold to somebody else, so no stock returns. What distinguishes it from spoilage is
+   the money: the customer is paid back, so revenue reverses.
+
+   BAD / SPOILAGE — dropped, burnt, or gone off. No stock returns and no money moves. A
+   straight loss.
+
+   Both reduce the EXPECTED SALES COUNT, which is the point of recording them. The kitchen
+   was issued raw material that produced units; these units are now declared gone, so the
+   counter is credited for them and nobody is held short for a loss already reported.
+
+   Returning UNSOLD stock to the store is a different event entirely — five bottles of
+   water that never sold, physically handed back — and that belongs on Issue / Return
+   Stock, where it genuinely increases store stock. It was previously handled here, which
+   ALSO converted backwards through the recipe and credited raw rice that had never come
+   back: stock invented from a returned cooked dish. */
+/* ---------------- Counter accountability ----------------
+   The question this answers: the kitchen was issued raw material that should have produced
+   N units — did the counter account for all of them?
+
+       issued 5kg rice  →  expected 80 spoons (at 1kg : 16)
+       sold 72 · refunded 2 · bad 3  →  3 spoons unaccounted for
+
+   Refunds and bad stock are counted here as INDEPENDENT figures, not as reductions of the
+   sold quantity. They are declared losses: the counter is credited for them, so nobody is
+   held short for something already reported. What remains after all three is the genuine
+   shortfall — or a surplus, which usually means an issue went unrecorded rather than that
+   the counter invented stock. */
+/* ---------------- Utilities on meter readings ----------------
+   Gas and generator fuel are bought and consumed but never sold at the counter, so a stock
+   balance is the wrong tool: nothing ever decrements it and it grows forever, making every
+   stock report wrong. What is actually known is a meter: an opening reading and a closing
+   reading, with consumption the difference.
+
+   Recorded per product per day. Cost is the supplier average at that date, so a day's gas
+   consumption carries a real money figure into the expense picture without anyone having
+   to price it by hand. */
+async function showUtilityReadings(){
+ if(!requireOwnerMode('Utility readings','utilities'))return;
+ const utilities=(await bizProducts()).filter(p=>p.role==='utility');
+ if(!utilities.length){
+  alert('No utilities registered yet.\n\nUnder Products / Services, set a product\'s role to "Utility" — gas, diesel, generator fuel. Those are measured by meter reading rather than counted as stock.');
+  return;
+ }
+ const today=todayISO();
+ openModal(`<h2>Utility Readings ${hb("Gas and fuel are consumed, not sold. Record the opening and closing meter reading and the consumption works itself out — including what it cost, from your purchase history.")}</h2>
+ <div class="row2">
+  <div class="field"><label for="utProduct">Utility</label><select id="utProduct" onchange="refreshUtilityDay()">${utilities.map(p=>`<option value="${p.id}">${esc(p.name)}${p.unit?' ('+esc(p.unit)+')':''}</option>`).join('')}</select></div>
+  <div class="field"><label for="utDate">Date</label><input id="utDate" type="date" value="${today}" onchange="refreshUtilityDay()"></div>
+ </div>
+ <div class="row2">
+  <div class="field"><label for="utStart">Opening reading</label><input id="utStart" type="number" step="any" min="0" oninput="drawUtilityPreview()"></div>
+  <div class="field"><label for="utEnd">Closing reading</label><input id="utEnd" type="number" step="any" min="0" oninput="drawUtilityPreview()"></div>
+ </div>
+ <div id="utPreview" class="notice" style="font-size:12.5px">Enter both readings.</div>
+ <button class="btn accent full" onclick="saveUtilityReading()">Save Reading</button>
+ <div class="sectionhead" style="margin-top:14px"><h3>Recent</h3></div>
+ <div id="utHistory"><div class="empty">—</div></div>
+ <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Close</button>`);
+ await refreshUtilityDay();
+}
+async function refreshUtilityDay(){
+ const pid=document.getElementById('utProduct')?.value, date=document.getElementById('utDate')?.value;
+ if(!pid||!date)return;
+ // Pre-fill an existing entry for this product and day, so a closing reading added later
+ // updates the same record rather than creating a second one for the same day.
+ const existing=(await bizUtilityReadings()).find(r=>r.productId===pid && r.date===date && r.status!=='voided');
+ const s=document.getElementById('utStart'), e=document.getElementById('utEnd');
+ if(s) s.value = existing && existing.startReading!=null ? existing.startReading : '';
+ if(e) e.value = existing && existing.endReading!=null ? existing.endReading : '';
+ await drawUtilityPreview();
+ await drawUtilityHistory();
+}
+async function drawUtilityPreview(){
+ const el=document.getElementById('utPreview'); if(!el)return;
+ const pid=document.getElementById('utProduct').value;
+ const start=document.getElementById('utStart').value, end=document.getElementById('utEnd').value;
+ if(start===''||end===''){ el.textContent='Enter both readings and the consumption is worked out for you.'; return; }
+ const used=Number(end)-Number(start);
+ const products=await bizProducts();
+ const p=products.find(x=>x.id===pid);
+ if(used<0){ el.innerHTML='<b style="color:var(--danger)">The closing reading is lower than the opening one.</b> Check the figures — or if the meter was reset or refilled, record the day in two parts.'; return; }
+ const c=await resolveUnitCost(pid, document.getElementById('utDate').value);
+ el.innerHTML = `Consumption: <b>${used.toFixed(2)} ${esc(p&&p.unit?p.unit:'units')}</b>`
+  + (c.cost>0 ? ` · at ${money(c.cost)} per ${esc(p&&p.unit?p.unit:'unit')} that is <b>${money(used*c.cost)}</b>` : ' · no purchase history yet, so no cost can be worked out');
+}
+async function saveUtilityReading(){
+ if(!requireActiveSubscription('Recording a utility reading'))return;
+ const pid=utProduct.value, date=utDate.value;
+ const start=utStart.value, end=utEnd.value;
+ if(start===''&&end===''){ alert('Enter at least one reading.'); return; }
+ if(start!==''&&end!==''&&Number(end)<Number(start)){ alert('The closing reading is lower than the opening one. Check the figures.'); return; }
+ const products=await bizProducts();
+ const p=products.find(x=>x.id===pid); if(!p) return;
+ const bizId=await getActiveBusinessId();
+ const existing=(await bizUtilityReadings()).find(r=>r.productId===pid && r.date===date && r.status!=='voided');
+ const startReading = start===''? (existing?existing.startReading:null) : Number(start);
+ const endReading   = end===''  ? (existing?existing.endReading:null)   : Number(end);
+ const used = (startReading!=null && endReading!=null) ? endReading-startReading : null;
+ const c = used!=null ? await resolveUnitCost(pid, date) : {cost:0, basis:'none'};
+ const rec = {
+  id: existing ? existing.id : crypto.randomUUID(),
+  businessId:bizId, productId:pid, productName:p.name, unit:p.unit||'',
+  date, startReading, endReading, consumed:used,
+  unitCost: used!=null ? (c.cost||0) : 0,
+  costValue: used!=null ? used*(c.cost||0) : 0,
+  costBasis: c.basis||'none',
+  journalNumber: existing ? existing.journalNumber : await nextJournalNo(),
+  status:'active', createdBy:currentActorName(),
+ };
+ await put('utilityReadings',rec);
+ await refreshUtilityDay();
+ alert(used!=null
+  ? 'Saved. '+used.toFixed(2)+' '+(p.unit||'units')+' consumed'+(rec.costValue?', costing '+money(rec.costValue):'')+'.'
+  : 'Saved. Add the other reading to work out consumption.');
+}
+async function drawUtilityHistory(){
+ const el=document.getElementById('utHistory'); if(!el)return;
+ const pid=document.getElementById('utProduct')?.value;
+ const rows=(await bizUtilityReadings()).filter(r=>r.productId===pid && r.status!=='voided')
+   .sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,14);
+ el.innerHTML = rows.map(r=>`<div class="row-item">
+  <div><b>${esc(r.date)}</b><small>${r.startReading??'—'} → ${r.endReading??'—'}</small></div>
+  <div class="row-right">${r.consumed!=null?`<strong class="money">${r.consumed.toFixed(2)} ${esc(r.unit||'')}</strong>`:'<small style="color:var(--muted)">incomplete</small>'}${r.costValue?`<small>${money(r.costValue)}</small>`:''}</div>
+ </div>`).join('') || '<div class="empty">Nothing recorded for this utility yet.</div>';
+}
+/* ---------------- 1. Buy Sell Report ----------------
+   One row per raw product showing BOTH sides together: what came in from suppliers, and
+   what it turned into at the counter. Rice bought for ₦50,000 becomes jollof AND white
+   rice, and both are aggregated back onto the rice row through their conversions.
+
+   Nothing else answers "I spent this on rice — what did it actually turn into?". Purchase
+   reports show one side, sales reports the other, and the link between them is the
+   conversion, which only this report walks. A counter product with no raw counterpart at
+   all still gets its own sold-only row, so nothing is quietly omitted. */
+/* ---------------- 2. Forecast ----------------
+   Projects next week's purchase quantity and budget per raw product from the last five
+   weeks. Two signals, deliberately combined rather than picking one:
+
+     PURCHASE TREND — a least-squares line through weekly quantities, not a flat average.
+       A shop steadily buying more rice each week should see a forecast that rises; an
+       average would keep predicting the middle of a trend it is already past.
+
+     DEMAND — counter sales of everything made from that raw product, translated back into
+       raw terms through the conversion ratio. This is what customers actually took.
+
+   Weighted 60% demand, 40% purchase history. Demand is the more direct signal, but a
+   single week of heavy buying (a bulk deal, a festival) should not be ignored entirely.
+   Where only one signal exists it carries the whole forecast. */
+function linearTrendNext(values){
+  // Least squares over weekly points; returns the projection for the next period.
+  const n=values.length;
+  if(n===0) return 0;
+  if(n===1) return values[0];
+  let sx=0, sy=0, sxy=0, sxx=0;
+  for(let i=0;i<n;i++){ sx+=i; sy+=values[i]; sxy+=i*values[i]; sxx+=i*i; }
+  const denom=(n*sxx)-(sx*sx);
+  if(denom===0) return sy/n;
+  const slope=((n*sxy)-(sx*sy))/denom;
+  const intercept=(sy-slope*sx)/n;
+  const next=intercept+slope*n;
+  return next>0?next:0;   // a falling trend can go negative; you cannot buy negative rice
+}
+function weekKeyOf(dateStr){
+  // Weeks anchored to the date itself rather than a calendar week number, so the buckets
+  // are simply "how many 7-day blocks back from today".
+  const d=new Date(dateStr+'T00:00:00');
+  return Math.floor((Date.now()-d.getTime())/(7*86400000));
+}
+/* ---------------- 4. Stock balances as of a date ----------------
+   A point-in-time snapshot rather than the current balance. Answers "what did I hold on the
+   30th" — needed for a month-end count, an insurance claim, or checking a figure someone
+   disputes weeks later. Reconstructed from movements rather than stored, because a stored
+   balance only ever knows about now. */
+async function showStockAsOf(){
+ if(!requireOwnerMode('Stock as of a date','stockAsOf'))return;
+ openModal(`<h2>Stock As Of a Date ${hb("What you held on a chosen day, rebuilt from purchases, issues, returns and sales — not the current balance.")}</h2>
+ <div class="field"><label for="saDate">As of the end of</label><input id="saDate" type="date" value="${todayISO()}"></div>
+ <button class="btn accent full" onclick="runStockAsOf()">Show</button>
+ <div id="saBody"><div class="empty">Choose a date.</div></div>
+ <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Close</button>`);
+}
+async function runStockAsOf(){
+ const asOf=saDate.value;
+ const el=document.getElementById('saBody'); if(!el)return;
+ el.innerHTML='<div class="empty">Working…</div>';
+ const [products, purchases, movements, invoices, losses] = await Promise.all([
+   bizProducts(), bizStockPurchases(), bizStockMovements(), bizInvoices(), bizCounterSales()]);
+ const upTo=d=>(d||'')<=asOf;
+ const bal={};
+ const add=(id,n)=>{ if(!id)return; bal[id]=(bal[id]||0)+n; };
+ for(const p of purchases){
+  if(p.status==='voided' || !upTo(p.date)) continue;
+  /* Three record types live in this store and they move stock in different directions:
+       'purchase'   — goods in from a supplier, ADDS.
+       'produced'   — units made by the Recipes screen, ADDS. Written with a positive
+                      quantity and the product's stockQty is increased to match.
+       'adjustment' — a write-off, or an ingredient consumed by production. Stored as a
+                      POSITIVE quantity but SUBTRACTS, because saveStockPurchase does
+                      `stockQty - qty` for it.
+     Treating 'produced' as an adjustment (as an earlier version did, by lumping everything
+     that was not a purchase together) subtracted units that had just been made — so a
+     product produced through Recipes went doubly negative: never credited, then debited. */
+  const t=p.type;
+  add(p.productId, (t==='purchase'||t==='produced') ? (Number(p.qty)||0) : -(Number(p.qty)||0));
+ }
+ for(const m of movements){
+  if(m.status==='voided' || !upTo(m.date)) continue;
+  // Raw materials leave the store on an issue and come back on a return.
+  for(const it of (m.items||[])) add(it.productId, m.type==='return' ? (Number(it.qty)||0) : -(Number(it.qty)||0));
+  /* And the batch PRODUCES counter units. Omitting this (as an earlier version did) meant
+     sales were subtracted from a product that was never credited with being made, so every
+     made-to-order item drifted steadily negative — and a negative balance is exactly the
+     signal this report uses to flag a missing purchase, so the error disguised itself as
+     the very problem it was supposed to detect. */
+  if(m.type==='issue' && m.counterProductId) add(m.counterProductId, Number(m.counterQty)||0);
+ }
+ for(const inv of invoices){
+  if(inv.status==='void' || !upTo(inv.date)) continue;
+  for(const it of (inv.items||[])) add(it.productId, -(Number(it.qty)||0));
+ }
+ for(const l of losses){
+  if(l.status==='voided' || !upTo(l.date)) continue;
+  if(l.returnedToStock) add(l.productId, Number(l.returnedToStock)||0);
+  // A write-off consumes the unit whether or not any money came back, so it leaves stock
+  // unless it was explicitly returned to it.
+  else add(l.productId, -(Number(l.qty)||0));
+ }
+ const rows=products.filter(p=>p.role!=='utility' && (p.trackStock || bal[p.id]))
+   .map(p=>({p, qty:bal[p.id]||0}))
+   .sort((a,b)=>a.p.name.localeCompare(b.p.name));
+ if(!rows.length){ el.innerHTML='<div class="empty">No stock-tracked products.</div>'; return; }
+ el.innerHTML = rows.map(r=>`<div class="row-item">
+   <div><b>${esc(r.p.name)}</b><small>${esc(r.p.unit||'')}</small></div>
+   <div class="row-right"><strong class="money">${r.qty.toFixed(2)}</strong>${r.qty<0?'<span class="stamp overdue">negative</span>':''}</div>
+  </div>`).join('')
+  + `<div class="notice" style="font-size:12px">Rebuilt from every movement up to ${esc(asOf)}. A negative figure means more was issued or sold than was ever recorded as bought — usually an unrecorded purchase rather than an impossible balance.</div>`;
+}
+async function showForecastReport(){
+ if(!requireOwnerMode('Forecast','forecastReport'))return;
+ openModal(`<h2>Next Week's Buying ${hb("A projection per raw product from the last five weeks — what you have been buying, and what customers have actually been taking. Not a promise; a starting point for the market list.")}</h2>
+ <div id="fcBody"><div class="empty">Working…</div></div>
+ <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Close</button>`);
+ await runForecastReport();
+}
+async function runForecastReport(){
+ const el=document.getElementById('fcBody'); if(!el)return;
+ const [products, purchases, invoices, conversions] = await Promise.all([
+   bizProducts(), bizStockPurchases(), bizInvoices(),
+   (async()=>{const id=await getActiveBusinessId(); return (await all('conversions')).filter(c=>c.businessId===id && c.active!==false);})()
+ ]);
+ const WEEKS=5;
+ // Weekly purchase quantities per raw product, oldest week first.
+ const buyWeeks={};
+ for(const p of purchases){
+  if(p.status==='voided' || p.type!=='purchase' || !p.date) continue;
+  const w=weekKeyOf(p.date);
+  if(w<0 || w>=WEEKS) continue;
+  buyWeeks[p.productId]=buyWeeks[p.productId]||new Array(WEEKS).fill(0);
+  buyWeeks[p.productId][WEEKS-1-w]+=Number(p.qty)||0;
+ }
+ // Weekly counter sales, translated back to raw quantities via the conversion ratio.
+ const demandWeeks={};
+ for(const inv of invoices){
+  if(inv.status==='void' || !inv.date) continue;
+  const w=weekKeyOf(inv.date);
+  if(w<0 || w>=WEEKS) continue;
+  for(const it of (inv.items||[])){
+   const conv=conversions.find(c=>c.soldProductId===it.productId);
+   const yq=Number(conv&&conv.yieldsQty)||0;
+   if(!conv || yq<=0) continue;
+   // Each ingredient's own consumption, so selling jollof raises the forecast for rice AND
+   // pepper AND oil in their correct proportions.
+   const batches=(Number(it.qty)||0)/yq;
+   for(const ing of recipeIngredients(conv)){
+    const raw=batches*(Number(ing.qtyUsed)||0);
+    if(!(raw>0)) continue;
+    demandWeeks[ing.sourceProductId]=demandWeeks[ing.sourceProductId]||new Array(WEEKS).fill(0);
+    demandWeeks[ing.sourceProductId][WEEKS-1-w]+=raw;
+   }
+  }
+ }
+ const rows=[];
+ for(const p of products){
+  if(p.role==='utility') continue;
+  const b=buyWeeks[p.id], d=demandWeeks[p.id];
+  if(!b && !d) continue;
+  const buyNext=b?linearTrendNext(b):null;
+  const demNext=d?linearTrendNext(d):null;
+  let projected, basis;
+  if(buyNext!=null && demNext!=null){ projected=(demNext*0.6)+(buyNext*0.4); basis='demand and purchase history'; }
+  else if(demNext!=null){ projected=demNext; basis='demand only'; }
+  else { projected=buyNext; basis='purchase history only'; }
+  if(!(projected>0)) continue;
+  const cost=await supplierAverageCost(p.id);
+  rows.push({product:p, projected, budget:(cost||0)*projected, basis,
+             weeks:b||d, unitCost:cost||0, hasCost:cost!=null});
+ }
+ if(!rows.length){ el.innerHTML='<div class="empty">Not enough history yet. A few weeks of purchases or counter sales are needed before anything can be projected.</div>'; return; }
+ rows.sort((a,b)=>b.budget-a.budget);
+ const total=rows.reduce((a,r)=>a+r.budget,0);
+ el.innerHTML = rows.map(r=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px">
+   <div style="display:flex;justify-content:space-between"><b>${esc(r.product.name)}</b><strong class="money">${r.projected.toFixed(1)} ${esc(r.product.unit||'')}</strong></div>
+   <div style="display:flex;justify-content:space-between">
+    <small style="color:var(--muted)">Last ${r.weeks.length} weeks: ${r.weeks.map(v=>v.toFixed(0)).join(' · ')}</small>
+    <small>${r.hasCost?money(r.budget):'no cost history'}</small>
+   </div>
+   <small style="color:var(--muted)">Based on ${esc(r.basis)}</small>
+  </div>`).join('')
+  + `<div class="totalBox"><div class="totalRow grand"><span>Projected budget</span><b>${money(total)}</b></div></div>
+     <div class="notice" style="font-size:12px">A projection from five weeks of history, leaning toward what customers actually bought. Treat it as a starting point for the market list — it cannot know about a festival, a closure, or a price shock coming.</div>`;
+}
+/* ---------------- Product Profitability ----------------
+   Which dishes actually make money. Revenue against what each one really cost to make,
+   using whichever cost basis applies to that product — purchases for goods bought and
+   resold, the recipe for something cooked, actual batches where that route is chosen.
+
+   Three things this does that a plain sales report cannot:
+     - separates COGS from BAD LOSS. Food spoiled was still bought and still cost money, but
+       it is not a cost OF SALES — lumping them together makes a good seller look weak
+       simply because a batch went off one day;
+     - shows the refund cost at COST, not at the price refunded, so one generous refund does
+       not swamp a product's margin;
+     - says plainly when it has no cost basis for a product, rather than printing a
+       confident 100% margin built on a missing number. A blank is honest; a wrong figure
+       gets acted on. */
+async function showProductProfit(){
+ if(!requireOwnerMode('Product profitability','productProfit'))return;
+ const today=todayISO(), first=todayISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+ openModal(`<h2>Product Profitability ${hb("Revenue against real cost, per product. Spoilage is shown apart from cost of sales, because food that went off is a loss but not a cost of selling.")}</h2>
+ <div class="row2">
+  <div class="field"><label for="ppFrom">From</label><input id="ppFrom" type="date" value="${first}"></div>
+  <div class="field"><label for="ppTo">To</label><input id="ppTo" type="date" value="${today}"></div>
+ </div>
+ <button class="btn accent full" onclick="runProductProfit()">Run</button>
+ <div id="ppBody"><div class="empty">Choose a period and run.</div></div>
+ <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Close</button>`);
+}
+async function runProductProfit(){
+ const from=ppFrom.value, to=ppTo.value;
+ const el=document.getElementById('ppBody'); if(!el)return;
+ el.innerHTML='<div class="empty">Working…</div>';
+ const [products, invoices, losses] = await Promise.all([bizProducts(), bizInvoices(), bizCounterSales()]);
+ const inRange=d=>(!from||(d||'')>=from)&&(!to||(d||'')<=to);
+ const rows={};
+ const rowFor=p=>rows[p.id]=rows[p.id]||{product:p, qtySold:0, revenue:0, qtyBad:0, qtyRefunded:0,
+                                          cogs:0, badLoss:0, refundCost:0, cashRefunded:0, unitCost:0, basis:'none'};
+ for(const inv of invoices){
+  if(inv.status==='void' || !inRange(inv.date)) continue;
+  for(const it of (inv.items||[])){
+   const p=products.find(x=>x.id===it.productId); if(!p) continue;
+   const r=rowFor(p);
+   r.qtySold += Number(it.qty)||0;
+   r.revenue += (Number(it.qty)||0)*(Number(it.price)||0);
+  }
+ }
+ for(const l of losses){
+  if(l.status==='voided' || !inRange(l.date)) continue;
+  const p=products.find(x=>x.id===l.productId); if(!p) continue;
+  const r=rowFor(p);
+  if(l.type==='bad'){ r.qtyBad += Number(l.qty)||0; r.badLoss += Number(l.costValue)||0; }
+  else { r.qtyRefunded += Number(l.qty)||0; r.refundCost += Number(l.costValue)||0; r.cashRefunded += Number(l.cashReturned)||0; }
+ }
+ const list=Object.values(rows);
+ for(const r of list){
+  const c=await resolveUnitCost(r.product.id, to);
+  r.unitCost=c.cost||0; r.basis=c.basis||'none'; r.costIncomplete=(c.complete===false);
+  r.cogs = r.qtySold * r.unitCost;
+  // Where a loss was recorded before costing existed, fall back to the current unit cost
+  // rather than reporting it as free.
+  if(!r.badLoss && r.qtyBad) r.badLoss = r.qtyBad * r.unitCost;
+  if(!r.refundCost && r.qtyRefunded) r.refundCost = r.qtyRefunded * r.unitCost;
+  r.profit = r.revenue - r.cogs - r.badLoss - r.refundCost;
+  r.hasCost = r.unitCost>0;
+ }
+ if(!list.length){ el.innerHTML='<div class="empty">Nothing sold in this period.</div>'; return; }
+ list.sort((a,b)=>b.profit-a.profit);
+ const t=list.reduce((a,r)=>({rev:a.rev+r.revenue, cogs:a.cogs+r.cogs, bad:a.bad+r.badLoss+r.refundCost, pr:a.pr+r.profit}),{rev:0,cogs:0,bad:0,pr:0});
+ const noCost=list.filter(r=>!r.hasCost).length;
+ el.innerHTML = list.map(r=>{
+   const margin = r.revenue>0 ? (r.profit/r.revenue)*100 : 0;
+   return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px">
+    <div style="display:flex;justify-content:space-between"><b>${esc(r.product.name)}</b><strong class="money" style="color:${r.profit>=0?'var(--brass2)':'var(--danger)'}">${money(r.profit)}</strong></div>
+    <div class="row2" style="gap:6px">
+     <small>Sold <b>${r.qtySold}</b> · ${money(r.revenue)}</small>
+     <small>${r.hasCost?`Cost ${money(r.unitCost)} each · ${money(r.cogs)}`:'<span style="color:var(--danger)">no cost basis</span>'}</small>
+    </div>
+    ${(r.qtyBad||r.qtyRefunded)?`<small style="color:var(--muted)">${r.qtyBad?`Spoiled ${r.qtyBad} (${money(r.badLoss)})`:''}${r.qtyBad&&r.qtyRefunded?' · ':''}${r.qtyRefunded?`Refunded ${r.qtyRefunded} (cost ${money(r.refundCost)}, cash back ${money(r.cashRefunded)})`:''}</small>`:''}
+    ${r.hasCost?`<small style="color:${margin>=0?'var(--muted)':'var(--danger)'}">Margin ${margin.toFixed(1)}% · cost from ${esc(r.basis)}${r.costIncomplete?' (some batches were missing ingredients, so this cost is understated)':''}</small>`:''}
+   </div>`;
+  }).join('')
+  + `<div class="totalBox">
+      <div class="totalRow"><span>Revenue</span><b>${money(t.rev)}</b></div>
+      <div class="totalRow"><span>Cost of sales</span><b>-${money(t.cogs)}</b></div>
+      <div class="totalRow"><span>Spoilage &amp; refunds, at cost</span><b>-${money(t.bad)}</b></div>
+      <div class="totalRow grand"><span>Gross profit</span><b>${money(t.pr)}</b></div>
+     </div>`
+  + (noCost?`<div class="notice" style="font-size:12px;border-color:var(--danger)"><b>${noCost} product(s) have no cost basis</b>, so their full revenue is counted as profit and the total above is optimistic. Record a purchase for them, set a recipe, or enter a cost price.</div>`:'')
+  + `<div class="notice" style="font-size:12px">Spoilage is kept apart from cost of sales on purpose: food that went off cost money but was never sold, and folding it into cost makes a good seller look weak because of one bad batch.</div>`;
+}
+async function showBuySellReport(){
+ if(!requireOwnerMode('Buy / Sell report','buySellReport'))return;
+ const today=todayISO(), first=todayISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+ openModal(`<h2>Buy vs Sell ${hb("What you bought against what it became. Each raw product shows its purchases and the counter sales of everything made from it.")}</h2>
+ <div class="row2">
+  <div class="field"><label for="bsFrom">From</label><input id="bsFrom" type="date" value="${first}"></div>
+  <div class="field"><label for="bsTo">To</label><input id="bsTo" type="date" value="${today}"></div>
+ </div>
+ <button class="btn accent full" onclick="runBuySellReport()">Run</button>
+ <div id="bsBody"><div class="empty">Choose a period and run.</div></div>
+ <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Close</button>`);
+}
+async function runBuySellReport(){
+ const from=bsFrom.value, to=bsTo.value;
+ const el=document.getElementById('bsBody'); if(!el)return;
+ el.innerHTML='<div class="empty">Working…</div>';
+ const [products, purchases, invoices, conversions] = await Promise.all([
+   bizProducts(), bizStockPurchases(), bizInvoices(),
+   (async()=>{const id=await getActiveBusinessId(); return (await all('conversions')).filter(c=>c.businessId===id && c.active!==false);})()
+ ]);
+ const inRange=d=>(!from||(d||'')>=from)&&(!to||(d||'')<=to);
+
+ // Bought side, per product.
+ const bought={};
+ for(const p of purchases){
+  if(p.status==='voided' || p.type!=='purchase' || !inRange(p.date)) continue;
+  const b=bought[p.productId]=bought[p.productId]||{qty:0,value:0};
+  b.qty+=Number(p.qty)||0; b.value+=(Number(p.qty)||0)*(Number(p.unitCost)||0);
+ }
+ // Sold side, per counter product.
+ const sold={};
+ for(const inv of invoices){
+  if(inv.status==='void' || !inRange(inv.date)) continue;
+  for(const it of (inv.items||[])){
+   if(!it.productId) continue;
+   const s=sold[it.productId]=sold[it.productId]||{qty:0,value:0};
+   s.qty+=Number(it.qty)||0; s.value+=(Number(it.qty)||0)*(Number(it.price)||0);
+  }
+ }
+ // Attribute each counter product's sales back to the raw product it is made from.
+ const soldByRaw={}, attributed=new Set();
+ for(const c of conversions){
+  const s=sold[c.soldProductId]; if(!s) continue;
+  const ings=recipeIngredients(c); if(!ings.length) continue;
+  const cp=products.find(x=>x.id===c.soldProductId);
+  /* A dish made from several ingredients is attributed to EVERY one of them. The sales
+     value is not split between them — each raw product's row answers "what did my rice
+     turn into", and the same jollof is part of the answer for rice, pepper and oil alike.
+     Splitting it would make each row understate what the ingredient contributed to. */
+  for(const ing of ings){
+   const r=soldByRaw[ing.sourceProductId]=soldByRaw[ing.sourceProductId]||{qty:0,value:0,made:[]};
+   r.qty+=s.qty; r.value+=s.value;
+   r.made.push((cp?cp.name:'?')+' ×'+s.qty);
+  }
+  attributed.add(c.soldProductId);
+ }
+ const rows=[];
+ for(const p of products){
+  const b=bought[p.id], sr=soldByRaw[p.id], direct=(!attributed.has(p.id) && sold[p.id]) ? sold[p.id] : null;
+  if(!b && !sr && !direct) continue;
+  rows.push({
+   product:p, unit:p.unit||'',
+   boughtQty:b?b.qty:0, boughtValue:b?b.value:0,
+   avgPrice:(b&&b.qty)?b.value/b.qty:0,
+   soldQty:(sr?sr.qty:0)+(direct?direct.qty:0),
+   soldValue:(sr?sr.value:0)+(direct?direct.value:0),
+   made: sr?sr.made:[],
+   soldOnly: !b,
+  });
+ }
+ if(!rows.length){ el.innerHTML='<div class="empty">Nothing bought or sold in this period.</div>'; return; }
+ rows.sort((a,b)=>b.boughtValue-a.boughtValue);
+ /* Totals are computed from the SOURCE figures, not by summing the rows above.
+    Each row deliberately shows the full sales of everything made from that ingredient, so a
+    dish using rice, pepper and oil appears in all three rows — which is what makes "what did
+    my rice turn into" answerable. Adding those rows up would count the same sale three
+    times: a ₦50,400 jollof sale would total ₦151,200. Purchases are safe to sum (each
+    purchase belongs to one product) but sales are not. */
+ const tot={
+   b: rows.reduce((a,r)=>a+r.boughtValue,0),
+   s: Object.values(sold).reduce((a,v)=>a+v.value,0),
+ };
+ el.innerHTML = rows.map(r=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px">
+   <div style="display:flex;justify-content:space-between"><b>${esc(r.product.name)}</b>${r.soldOnly?'<span class="stamp">sold only</span>':''}</div>
+   <div class="row2" style="gap:6px">
+    <small>Bought <b>${r.boughtQty}</b> ${esc(r.unit)} · avg ${money(r.avgPrice)} · <b>${money(r.boughtValue)}</b></small>
+    <small>Sold <b>${r.soldQty}</b> · <b>${money(r.soldValue)}</b></small>
+   </div>
+   ${r.made.length?`<small style="color:var(--muted)">Became: ${esc(r.made.join(', '))}</small>`:''}
+   ${r.boughtValue>0?`<small style="color:${r.soldValue>=r.boughtValue?'var(--brass2)':'var(--danger)'}">${r.soldValue>=r.boughtValue?'Turned '+money(r.boughtValue)+' into '+money(r.soldValue):'Sold '+money(r.soldValue)+' against '+money(r.boughtValue)+' bought — much may still be in stock'}</small>`:''}
+  </div>`).join('')
+  + `<div class="totalBox"><div class="totalRow"><span>Total bought</span><b>${money(tot.b)}</b></div><div class="totalRow grand"><span>Total sold</span><b>${money(tot.s)}</b></div></div>
+     <div class="notice" style="font-size:12px">Each row shows the whole sales of everything made from that ingredient, so a dish appears under every ingredient it uses — the rows are not meant to be added up. The total above counts each sale once.<br><br>Bought and sold rarely match in one period — goods bought late in the month are still in stock, and goods sold early were bought before it. Read the trend across periods, not one row.</div>`;
+}
+async function showCounterAccountability(){
+ if(!requireOwnerMode('Counter accountability','counterAccountability'))return;
+ const today=todayISO();
+ const first=todayISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+ openModal(`<h2>Counter Accountability ${hb("What the kitchen was issued should equal what the counter sold, refunded, or declared bad. Anything left over is unaccounted for.")}</h2>
+ <div class="row2">
+  <div class="field"><label for="caFrom">From</label><input id="caFrom" type="date" value="${first}"></div>
+  <div class="field"><label for="caTo">To</label><input id="caTo" type="date" value="${today}"></div>
+ </div>
+ <button class="btn accent full" onclick="runCounterAccountability()">Run</button>
+ <div id="caBody"><div class="empty">Choose a period and run.</div></div>
+ <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Close</button>`);
+}
+async function runCounterAccountability(){
+ const from=caFrom.value, to=caTo.value;
+ const el=document.getElementById('caBody'); if(!el)return;
+ el.innerHTML='<div class="empty">Working…</div>';
+ const [products, movements, losses, invoices] = await Promise.all([bizProducts(), bizStockMovements(), bizCounterSales(), bizInvoices()]);
+ const inRange=d=>(!from||(d||'')>=from)&&(!to||(d||'')<=to);
+
+ // Expected units, from what was actually issued and declared as produced.
+ const rows={};
+ for(const m of movements){
+  if(m.status==='voided' || m.type!=='issue' || !inRange(m.date)) continue;
+  if(!m.counterProductId) continue;
+  const p=products.find(x=>x.id===m.counterProductId); if(!p) continue;
+  if(!rows[p.id]) rows[p.id]={product:p, declared:0, expected:0, sold:0, refunded:0, bad:0, receivers:new Set(), partial:false, missing:new Set()};
+  rows[p.id].declared += Number(m.counterQty)||0;
+  const det=await expectedYieldDetail(p.id, m.items||[]);
+  // Where no recipe exists, the cook's own declared figure is the only benchmark available.
+  rows[p.id].expected += (det ? det.expected : (Number(m.counterQty)||0));
+  // Tracked so a shortfall built on partial issuing is not read as a straight loss.
+  if(det && !det.complete){ rows[p.id].partial = true; for(const mm of det.missing) rows[p.id].missing.add(mm); for(const ll of det.light) rows[p.id].missing.add(ll); }
+  if(m.receiverName) rows[p.id].receivers.add(m.receiverName);
+ }
+ // Sold, from real invoices.
+ for(const inv of invoices){
+  if(inv.status==='void' || !inRange(inv.date)) continue;
+  for(const it of (inv.items||[])){
+   if(!it.productId || !rows[it.productId]) continue;
+   rows[it.productId].sold += Number(it.qty)||0;
+  }
+ }
+ // Refunds and bad, as independent declared figures.
+ for(const l of losses){
+  if(l.status==='voided' || !inRange(l.date) || !rows[l.productId]) continue;
+  if(l.type==='refund') rows[l.productId].refunded += Number(l.qty)||0;
+  else if(l.type==='bad') rows[l.productId].bad += Number(l.qty)||0;
+ }
+ const list=Object.values(rows);
+ if(!list.length){ el.innerHTML='<div class="empty">No batches were issued in this period.</div>'; return; }
+ el.innerHTML = list.map(r=>{
+  const accountedFor = r.sold + r.refunded + r.bad;
+  const gap = r.expected - accountedFor;
+  const short = gap > 0.001, over = gap < -0.001;
+  const yieldGap = r.expected - r.declared;
+  return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:5px">
+   <div style="display:flex;justify-content:space-between"><b>${esc(r.product.name)}</b>${r.receivers.size?`<small>${esc([...r.receivers].join(', '))}</small>`:''}</div>
+   <div class="row2" style="gap:6px">
+    <small>Expected from what was issued: <b>${r.expected.toFixed(1)}</b></small>
+    <small>Cook declared produced: <b>${r.declared.toFixed(1)}</b></small>
+   </div>
+   ${Math.abs(yieldGap)>0.001?`<small style="color:${yieldGap>0?'var(--danger)':'var(--brass2)'}">Yield ${yieldGap>0?'short by '+yieldGap.toFixed(1):'over by '+Math.abs(yieldGap).toFixed(1)} against the recipe</small>`:''}
+   <div class="rRule" style="border-top:1px dashed var(--line);margin:2px 0"></div>
+   <small>Sold ${r.sold.toFixed(1)} · refunded ${r.refunded.toFixed(1)} · declared bad ${r.bad.toFixed(1)} → accounted for <b>${accountedFor.toFixed(1)}</b></small>
+   <div style="display:flex;justify-content:space-between;align-items:center">
+    <b style="color:${short?'var(--danger)':(over?'var(--brass2)':'var(--ink)')}">
+     ${short?'Unaccounted for: '+gap.toFixed(1):(over?'Surplus: '+Math.abs(gap).toFixed(1):'Fully accounted for')}
+    </b>
+    ${short?`<span class="stamp overdue">SHORT</span>`:(over?`<span class="stamp">CHECK</span>`:`<span class="stamp paid">OK</span>`)}
+   </div>
+   ${over?`<small style="color:var(--muted)">A surplus usually means a batch was issued without being recorded, rather than stock appearing at the counter.</small>`:''}
+   ${r.partial?`<small style="color:var(--muted)">Some batches ran below the template on: ${esc([...r.missing].join(' · '))}. The expected yield above is unaffected — it follows the main ingredient — but those portions cost less to make than the recipe implies.</small>`:''}
+  </div>`;
+ }).join('');
+}
+/* Whether a refunded item can go back into stock.
+   Not a property of the business but of the PRODUCT: a restaurant writes off a returned
+   plate of jollof and puts a returned unopened Coke straight back on the shelf. Judging it
+   by business type would get one of those wrong every time.
+
+   The default is derived from how the product comes to exist:
+     - made or cooked (it has a recipe/conversion) → not resellable, written off;
+     - bought and resold as-is (packaged goods) → back into stock.
+   The owner can override per product, because judgment varies — some shops refuse returns
+   on opened packaging, some accept them. */
+async function refundReturnsToStock(product){
+  if(!product) return false;
+  if(product.refundReturnsToStock === true) return true;
+  if(product.refundReturnsToStock === false) return false;
+  if(product.role === 'utility') return false;          // consumed, never returned
+  const conv = await conversionFor(product.id);
+  if(conv) return false;                                 // made from something else — cooked
+  return !!product.trackStock;                           // bought and resold, and actually counted
+}
+async function showStockLossEntry(){
+ if(!requireOwnerMode('Refund / bad stock','stockLoss'))return;
+ const products=(await bizProducts()).filter(p=>p.role!=='utility');
+ if(!products.length){ alert('Add a product first.'); return; }
+ const receivers=await bizReceivers();
+ openModal(`<h2>Refund / Bad Stock ${hb("A refund puts the item back into stock. Bad stock does not — it is gone — but it still reduces what the counter is expected to sell, so nobody is held short for a loss already declared.")}</h2>
+ <div class="row2">
+  <div class="field"><label for="slType">What happened</label><select id="slType" onchange="drawStockLossHint()">
+   <option value="refund">Refund — customer brought it back</option>
+   <option value="bad">Bad / spoiled — it is gone</option>
+  </select></div>
+  <div class="field"><label for="slDate">Date</label><input id="slDate" type="date" value="${todayISO()}"></div>
+ </div>
+ <div class="row2">
+  <div class="field"><label for="slProduct">Product</label><select id="slProduct" onchange="drawStockLossHint()">${products.map(p=>`<option value="${p.id}">${esc(p.name)}${p.unit?' ('+esc(p.unit)+')':''}</option>`).join('')}</select></div>
+  <div class="field"><label for="slQty">Quantity</label><input id="slQty" type="number" step="any" min="0" oninput="drawStockLossHint()"></div>
+ </div>
+ ${receivers.length?`<div class="field"><label for="slReceiver">Whose batch (optional)</label><select id="slReceiver"><option value="">— Not specified —</option>${receivers.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select></div>`:''}
+ <div id="slHint" class="notice" style="font-size:12.5px">—</div>
+ <div class="field"><label for="slReason">Reason</label><input id="slReason" placeholder="e.g. customer changed their mind / fell during service"></div>
+ <button class="btn accent full" onclick="saveStockLoss()">Record</button>
+ <button class="btn secondary full" onclick="showStockLossHistory()">View History</button>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+ drawStockLossHint();
+}
+async function drawStockLossHint(){
+ const el=document.getElementById('slHint'); if(!el)return;
+ const type=document.getElementById('slType').value;
+ const pid=document.getElementById('slProduct').value;
+ const qty=Number(document.getElementById('slQty').value)||0;
+ const products=await bizProducts();
+ const p=products.find(x=>x.id===pid);
+ if(!p||!qty){ el.textContent = type==='refund' ? 'A refund puts stock back.' : 'Bad stock does not return to stock, but reduces expected sales.'; return; }
+ if(type==='bad'){
+  const cb = await resolveUnitCost(p.id);
+  el.innerHTML = `<b>${qty} × ${esc(p.name)}</b> written off at cost <b>${money(qty*(cb.cost||0))}</b>. No stock returns and no money moves — the counter is simply expected to sell ${qty} fewer.`;
+ } else {
+  const cc = await resolveUnitCost(p.id);
+  const back = await refundReturnsToStock(p);
+  el.innerHTML = `<b>${qty} × ${esc(p.name)}</b> · cash returned to the customer ${money(qty*(Number(p.price)||0))}, cost value ${money(qty*(cc.cost||0))}.`
+   + (back
+      ? `<br><b style="color:var(--brass2)">Goes back into stock</b> — ${esc(p.name)} can be sold again, so stock rises by ${qty}.`
+      : `<br><b>Written off</b> — ${esc(p.name)} is made to order and is not resold, so no stock returns.`)
+   + `<br><small>Either way the counter is expected to sell ${qty} fewer. Returning UNSOLD stock to the store is a different thing — use Issue / Return Stock.</small>`;
+ }
+}
+async function saveStockLoss(){
+ if(!requireActiveSubscription('Recording a refund or loss'))return;
+ const type=slType.value, qty=Number(slQty.value)||0;
+ if(qty<=0){ alert('Enter a quantity.'); return; }
+ const reason=(slReason.value||'').trim();
+ if(!reason){ alert('Enter a reason — this is what makes the record accountable.'); return; }
+ const products=await bizProducts();
+ const p=products.find(x=>x.id===slProduct.value);
+ if(!p){ alert('Choose a product.'); return; }
+ const receiverEl=document.getElementById('slReceiver');
+ const receivers=await bizReceivers();
+ const receiver=receiverEl && receiverEl.value ? receivers.find(r=>r.id===receiverEl.value) : null;
+ const bizId=await getActiveBusinessId();
+ const journalNumber=await nextJournalNo();
+ const rec={
+  id:crypto.randomUUID(), businessId:bizId, type, productId:p.id, productName:p.name, qty,
+  reason, date:slDate.value, receiverId:receiver?receiver.id:null, receiverName:receiver?receiver.name:null,
+  journalNumber, status:'active', createdBy:currentActorName(), costValue:0, cashReturned:0, unitCost:0, costBasis:'none', returnedToStock:0,
+ };
+ /* Bad stock never returns — it is gone. A REFUND depends on whether the item can be sold
+    again: packaged goods go back on the shelf and stock rises; cooked food does not.
+    Both still reduce the expected counter count either way, since the unit left the
+    kitchen and has to be accounted for. */
+ const backToStock = (type==='refund') && await refundReturnsToStock(p);
+ if(backToStock && p.trackStock){
+  p.stockQty = (Number(p.stockQty)||0) + qty;
+  await put('products', p);
+ }
+ rec.returnedToStock = backToStock ? qty : 0;
+ // Valued at COST, for both. Cost is what the business actually lost; the selling price
+ // is only what changed hands with the customer. Recording a refund at its selling price
+ // would overstate the loss by the whole margin — a ₦700 spoon that cost ₦62.50 to make is
+ // a ₦62.50 loss of goods, not a ₦700 one. The cash returned is kept alongside it, because
+ // the customer really did get ₦700 back and that still has to reconcile against takings.
+ const c = await resolveUnitCost(p.id, rec.date);
+ rec.unitCost  = c.cost || 0;
+ rec.costBasis = c.basis || 'none';
+ rec.costValue = qty * rec.unitCost;                              // the loss, at cost
+ rec.cashReturned = type==='refund' ? qty*(Number(p.price)||0) : 0; // what the customer got back
+ await put('counterSales',rec);
+ closeModal(); await refresh();
+ alert((type==='refund'?'Refund':'Bad stock')+' recorded — '+journalNumber
+   + '\n\nCost value: '+money(rec.costValue||0)
+  + (type==='refund' ? '\nCash returned to the customer: '+money(rec.cashReturned||0) : '')
+  + (rec.returnedToStock ? '\n'+rec.returnedToStock+' returned to stock — it can be sold again.' : '\nNot returned to stock.'));
+}
+async function showStockLossHistory(){
+ if(!requireOwnerMode('Refund / bad stock history','stockLoss'))return;
+ const rows=(await bizCounterSales()).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ openModal(`<h2>Refund &amp; Bad Stock History</h2>
+ <div class="list">${rows.map(r=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px${r.status==='voided'?';opacity:.5':''}">
+  <div style="display:flex;justify-content:space-between"><b>${r.type==='refund'?'Refund':'Bad stock'} · ${esc(r.productName)} × ${r.qty}</b><small>${esc(r.date||'')}</small></div>
+  <small style="color:var(--muted)">${r.returnedToStock?`Back to stock ×${r.returnedToStock}`:'Written off'} · cost ${money(r.costValue||0)}${r.cashReturned?` · cash returned ${money(r.cashReturned)}`:''}</small>
+  <small style="color:var(--muted)">${esc(r.journalNumber||'')}${r.receiverName?' · '+esc(r.receiverName):''} · ${esc(r.reason||'')}</small>
+ </div>`).join('')||'<div class="empty">Nothing recorded yet.</div>'}</div>
+ <button class="btn secondary full" onclick="showStockLossEntry()">Back</button>`);
+}
+async function showPurchaseEntry(){
+ if(!requireOwnerMode('Recording a purchase','stockPurchases'))return;
+ const [suppliers, keepers, products, buyers] = await Promise.all([bizSuppliers(), bizStorekeepers(), bizProducts(), bizBuyers()]);
+ if(!suppliers.length){
+  // Distinguishes "none exist" from "all suspended" — the same empty dropdown, but a
+  // completely different thing to do about it.
+  const bid=await getActiveBusinessId();
+  const anySuspended=(await all('suppliers')).some(s=>s.businessId===bid);
+  const msg = anySuspended
+   ? 'Every supplier is currently suspended, so there is none to attribute this purchase to.\n\nOpen Suppliers to restore one?'
+   : 'No suppliers registered yet. A purchase has to be attributed to one, because each supplier\'s own average price is what costs your products.\n\nSet one up now?';
+  if(confirm(msg)) await showSuppliers();
+  return;
+ }
+ if(!keepers.length){
+  const bid2=await getActiveBusinessId();
+  const anySus=(await all('storekeepers')).some(s=>s.businessId===bid2);
+  if(confirm(anySus
+   ? 'Every storekeeper is currently suspended, so there is nobody to record as receiving this.\n\nOpen Storekeepers to restore one?'
+   : 'No storekeepers registered yet. Every delivery records who received it.\n\nSet one up now?')) await showStorekeepers();
+  return;
+ }
+ if(!products.length){ alert('Add a product first under Products / Services.'); return; }
+ openModal(`<h2>Record a Purchase ${hb("Goods arriving into the store from a supplier. The unit cost recorded here is what every downstream cost is built from — including the cost of dishes made from it.")}</h2>
+ <div class="row2">
+  <div class="field"><label for="puDate">Date</label><input id="puDate" type="date" value="${todayISO()}"></div>
+  <div class="field"><label for="puInvoice">Supplier invoice no. (optional)</label><input id="puInvoice"></div>
+ </div>
+ <div class="row2">
+  <div class="field"><label for="puSupplier">Supplier</label><select id="puSupplier">${suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
+  <div class="field"><label for="puKeeper">Received by</label><select id="puKeeper">${keepers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
+ </div>
+ ${buyers.length?`<div class="field"><label for="puBuyer">Bought by ${hb("Whoever actually went to the market, if it was not the storekeeper. Leave blank if the supplier delivered.")}</label><select id="puBuyer"><option value="">— Supplier delivered —</option>${buyers.map(b=>`<option value="${b.id}">${esc(b.name)}</option>`).join('')}</select></div>`:''}
+ <div class="sectionhead" style="margin-top:12px"><h3>Items received</h3><button class="linkbtn" onclick="addPurchaseLine()">＋ Add item</button></div>
+ <div id="puLines"></div>
+ <div class="totalBox"><div class="totalRow grand"><span>Total</span><b id="puTotal">${money(0)}</b></div></div>
+ <div class="field"><label for="puComment">Comment (optional)</label><input id="puComment"></div>
+ <button class="btn accent full" onclick="savePurchaseEntry()">Save Purchase</button>
+ <button class="btn secondary full" onclick="closeModal()">Cancel</button>`);
+ window.__puProducts=products;
+ window.__puLines=[{productId:products[0].id, qty:'', unitCost:''}];
+ drawPurchaseLines();
+}
+function drawPurchaseLines(){
+ const products=window.__puProducts||[];
+ const el=document.getElementById('puLines'); if(!el)return;
+ el.innerHTML=window.__puLines.map((ln,i)=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:6px">
+  <div class="row2">
+   <div class="field"><label>Product</label><select onchange="updatePurchaseLine(${i},'productId',this.value)">${products.map(p=>`<option value="${p.id}" ${p.id===ln.productId?'selected':''}>${esc(p.name)}${p.unit?' ('+esc(p.unit)+')':''}</option>`).join('')}</select></div>
+   <div class="field"><label>Quantity</label><input type="number" step="any" min="0" value="${ln.qty}" onchange="updatePurchaseLine(${i},'qty',this.value)"></div>
+  </div>
+  <div class="row2">
+   <div class="field"><label>Unit cost</label><input type="number" step="any" min="0" value="${ln.unitCost}" onchange="updatePurchaseLine(${i},'unitCost',this.value)"></div>
+   <div class="field"><label>Line total</label><div style="padding:11px 12px;border:1.4px solid var(--line);border-radius:10px;background:var(--card);font-weight:700">${money((Number(ln.qty)||0)*(Number(ln.unitCost)||0))}</div></div>
+  </div>
+  ${window.__puLines.length>1?`<button class="btn danger" style="align-self:flex-start;padding:5px 9px;font-size:11px" onclick="removePurchaseLine(${i})">Remove item</button>`:''}
+ </div>`).join('');
+ const total=window.__puLines.reduce((a,l)=>a+(Number(l.qty)||0)*(Number(l.unitCost)||0),0);
+ const t=document.getElementById('puTotal'); if(t) t.textContent=money(total);
+}
+function addPurchaseLine(){ window.__puLines.push({productId:(window.__puProducts[0]||{}).id, qty:'', unitCost:''}); drawPurchaseLines(); }
+function removePurchaseLine(i){ window.__puLines.splice(i,1); drawPurchaseLines(); }
+function updatePurchaseLine(i,f,v){ window.__puLines[i][f]=v; drawPurchaseLines(); }
+async function savePurchaseEntry(){
+ if(!requireActiveSubscription('Recording a purchase'))return;
+ const suppliers=await bizSuppliers(), keepers=await bizStorekeepers(), products=await bizProducts();
+ const supplier=suppliers.find(s=>s.id===puSupplier.value);
+ const keeper=keepers.find(s=>s.id===puKeeper.value);
+ if(!supplier||!keeper){ alert('Choose a supplier and who received it.'); return; }
+ const buyerEl=document.getElementById('puBuyer');
+ const buyer=buyerEl&&buyerEl.value ? (await bizBuyers()).find(b=>b.id===buyerEl.value) : null;
+ const lines=window.__puLines.filter(l=>(Number(l.qty)||0)>0);
+ if(!lines.length){ alert('Add at least one item with a quantity.'); return; }
+ const bizId=await getActiveBusinessId(), date=puDate.value;
+ const batchNo=await nextJournalNo();
+ for(const ln of lines){
+  const p=products.find(x=>x.id===ln.productId); if(!p) continue;
+  const qty=Number(ln.qty)||0, unitCost=Number(ln.unitCost)||0;
+  await put('stockPurchases',{
+   id:crypto.randomUUID(), businessId:bizId, productId:p.id, productName:p.name,
+   qty, unitCost, totalCost:qty*unitCost, type:'purchase',
+   supplierId:supplier.id, vendorName:supplier.name,
+   storekeeperId:keeper.id, storekeeperName:keeper.name,
+   buyerId:buyer?buyer.id:null, buyerName:buyer?buyer.name:null,
+   supplierInvoiceNo:(puInvoice.value||'').trim(),
+   date, journalNumber:batchNo, comment:(puComment.value||'').trim(),
+   status:'active', createdBy:currentActorName(),
+  });
+  // Stock only moves for things that are physically counted. A utility is consumed and
+  // measured by meter reading, so a purchase of it must not create a counted balance that
+  // nothing ever decrements.
+  if(p.role!=='utility' && p.trackStock){
+   const existingQty=Number(p.stockQty)||0, existingCost=Number(p.costPrice)||0;
+   p.stockQty=existingQty+qty;
+   if(unitCost>0){
+    p.costPrice = existingQty>0 && existingCost>0
+     ? Number((((existingQty*existingCost)+(qty*unitCost))/(existingQty+qty)).toFixed(4))
+     : unitCost;
+   }
+   await put('products',p);
+  }
+ }
+ closeModal(); await refresh();
+ alert('Purchase recorded — '+batchNo);
+}
+async function showSuppliers(){
+ if(!requireOwnerMode('Suppliers','suppliers'))return;
+ const bid=await getActiveBusinessId();
+ const list=(await all('suppliers')).filter(x=>x.businessId===bid);
+ openModal(`<h2>Suppliers ${hb("Who you buy from. Each supplier's own average price feeds the cost of everything made from what they supply, so registering them keeps that figure honest.")}</h2>
+ <div class="row2">
+  <div class="field"><label for="supName">Name</label><input id="supName" placeholder="e.g. Alhaji Rice Stores"></div>
+  <div class="field"><label for="supPhone">Phone (optional)</label><input id="supPhone"></div>
+ </div>
+ <button class="btn accent full" onclick="addSupplier()">＋ Add Supplier</button>
+ <div class="sectionhead" style="margin-top:16px"><h3>Registered suppliers</h3></div>
+ <div class="list">${list.map(s=>`<div class="row-item"><div><b>${esc(s.name)}</b>${s.phone?`<small>${esc(s.phone)}</small>`:''}</div><button class="btn ${s.active===false?'accent':'secondary'}" style="padding:5px 9px;font-size:11px" onclick="removeSupplier('${s.id}')">${s.active===false?'Restore':'Suspend'}</button></div>`).join('')||'<div class="empty">None yet. Add one before recording a purchase.</div>'}</div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function addSupplier(){
+ const name=supName.value.trim();
+ if(!name){ alert('Enter a supplier name.'); return; }
+ if((await bizSuppliers()).some(s=>s.name.toLowerCase()===name.toLowerCase())){ alert('That supplier is already registered.'); return; }
+ await put('suppliers',{id:crypto.randomUUID(), businessId:await getActiveBusinessId(), name, phone:supPhone.value.trim()});
+ await showSuppliers();
+}
+/* Suspended, never deleted. Deleting a supplier orphans every purchase that referenced
+   them — the history keeps a name but loses the link, and the per-supplier average that
+   costs your products silently changes. Suspending removes them from the dropdown while
+   leaving the record whole. */
+async function removeSupplier(id){
+ const rec=(await all('suppliers')).find(s=>s.id===id); if(!rec)return;
+ rec.active = rec.active===false;
+ await put('suppliers',rec);
+ await showSuppliers();
+}
+
+/* In-house buyers — whoever actually went to the market.
+   Three different people can touch one purchase and conflating them loses accountability:
+   the SUPPLIER sold it, the BUYER went and bought it, the STOREKEEPER received it back.
+   A buyer needs no login; they are a name someone else selects when recording the purchase.
+   Suspended rather than deleted, so past purchases keep a readable name. */
+async function showBuyers(){
+ if(!requireOwnerMode('Buyers','buyers'))return;
+ const id=await getActiveBusinessId();
+ const list=(await all('buyers')).filter(x=>x.businessId===id);
+ openModal(`<h2>Buyers ${hb("Who goes to the market on your behalf. Separate from the supplier they buy from and the storekeeper who receives it — three different people, three different responsibilities.")}</h2>
+ <div class="field"><label for="byName">Name</label><input id="byName" placeholder="e.g. Chidi"></div>
+ <button class="btn accent full" onclick="addBuyer()">＋ Add Buyer</button>
+ <div class="sectionhead" style="margin-top:16px"><h3>Registered buyers</h3></div>
+ <div class="list">${list.map(b=>`<div class="row-item"${b.active===false?' style="opacity:.55"':''}>
+   <div><b>${esc(b.name)}</b>${b.active===false?'<small>suspended</small>':''}</div>
+   <button class="btn ${b.active===false?'accent':'secondary'}" style="padding:5px 9px;font-size:11px" onclick="toggleBuyer('${b.id}')">${b.active===false?'Restore':'Suspend'}</button>
+  </div>`).join('')||'<div class="empty">None yet.</div>'}</div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function addBuyer(){
+ const name=byName.value.trim();
+ if(!name){ alert('Enter a name.'); return; }
+ const id=await getActiveBusinessId();
+ if((await all('buyers')).some(b=>b.businessId===id && b.name.toLowerCase()===name.toLowerCase())){ alert('That buyer is already registered.'); return; }
+ await put('buyers',{id:crypto.randomUUID(), businessId:id, name, active:true});
+ await showBuyers();
+}
+async function toggleBuyer(id){
+ const rec=(await all('buyers')).find(b=>b.id===id); if(!rec)return;
+ rec.active = rec.active===false;
+ await put('buyers',rec);
+ await showBuyers();
+}
+async function showStorekeepers(){
+ if(!requireOwnerMode('Storekeepers','storekeepers'))return;
+ const bid=await getActiveBusinessId();
+ const list=(await all('storekeepers')).filter(x=>x.businessId===bid);
+ openModal(`<h2>Storekeepers ${hb("Who receives goods into the store. Every purchase records who took delivery, so a shortage can be traced to a person rather than a date.")}</h2>
+ <div class="field"><label for="skName">Name</label><input id="skName" placeholder="e.g. Musa"></div>
+ <button class="btn accent full" onclick="addStorekeeper()">＋ Add Storekeeper</button>
+ <div class="sectionhead" style="margin-top:16px"><h3>Registered storekeepers</h3></div>
+ <div class="list">${list.map(s=>`<div class="row-item"><div><b>${esc(s.name)}</b></div><button class="btn ${s.active===false?'accent':'secondary'}" style="padding:5px 9px;font-size:11px" onclick="removeStorekeeper('${s.id}')">${s.active===false?'Restore':'Suspend'}</button></div>`).join('')||'<div class="empty">None yet. Add one before recording a purchase.</div>'}</div>
+ <button class="btn secondary full" onclick="closeModal()">Close</button>`);
+}
+async function addStorekeeper(){
+ const name=skName.value.trim();
+ if(!name){ alert('Enter a name.'); return; }
+ if((await bizStorekeepers()).some(s=>s.name.toLowerCase()===name.toLowerCase())){ alert('That storekeeper is already registered.'); return; }
+ await put('storekeepers',{id:crypto.randomUUID(), businessId:await getActiveBusinessId(), name});
+ await showStorekeepers();
+}
+async function removeStorekeeper(id){
+ const rec=(await all('storekeepers')).find(s=>s.id===id); if(!rec)return;
+ rec.active = rec.active===false;
+ await put('storekeepers',rec);
+ await showStorekeepers();
+}
 async function showReceivers(){
  if(!requireOwnerMode('Receivers','stockPurchases'))return;
- const list=await bizReceivers();
+ const bid=await getActiveBusinessId();
+ const list=(await all('receivers')).filter(x=>x.businessId===bid);
  const bizR=await getBusiness();
- const isStoreKind = bizR.retailKind==='store';
- openModal(`<h2>Receivers ${hb("Who raw stock gets issued to. Issuing always records who received it, so nothing leaves the store untracked.")}</h2>
- <div class="field"><label>Name</label><input id="rcvName" placeholder="${isStoreKind?'e.g. Packing Department':'e.g. Kitchen'}"></div>
- <button class="btn accent full" onclick="addReceiver()">＋ Add Receiver</button>
- <div class="sectionhead" style="margin-top:16px"><h3>All receivers</h3></div>
- <div class="list">${list.map(r=>`<div class="row-item"><div><b>${esc(r.name)}</b></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="removeReceiver('${r.id}')">Remove</button></div>`).join('')||'<div class="empty">No receivers yet — add one before issuing stock.</div>'}</div>
+ const T=stockTerms();
+ openModal(`<h2>${esc(T.receiverTitle)} ${hb("Who raw stock gets issued to. Issuing always records who received it, so nothing leaves the store untracked.")}</h2>
+ <div class="field"><label for="rcvName">Name</label><input id="rcvName" placeholder="${esc(T.receiverEg)}"></div>
+ <button class="btn accent full" onclick="addReceiver()">＋ Add</button>
+ <div class="sectionhead" style="margin-top:16px"><h3>All ${esc(T.receiverTitle.toLowerCase())}</h3></div>
+ <div class="list">${list.map(r=>`<div class="row-item"><div><b>${esc(r.name)}</b></div><button class="btn ${r.active===false?'accent':'secondary'}" style="padding:5px 9px;font-size:11px" onclick="removeReceiver('${r.id}')">${r.active===false?'Restore':'Suspend'}</button></div>`).join('')||'<div class="empty">No receivers yet — add one before issuing stock.</div>'}</div>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
 }
 async function addReceiver(){
@@ -720,8 +2094,9 @@ async function addReceiver(){
  await showReceivers();
 }
 async function removeReceiver(id){
- if(!confirm('Remove this receiver? Past issues to them stay on record.'))return;
- await del('receivers',id);
+ const rec=(await all('receivers')).find(r=>r.id===id); if(!rec)return;
+ rec.active = rec.active===false;
+ await put('receivers',rec);
  await showReceivers();
 }
 async function bizRooms(){const id=await getActiveBusinessId();return (await all('rooms')).filter(x=>x.businessId===id)}
@@ -1604,14 +2979,17 @@ async function logoutServerAccount(){
  window.billingStatus=null;
  window.currentBranchId=null; window.currentBranchName=null;
  window.staffModeActive=false; window.currentStaffName=null; window.currentRole=null;
- blankDashboardUI();
- closeModal();
- // Hard reload rather than just showing the auth gate over a still-live app. Showing the
- // gate alone left every screen, cache and in-memory global intact underneath it — the
- // dashboard sat there with a blank business name and products could still be created
- // against nothing. A logout must genuinely end the session, so the app is torn down and
- // restarted from scratch, coming back up at the login page with no state carried over.
- location.reload();
+ try{ blankDashboardUI(); }catch(e){}
+ try{ closeModal(); }catch(e){}
+ // Restart, unconditionally. Showing the auth gate over a still-live app left every screen,
+ // cache and in-memory global intact underneath it. This previously sat after several
+ // unguarded calls, so if ANY of them threw, the restart never happened and the person was
+ // left sitting in the app looking logged in — which is exactly what was reported. Wrapping
+ // them means a failure in the tidy-up can no longer prevent the session from ending.
+ // replace() rather than reload(): it drops any #hash and leaves no history entry, so the
+ // back button cannot return to the logged-in view.
+ try{ document.body.classList.remove('locked'); }catch(e){}
+ location.replace(location.pathname + location.search);
 }
 // Wipes only the data belonging to the account being logged out of — not every business on
 // the device. If two different accounts have each set up a business here, logging out of one
@@ -1803,6 +3181,17 @@ function blankDashboardUI(){
    <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Inventory</span><span class="navGroupChevron">▾</span></button>
    <div class="navGroupItems">
     <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockPurchases" data-modules="business_stock,full_retail,hotel" onclick="showStockPurchases()"><span class="ic">📦</span> Stock Purchases</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="purchaseEntry" data-modules="business_stock,full_retail,hotel" onclick="showPurchaseEntry()"><span class="ic">🧾</span> Record a Purchase</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockLoss" data-modules="business_stock,full_retail,hotel" onclick="showStockLossEntry()"><span class="ic">↩️</span> Refund / Bad Stock</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="counterAccountability" data-modules="full_retail,hotel" onclick="showCounterAccountability()"><span class="ic">⚖️</span> Counter Accountability</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="utilities" data-modules="business_stock,full_retail,hotel" onclick="showUtilityReadings()"><span class="ic">⛽</span> Utility Readings</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="buySellReport" data-modules="business_stock,full_retail,hotel" onclick="showBuySellReport()"><span class="ic">🔁</span> Buy vs Sell</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="productProfit" data-modules="business_stock,full_retail,hotel" onclick="showProductProfit()"><span class="ic">💹</span> Product Profitability</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="forecastReport" data-modules="business_stock,full_retail,hotel" onclick="showForecastReport()"><span class="ic">📈</span> Forecast</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockAsOf" data-modules="business_stock,full_retail,hotel" onclick="showStockAsOf()"><span class="ic">📅</span> Stock As Of a Date</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="suppliers" data-modules="business_stock,full_retail,hotel" onclick="showSuppliers()"><span class="ic">🚚</span> Suppliers</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storekeepers" data-modules="business_stock,full_retail,hotel" onclick="showStorekeepers()"><span class="ic">🔑</span> Storekeepers</button>
+    <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="buyers" data-modules="business_stock,full_retail,hotel" onclick="showBuyers()"><span class="ic">🛒</span> Buyers</button>
     <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="issueOut" data-modules="full_retail,hotel" onclick="showIssueOut()"><span class="ic">🍳</span> Issue / Return Stock</button>
     <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storeBalances" data-modules="full_retail,hotel" onclick="showStoreKitchenBalances()"><span class="ic">⚖️</span> Store &amp; Kitchen Balances</button>
     <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="receivers" data-modules="full_retail,hotel" onclick="showReceivers()"><span class="ic">👷</span> Receivers</button>
@@ -1980,6 +3369,17 @@ function blankDashboardUI(){
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Inventory</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
   <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockPurchases" data-modules="business_stock,full_retail,hotel" onclick="showStockPurchases();closeDrawer()"><span class="ic">📦</span> Stock Purchases</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="purchaseEntry" data-modules="business_stock,full_retail,hotel" onclick="showPurchaseEntry();closeDrawer()"><span class="ic">🧾</span> Record a Purchase</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockLoss" data-modules="business_stock,full_retail,hotel" onclick="showStockLossEntry();closeDrawer()"><span class="ic">↩️</span> Refund / Bad Stock</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="counterAccountability" data-modules="full_retail,hotel" onclick="showCounterAccountability();closeDrawer()"><span class="ic">⚖️</span> Counter Accountability</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="utilities" data-modules="business_stock,full_retail,hotel" onclick="showUtilityReadings();closeDrawer()"><span class="ic">⛽</span> Utility Readings</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="buySellReport" data-modules="business_stock,full_retail,hotel" onclick="showBuySellReport();closeDrawer()"><span class="ic">🔁</span> Buy vs Sell</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="productProfit" data-modules="business_stock,full_retail,hotel" onclick="showProductProfit();closeDrawer()"><span class="ic">💹</span> Product Profitability</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="forecastReport" data-modules="business_stock,full_retail,hotel" onclick="showForecastReport();closeDrawer()"><span class="ic">📈</span> Forecast</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="stockAsOf" data-modules="business_stock,full_retail,hotel" onclick="showStockAsOf();closeDrawer()"><span class="ic">📅</span> Stock As Of a Date</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="suppliers" data-modules="business_stock,full_retail,hotel" onclick="showSuppliers();closeDrawer()"><span class="ic">🚚</span> Suppliers</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storekeepers" data-modules="business_stock,full_retail,hotel" onclick="showStorekeepers();closeDrawer()"><span class="ic">🔑</span> Storekeepers</button>
+  <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="buyers" data-modules="business_stock,full_retail,hotel" onclick="showBuyers();closeDrawer()"><span class="ic">🛒</span> Buyers</button>
   <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="issueOut" data-modules="full_retail,hotel" onclick="showIssueOut();closeDrawer()"><span class="ic">🍳</span> Issue / Return Stock</button>
   <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="storeBalances" data-modules="full_retail,hotel" onclick="showStoreKitchenBalances();closeDrawer()"><span class="ic">⚖️</span> Store &amp; Kitchen Balances</button>
   <button class="navbtn ownerOnly" data-min-level="2" data-perm-key="receivers" data-modules="full_retail,hotel" onclick="showReceivers();closeDrawer()"><span class="ic">👷</span> Receivers</button>
@@ -2186,10 +3586,6 @@ function cancelAddBusiness(){
 // Full Stock covers both restaurants and stores, and they differ enough in wording and
 // which screens apply to be worth asking. Only shown for that module — every other module
 // has an unambiguous shape already.
-function onSettingsModuleChanged(){
- const f=document.getElementById('bRetailKindField');
- if(f) f.style.display = (document.getElementById('bmodule').value==='full_retail') ? '' : 'none';
-}
 function onNewBusinessModuleChanged(){
  const f=document.getElementById('nbRetailKindField');
  if(f) f.style.display = (document.getElementById('nbModule').value==='full_retail') ? '' : 'none';
@@ -2369,6 +3765,8 @@ const PERMISSION_GROUPS = {
  'Inventory': {
   stockPurchases:'Stock Purchases', lowStock:'Low Stock', recipes:'Recipes', productMovement:'Product Movement',
   issueOut:'Issue / Return Stock', storeBalances:'Store & Kitchen Balances', receivers:'Receivers',
+  purchaseEntry:'Record a Purchase', suppliers:'Suppliers', storekeepers:'Storekeepers', stockLoss:'Refund / Bad Stock',
+  counterAccountability:'Counter Accountability', utilities:'Utility Readings', buySellReport:'Buy vs Sell Report', forecastReport:'Forecast', productProfit:'Product Profitability', buyers:'Buyers', stockAsOf:'Stock As Of a Date',
  },
  'Reports': {
   reports:'Reports', endOfDay:'End of Day', dailySales:'Daily Sales Report', productSold:'Product/Service Sold',
@@ -2831,18 +4229,11 @@ async function showSettings(){ if(!requireOwnerMode('Business settings'))return;
  let b=await getBusiness();
  let curOpts=Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${b.currency===c?'selected':''}>${c} (${CURRENCIES[c].sym})</option>`).join('');
  openModal(`<h2>Business Settings ${hb("Everything specific to this one business: its name, currency, invoice numbering, and how it's classified for tax purposes.")}</h2>
- <div class="row2"><div class="field"><label>Business name</label><input id="bn" value="${esc(b.name)}"></div><div class="field"><label for="btype">Type ${hb("Business tracks sales and expenses normally. Salary auto-logs a monthly pay entry instead, and relabels Customers to Employer. Hotel adds room bookings, check-in/check-out, and a guest folio for bar & restaurant charges — Full plan only.")}</label><select id="btype" onchange="toggleSalaryFields()"><option value="business">Business</option><option value="salary">Salary / Employment</option><option value="hotel">Hotel</option></select></div></div>
- <div class="row2"><div class="field"><label for="bmodule">Module ${hb("Which module this business runs as. It decides which screens appear in your menu — a hotel and a supermarket have no reason to see each other's. Normally set when the business is created; change it here if it was set up before modules were recorded, or if it was guessed wrong.")}</label><select id="bmodule" onchange="onSettingsModuleChanged()">
-  <option value="personal" ${b.module==='personal'?'selected':''}>${esc(PLAN_LABELS.personal)}</option>
-  <option value="business_basic" ${b.module==='business_basic'?'selected':''}>${esc(PLAN_LABELS.business_basic)}</option>
-  <option value="business_stock" ${b.module==='business_stock'?'selected':''}>${esc(PLAN_LABELS.business_stock)}</option>
-  <option value="full_retail" ${b.module==='full_retail'?'selected':''}>${esc(PLAN_LABELS.full_retail)}</option>
-  <option value="hotel" ${b.module==='hotel'?'selected':''}>${esc(PLAN_LABELS.hotel)}</option>
- </select></div>
- <div class="field" id="bRetailKindField" style="${b.module==='full_retail'?'':'display:none'}"><label for="bretailKind">Kind</label><select id="bretailKind">
-  <option value="restaurant" ${b.retailKind!=='store'?'selected':''}>Restaurant / food service</option>
-  <option value="store" ${b.retailKind==='store'?'selected':''}>Store / supermarket</option>
- </select></div></div>
+ <div class="row2"><div class="field"><label for="bn">Business name</label><input id="bn" value="${esc(b.name)}"></div>
+  <div class="field"><label>Module ${hb("Set when this business was created, and fixed thereafter. A module is what the business IS — its screens, reports and subscription all follow from it — not a display preference. To run a different one, add it to this login as its own business, or delete this business and set it up again.")}</label>
+   <div style="padding:11px 12px;border:1.4px solid var(--line);border-radius:10px;background:var(--card);font-weight:700">${esc(PLAN_LABELS[currentBusinessModule()]||'—')}</div>
+  </div></div>
+ <input type="hidden" id="btype" value="${esc(b.type||'business')}">
  <div id="salaryFieldsBox" style="display:none">
   <div class="notice">Once set up, this business logs a salary payment automatically each month until you switch off auto-generate, change amount, or change employer. "Customers" becomes "Employer" for this business.</div>
   <div class="row2"><div class="field"><label for="bsalAmt">Monthly Salary Amount</label><input id="bsalAmt" type="number" min="0" value="${b.salaryAmount||0}"></div><div class="field"><label for="bsalAuto">Auto-generate monthly ${hb("When on, this business logs a salary payment for you automatically once a month, with no need to create it by hand.")}</label><select id="bsalAuto"><option value="1" ${b.salaryAutoGenerate?'selected':''}>On</option><option value="0" ${!b.salaryAutoGenerate?'selected':''}>Off</option></select></div></div>
@@ -2875,7 +4266,13 @@ function toggleSalaryFields(){
 function toggleFixedAssets(){fixedAssetsField.style.display = blegal.value==='limited' ? 'block' : 'none';}
 async function saveSettings(){
  let b=await getBusiness();
- let done=async logo=>{b.name=bn.value;b.type=btype.value;b.module=bmodule.value;b.retailKind=(bmodule.value==='full_retail'?(document.getElementById('bretailKind')?.value||'restaurant'):null);b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;b.numberPrefix=bprefix.value.trim();b.posAllowTabs=bposTabs.value==='1';if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}else{b.legalForm=blegal.value;if(blegal.value==='limited')b.fixedAssets=Number(bassets.value)||0;}if(logo!==undefined)b.logo=logo;await put('business',b);window.CURRENT_BUSINESS_MODULE=b.module;applyModuleGatingUI();closeModal();refresh()};
+ let done=async logo=>{b.name=bn.value;
+ /* Type is DERIVED from the module, never chosen separately. The two were doing almost the
+    same job and could disagree — a business could be module "hotel" but type "business",
+    and the hotel screens gate on type, so they appeared or vanished for reasons nobody
+    could see from the settings screen. One source of truth: the module decides, type follows. */
+ b.module = b.module || currentBusinessModule();
+ b.type = b.module==='hotel' ? 'hotel' : (b.module==='personal' ? 'salary' : 'business');b.address=ba.value;b.phone=bp.value;b.email=be.value;b.currency=bcur.value;b.taxId=btax.value;b.bn=bbn.value;b.bankAccount=bacc.value;b.bankName=bbank.value;b.headerComment=bh.value;b.footerComment=bf.value;b.invoiceMode=bm.value;b.nextNumber=Number(bnext.value)||1;b.numberPrefix=bprefix.value.trim();b.posAllowTabs=bposTabs.value==='1';if(btype.value==='salary'){b.salaryAmount=Number(bsalAmt.value)||0;b.salaryAutoGenerate=bsalAuto.value==='1';}else{b.legalForm=blegal.value;if(blegal.value==='limited')b.fixedAssets=Number(bassets.value)||0;}if(logo!==undefined)b.logo=logo;await put('business',b);window.CURRENT_BUSINESS_MODULE=b.module;applyModuleGatingUI();closeModal();refresh()};
  if(bl.files[0]){
   resizeLogoToDataUrl(bl.files[0])
    .then(dataUrl=>done(dataUrl))
@@ -2911,6 +4308,30 @@ ${isHotelBiz?`<div class="field"><label for="pDepartment">Department ${hb("Kitch
  <div class="field"><label for="pLowStockThreshold">Low stock warning at ${hb("Optional — leave at 0 to not bother with a warning for this product.")}</label><input id="pLowStockThreshold" type="number" min="0" value="0"></div>
  <div id="pQtyLockedNotice" style="display:none" class="notice">Stock quantity can only be set here when a product is first created — after that, it's locked. To add stock (a reorder), use Stock Purchases. To reduce it outside a sale (damage, theft, a correction), use the Adjustment option on that same screen. Both keep a proper record in the Product Movement Report; editing this number directly wouldn't.</div>
  <div class="field"><label for="pKind">Kind (for Online Ordering packaging) ${hb("Only matters if you use Online Ordering with multi-person orders — determines which packaging item gets auto-added to a person's sub-order.")}</label><select id="pKind"><option value="regular">Regular item</option><option value="food">Food</option><option value="food_pack">— Packaging: Food Pack (auto-added to any food sub-order)</option><option value="food_nylon">— Packaging: Nylon for food (auto-added to any food sub-order)</option><option value="nonfood_packaging">— Packaging: Bag/Nylon for non-food (auto-added to non-food-only sub-orders)</option></select></div>
+ <div class="row2">
+  <div class="field"><label for="pRole">What is this ${hb("Raw material is bought and issued to a kitchen or department. Counter item is sold to customers as it is. Utility is consumed and measured by meter reading — gas, diesel — never sold and never counted as stock.")}</label>
+   <select id="pRole" onchange="toggleProductRoleFields()">
+    <option value="counter">Counter item — sold to customers</option>
+    <option value="raw">Raw material — issued to a kitchen or department</option>
+    <option value="utility">Utility — consumed, read from a meter</option>
+   </select></div>
+  <div class="field"><label for="pUnit">Unit ${hb("How this is measured: kg, litre, spoon, wrap, bottle. It appears everywhere the quantity is shown, and recipes are entered in it.")}</label>
+   <input id="pUnit" placeholder="kg, litre, spoon, wrap, bottle" list="unitSuggestions">
+   <datalist id="unitSuggestions"><option value="kg"><option value="g"><option value="litre"><option value="ml"><option value="piece"><option value="pack"><option value="bottle"><option value="crate"><option value="spoon"><option value="wrap"><option value="plate"><option value="portion"></datalist>
+  </div>
+ </div>
+ <div class="field" id="pCostingRouteField" style="display:none"><label for="pCostingRoute">How should a portion be costed ${hb("Recipe: everything actually issued, divided by what was produced — follows reality including bad yield. Conversion: the main ingredient and its ratio only, leaving the accompaniments out of the figure. Both are legitimate; pick what matches how you price.")}</label>
+  <select id="pCostingRoute">
+   <option value="">Automatic — ${window.CURRENT_RETAIL_KIND==='store'?'break-down ratio':'whole batch'}, as suits this business</option>
+   <option value="conversion">Main item and its ratio only</option>
+   <option value="recipe">Everything the ${window.CURRENT_RETAIL_KIND==='store'?'run':'batch'} actually used</option>
+  </select></div>
+ <div class="field" id="pRefundField" style="display:none"><label for="pRefundReturns">If a customer returns it ${hb("Packaged goods go back on the shelf and stock rises. Food already served is written off. Left on Automatic, anything made from a recipe is written off and anything bought and resold goes back.")}</label>
+  <select id="pRefundReturns">
+   <option value="">Automatic — decide from how it is made</option>
+   <option value="yes">Goes back into stock, can be sold again</option>
+   <option value="no">Written off, never resold</option>
+  </select></div>
 </div>
 <button class="btn accent full" id="pSaveBtn" onclick="saveProduct()">＋ Add Product</button><button class="btn secondary full" id="pCancelBtn" style="display:none" onclick="cancelEditProduct()">Cancel Edit</button>
 <div class="sectionhead" style="margin-top:18px"><h3>All products</h3></div><div class="list" id="pList"></div><button class="btn secondary full" onclick="closeModal()">Close</button>`);
@@ -2939,15 +4360,78 @@ function drawProducts(){pList.innerHTML=pCache.sort((a,b)=>a.name.localeCompare(
   : `<button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="deleteProduct('${p.id}')">Delete</button>`;
  return `<div class="row-item"><div><b>${esc(p.name)}</b>${pendingBadge}${stockLine}</div><div class="row-right"><strong class="money">${money(p.price)}</strong><span style="display:flex;gap:6px"><button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="editProduct('${p.id}')">Edit</button>${deleteBtn}</span></div></div>`;
 }).join('')||'<div class="empty">No products yet.</div>'}
-function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pTrack.value=p.trackStock?'1':'0';pCost.value=p.costPrice||0;pQty.value=p.stockQty||0;pLowStockThreshold.value=p.lowStockThreshold||0;pKind.value=p.kind||'regular';const deptEl=document.getElementById('pDepartment');if(deptEl)deptEl.value=p.department||'';toggleProductStockFields();pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
-function cancelEditProduct(){window.editingProductId=null;pName.value='';pPrice.value='';pTrack.value='0';pCost.value='';pQty.value='';pLowStockThreshold.value=0;pKind.value='regular';toggleProductStockFields();pSaveBtn.textContent='＋ Add Product';pCancelBtn.style.display='none'}
+/* Only shows the settings that apply to what this product actually is.
+   A utility is never sold, so how a portion is costed and what happens on a refund are
+   meaningless for it. A raw material is issued, not sold at the counter, so the same
+   applies. Showing every option regardless would invite someone to configure something
+   that quietly does nothing — and then wonder why it had no effect. */
+/* Business + Stock is a shop: it buys goods and sells them as themselves. It has no
+   Issue / Return, no receivers and no recipes, so a "raw material" there would be something
+   that could be bought and then never issued anywhere — a dead end the owner would have to
+   discover by trying it. The role choice is therefore narrowed rather than removed: a shop
+   still runs a generator, so Utility stays.
+
+   Costing follows from the same thing. With nothing made from anything else, cost is simply
+   what the product was bought for, and asking which route to use would be a question with
+   only one possible answer. */
+function moduleHasKitchenFlow(){
+  const m = (typeof currentBusinessModule==='function') ? currentBusinessModule() : 'full_retail';
+  return m==='full_retail' || m==='hotel';
+}
+function toggleProductRoleFields(){
+ const roleEl=document.getElementById('pRole');
+ const kitchen=moduleHasKitchenFlow();
+ // Hide "raw material" where there is nowhere to issue it to, and fall back to a counter
+ // item if a product was somehow already set that way.
+ if(roleEl){
+  const rawOpt=[...roleEl.options].find(o=>o.value==='raw');
+  if(rawOpt) rawOpt.style.display = kitchen ? '' : 'none';
+  if(!kitchen && roleEl.value==='raw') roleEl.value='counter';
+ }
+ const role=(roleEl||{}).value||'counter';
+ const cr=document.getElementById('pCostingRouteField');
+ const rf=document.getElementById('pRefundField');
+ const isCounter = role==='counter';
+ // Costing route only means something where a product can be MADE from others.
+ if(cr) cr.style.display = (isCounter && kitchen) ? '' : 'none';
+ if(rf) rf.style.display = isCounter ? '' : 'none';
+ // A utility has no stock balance at all — it is measured by meter reading, so a counted
+ // quantity would only ever be wrong.
+ const trackWrap=document.getElementById('pTrack');
+ if(trackWrap && role==='utility'){ trackWrap.value='0'; if(typeof toggleProductStockFields==='function') toggleProductStockFields(); }
+}
+function editProduct(id){let p=pCache.find(x=>x.id===id);if(!p)return;window.editingProductId=id;pName.value=p.name;pPrice.value=p.price;pTrack.value=p.trackStock?'1':'0';pCost.value=p.costPrice||0;pQty.value=p.stockQty||0;pLowStockThreshold.value=p.lowStockThreshold||0;pKind.value=p.kind||'regular';
+ pRole.value=p.role||'counter'; pUnit.value=p.unit||'';
+ const crEl=document.getElementById('pCostingRoute'); if(crEl) crEl.value=p.costingRoute||'';
+ const rrEl=document.getElementById('pRefundReturns');
+ // Three states, not two: true, false, and "not chosen" — which is why this reads the
+ // property rather than coercing it to a boolean.
+ if(rrEl) rrEl.value = p.refundReturnsToStock===true ? 'yes' : (p.refundReturnsToStock===false ? 'no' : '');
+ const deptEl=document.getElementById('pDepartment');if(deptEl)deptEl.value=p.department||'';
+ toggleProductStockFields();toggleProductRoleFields();pSaveBtn.textContent='Update Product';pCancelBtn.style.display='block';pName.focus()}
+function cancelEditProduct(){window.editingProductId=null;pName.value='';pPrice.value='';pTrack.value='0';pCost.value='';pQty.value='';pLowStockThreshold.value=0;pKind.value='regular';
+ pRole.value='counter'; pUnit.value='';
+ const cr2=document.getElementById('pCostingRoute'); if(cr2) cr2.value='';
+ const rr2=document.getElementById('pRefundReturns'); if(rr2) rr2.value='';
+ toggleProductStockFields();toggleProductRoleFields();pSaveBtn.textContent='＋ Add Product';pCancelBtn.style.display='none'}
 async function saveProduct(){if(!requireActiveSubscription('Adding a product'))return;if(!pName.value.trim())return alert('Enter a product name.');
  const trackStock=pTrack.value==='1';
  const kind=pKind.value;
  const deptEl=document.getElementById('pDepartment');
  const department=deptEl?(deptEl.value||null):null; // only rendered for hotel businesses at all — unlike pKind, which always exists just sometimes CSS-hidden
- if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;p.trackStock=trackStock;p.kind=kind;p.department=department;if(trackStock){p.costPrice=Number(pCost.value)||0;p.lowStockThreshold=Number(pLowStockThreshold.value)||0;}await put('products',p);} // stockQty deliberately not touched here — locked after creation, see toggleProductStockFields()
- else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId(),trackStock,kind,department,costPrice:trackStock?(Number(pCost.value)||0):0,stockQty:trackStock?(Number(pQty.value)||0):0,lowStockThreshold:trackStock?(Number(pLowStockThreshold.value)||0):0,createdBy:currentActorName()};await put('products',p);pCache.push(p);}
+ if(window.editingProductId){let p=pCache.find(x=>x.id===window.editingProductId);p.name=pName.value.trim();p.price=Number(pPrice.value)||0;p.trackStock=trackStock;p.kind=kind;p.department=department;
+  p.role=pRole.value; p.unit=(pUnit.value||'').trim();
+  // Empty means "follow the business kind", which is different from an explicit choice.
+  p.costingRoute=document.getElementById('pCostingRoute')?.value||undefined;
+  const rr=document.getElementById('pRefundReturns')?.value;
+  // Stored as a real boolean only when the owner chose; left undefined means "decide from
+  // how the product is made", which is a different state from an explicit no.
+  p.refundReturnsToStock = rr==='yes' ? true : (rr==='no' ? false : undefined);if(trackStock){p.costPrice=Number(pCost.value)||0;p.lowStockThreshold=Number(pLowStockThreshold.value)||0;}await put('products',p);} // stockQty deliberately not touched here — locked after creation, see toggleProductStockFields()
+ else{let p={id:crypto.randomUUID(),name:pName.value.trim(),price:Number(pPrice.value)||0,businessId:await getActiveBusinessId(),trackStock,kind,department,
+   role:pRole.value, unit:(pUnit.value||'').trim(),
+   costingRoute:document.getElementById('pCostingRoute')?.value||undefined,
+   refundReturnsToStock:(()=>{const v=document.getElementById('pRefundReturns')?.value; return v==='yes'?true:(v==='no'?false:undefined);})(),
+   costPrice:trackStock?(Number(pCost.value)||0):0,stockQty:trackStock?(Number(pQty.value)||0):0,lowStockThreshold:trackStock?(Number(pLowStockThreshold.value)||0):0,createdBy:currentActorName()};await put('products',p);pCache.push(p);}
  cancelEditProduct();drawProducts();republishMenuIfLive()} // fire-and-forget: keeps a live public menu in step with a price/name change without blocking the save
 async function deleteProduct(id){
  const p=pCache.find(x=>x.id===id); if(!p)return;
@@ -3007,9 +4491,16 @@ async function saveInvoiceWithStock(inv, items, sign){
  // never queued for upload as though it had succeeded.
  const bizId = inv.businessId || await getActiveBusinessId();
  Sync.markDirty(bizId); ServerAccount.markDirty(bizId);
+ // If that sale took the last of something, the public menu must stop offering it.
+ republishMenuIfAvailabilityChanged();
 }
 async function applyStockDelta(items, sign){
  if(!items || !items.length) return;
+ // Checked after the movement below, so selling out — or restocking — updates what
+ // customers can actually order.
+ try{ return await applyStockDeltaInner(items, sign); } finally { republishMenuIfAvailabilityChanged(); }
+}
+async function applyStockDeltaInner(items, sign){
  const products=await bizProducts();
  for(const item of items){
   if(!item.productId) continue;
@@ -3316,8 +4807,14 @@ async function convertQuotationToInvoice(id){
  if(!confirm('Convert this quotation into a real invoice? This will count in your sales and reports from now on.'+stockWarning))return;
  const number=await nextNo(window.currentBranchId);
  const inv={id:crypto.randomUUID(),businessId:q.businessId,status:'active',number:number||q.number,date:todayISO(),dueDate:'',customerId:q.customerId,customer:q.customer,phone:q.phone,address:q.address,vehicleDetails:'',discount:q.discount,items:q.items.map(x=>({...x})),payments:[],headerComment:q.headerComment,salesComment:q.notes,total:q.total,createdBy:currentActorName(),branchId:window.currentBranchId||null,branchName:window.currentBranchName||'',deviceCode:deviceCode()};
- await put('invoices',inv);
- await applyStockDelta(inv.items, -1); // matches every other invoice-creation path — this was silently skipped before
+ // Atomic, matching every other invoice-creation path: the converted invoice and its stock
+ // movement commit together or neither does.
+ try{
+  await saveInvoiceWithStock(inv, inv.items, -1);
+ }catch(e){
+  alert('The quotation could not be converted: '+(e && e.message || e)+'\n\nNothing was changed.');
+  return;
+ }
  q.status='converted'; q.convertedInvoiceId=inv.id;
  await put('quotations',q);
  closeModal(); await refresh(); await openInvoice(inv.id);
@@ -5561,12 +7058,13 @@ async function showPosTerminal(){
  if(!posRequireFullTier())return;
  if(window.currentBranchId===null) await promptSelectBranchIfNeeded(); // only prompts if multiple branches exist and none picked yet this session
  window.posCart=[]; window.posTabInvoiceId=null; window.posDiscount=0;
- // Every product, not just stock-tracked ones — requiring trackStock hid made-to-order
- // items (most of a restaurant's actual menu) from its own counter. Out-of-stock tracked
- // items are still shown here rather than hidden, because the tile already carries an
- // OUT OF STOCK badge and a cashier needs to see that the item exists but can't be sold,
- // rather than have it silently vanish from the grid.
- const products=await bizProducts();
+ /* Every COUNTER product, not just stock-tracked ones — requiring trackStock hid
+    made-to-order items (most of a restaurant's actual menu) from its own counter.
+    Out-of-stock tracked items are still shown, because the tile carries an OUT OF STOCK
+    badge and a cashier needs to see the item exists but cannot be sold, rather than have it
+    vanish. Raw materials and utilities are excluded outright: they are not sellable, and a
+    grid full of sacks of rice and drums of diesel makes the real menu harder to find. */
+ const products=(await bizProducts()).filter(p=>p.role!=='raw' && p.role!=='utility');
  const b=await getBusiness();
  const bizId=await getActiveBusinessId();
  const todaysSales=(await all('invoices')).filter(i=>i.businessId===bizId && i.source==='pos' && i.date===todayISO());
@@ -5768,8 +7266,18 @@ async function savePosTab(){
  } else {
   inv={id:crypto.randomUUID(), businessId:bizId, status:'active', number:await nextPosNo(window.currentBranchId), branchId:window.currentBranchId||null, branchName:window.currentBranchName||'', date:todayISO(), dueDate:'', customerId:'', customer:name, phone:'', address:'', vehicleDetails:'', discount:0, items, payments:[], headerComment:'', salesComment:'', total:subtotal, createdBy:currentActorName(), source:'pos', posStatus:'open'};
  }
- await put('invoices',inv);
- await applyStockDelta(items, -1); // stock still leaves the shelf even while the tab is open — it's already been served
+ /* One transaction, exactly as the POS sale does. These were two separate writes: save the
+    invoice, then decrement stock. If the app died between them — a phone going flat, a
+    backgrounded tab reclaimed — the sale recorded but stock never moved, and the two
+    disagreed permanently. The POS was fixed for this and these channels were left behind,
+    which is worse than never having fixed it: the same action is reliable at the counter
+    and not on the phone. */
+ try{
+  await saveInvoiceWithStock(inv, items, -1);
+ }catch(e){
+  alert('This order could not be saved: '+(e && e.message || e)+'\n\nNothing was recorded and no stock was changed. Please try again.');
+  return;
+ } // stock still leaves the shelf even while the tab is open — it's already been served
  closeModal();
  window.posCart=[]; window.posTabInvoiceId=null; window.posDiscount=0;
  await refresh();
@@ -6315,8 +7823,9 @@ async function removeFolioItem(bookingId, itemIdx){
 async function showAddFolioItem(bookingId){
  // Not filtered by trackStock — bar drinks and kitchen dishes charged to a room folio are
  // usually made or poured to order, not inventory-counted, so requiring it left the folio
- // with nothing to add. Department filtering below is what actually scopes this.
- let products=await bizProducts();
+ // with nothing to add. Raw materials and utilities are excluded for the same reason they
+ // are excluded from the POS: a guest cannot be charged for a sack of rice.
+ let products=(await bizProducts()).filter(p=>p.role!=='raw' && p.role!=='utility');
  // Kitchen/Bar staff only ever see their own department's items — they shouldn't be
  // choosing from the other department's menu, or from anything un-departmented.
  if(isHotelKitchen()) products=products.filter(p=>p.department==='kitchen');
@@ -6472,7 +7981,7 @@ async function produceFromConversionStaff(recipeId){
 async function showConversionMenu(){
  if(!requireOwnerMode('Recipes'))return;
  const recipes=await bizConversions();
- const rawProducts=(await bizProducts()).filter(p=>p.trackStock);
+ const rawProducts=(await bizProducts()).filter(isRawLike);
  openModal(`<h2>Recipes ${hb("Define every raw ingredient a sold item is actually made from, and how much of each one batch uses. The sold item's cost is then the sum of all those ingredient costs, divided by however many units the batch yields — a real cost figure, not a guess.")}</h2>
  <button class="btn accent full" onclick="showRecipeBuilder()">＋ New Recipe</button>
  ${!rawProducts.length?`<div class="notice">No stock-tracked products yet — turn on stock tracking for a raw ingredient under Products / Services first.</div>`:''}
@@ -6483,29 +7992,91 @@ async function showConversionMenu(){
 window.recipeIngredientsDraft = [];
 async function showRecipeBuilder(){
  window.recipeIngredientsDraft = [];
- const rawProducts=(await bizProducts()).filter(p=>p.trackStock);
+ const rawProducts=(await bizProducts()).filter(isRawLike);
  openModal(`<h2>New Recipe</h2>
  <div class="row2"><div class="field"><label for="recipeSoldName">Sold item name</label><input id="recipeSoldName" placeholder="e.g. Jollof Rice"></div><div class="field"><label for="recipeSoldPrice">Selling price</label><input id="recipeSoldPrice" type="number" min="0"></div></div>
  <div class="row2"><div class="field"><label for="recipeYields">Yields quantity (per batch)</label><input id="recipeYields" type="number" min="0.01" step="0.01" placeholder="e.g. 40"></div><div class="field"><label for="recipeUnitLabel">Unit label</label><input id="recipeUnitLabel" placeholder="e.g. plates"></div></div>
  <div class="sectionhead" style="margin-top:14px"><h3>Ingredients (per batch)</h3></div>
- <div class="row2"><div class="field"><label for="recipeIngProduct">Ingredient</label><select id="recipeIngProduct">${rawProducts.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div><div class="field"><label for="recipeIngQty">Qty used</label><input id="recipeIngQty" type="number" min="0.01" step="0.01"></div></div>
+ <div class="row2"><div class="field"><label for="recipeIngProduct">Ingredient</label><select id="recipeIngProduct" onchange="showRecipeUnitHint()">${rawProducts.map(p=>`<option value="${p.id}">${esc(p.name)}${p.unit?' — per '+esc(p.unit):''}</option>`).join('')}</select></div><div class="field"><label for="recipeIngQty">Qty used <span id="recipeUnitHint" style="color:var(--brass2);font-weight:700"></span></label><input id="recipeIngQty" type="number" min="0.001" step="any"></div></div>
+ <div id="recipeUnitNote" class="notice" style="font-size:12px;display:none">—</div>
  <button class="btn secondary full" onclick="addRecipeIngredient()">＋ Add Ingredient</button>
  <div class="list" id="recipeIngList" style="margin-top:8px"></div>
  <button class="btn accent full" style="margin-top:10px" onclick="saveRecipe()">Save Recipe</button>
  <button class="btn secondary full" onclick="showConversionMenu()">Cancel</button>`);
  renderRecipeIngredientsDraft();
 }
+/* Says plainly which unit the quantity is in, because getting it wrong is silent and
+   expensive. A product priced per kg needs 200 grams entered as 0.2 — typing 200 means two
+   hundred KILOS, which would cost a portion a thousand times too much and nothing would
+   flag it. Showing the unit beside the box, with the small-quantity example spelled out,
+   is the cheapest possible guard against that. */
+async function showRecipeUnitHint(){
+ const sel=document.getElementById('recipeIngProduct'); if(!sel)return;
+ const p=(await bizProducts()).find(x=>x.id===sel.value);
+ const hint=document.getElementById('recipeUnitHint');
+ const note=document.getElementById('recipeUnitNote');
+ const unit=(p&&p.unit)||'';
+ if(hint) hint.textContent = unit ? '(in '+unit+')' : '';
+ if(note){
+  if(!unit){ note.style.display='none'; return; }
+  const u=unit.toLowerCase();
+  note.style.display='block';
+  note.innerHTML = (u==='kg'||u==='kilo'||u==='kilogram')
+   ? `<b>${esc(p.name)}</b> is measured in ${esc(unit)}. Enter 200 grams as <b>0.2</b>, 20 grams as <b>0.02</b>.`
+   : (u==='l'||u==='litre'||u==='liter')
+     ? `<b>${esc(p.name)}</b> is measured in ${esc(unit)}. Enter 500ml as <b>0.5</b>.`
+     : `<b>${esc(p.name)}</b> is measured in ${esc(unit)} — enter the quantity in ${esc(unit)}.`;
+ }
+}
 async function addRecipeIngredient(){
  const products=await bizProducts(), p=products.find(x=>x.id===recipeIngProduct.value);
  const qty=Number(recipeIngQty.value);
  if(!p||!qty||qty<=0)return alert('Select an ingredient and enter a quantity.');
  if(window.recipeIngredientsDraft.find(i=>i.sourceProductId===p.id))return alert('That ingredient is already in this recipe.');
- window.recipeIngredientsDraft.push({sourceProductId:p.id, sourceProductName:p.name, qtyUsed:qty});
+ /* A quantity that looks like the wrong unit. Someone entering 200 for a kg-priced pepper
+    almost certainly means 200 grams, and 200kg of pepper per batch would make the costing
+    nonsense without anything obviously breaking. Asked, not blocked — a bakery really might
+    use 200kg of flour. */
+ const u=(p.unit||'').toLowerCase();
+ if((u==='kg'||u==='l'||u==='litre'||u==='kilo') && qty>=50){
+  if(!confirm(qty+' '+p.unit+' of '+p.name+' per batch — is that right?\n\nIf you meant '+qty+' grams, enter '+(qty/1000)+' instead.')) return;
+ }
+ // The first ingredient added becomes the main one by default — it is what a person
+ // naturally enters first — but it can be changed, and the choice matters: the main
+ // ingredient drives the expected yield and scales the whole template.
+ window.recipeIngredientsDraft.push({sourceProductId:p.id, sourceProductName:p.name, qtyUsed:qty,
+   unit:p.unit||'', isPrimary:window.recipeIngredientsDraft.length===0});
  recipeIngQty.value='';
  renderRecipeIngredientsDraft();
 }
 function renderRecipeIngredientsDraft(){
- recipeIngList.innerHTML=window.recipeIngredientsDraft.map((i,idx)=>`<div class="row-item"><div><b>${esc(i.sourceProductName)}</b><small>Qty ${i.qtyUsed} per batch</small></div><button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="window.recipeIngredientsDraft.splice(${idx},1);renderRecipeIngredientsDraft()">Remove</button></div>`).join('') || '<div class="empty">No ingredients added yet.</div>';
+ const d=window.recipeIngredientsDraft;
+ recipeIngList.innerHTML = d.map((i,idx)=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px${i.isPrimary?';border-left:3px solid var(--brass)':''}">
+   <div style="display:flex;justify-content:space-between;align-items:center">
+    <div><b>${esc(i.sourceProductName)}</b><small>${i.qtyUsed}${i.unit?' '+esc(i.unit):''} per batch</small></div>
+    <button class="btn danger" style="padding:5px 9px;font-size:11px" onclick="removeRecipeIngredient(${idx})">Remove</button>
+   </div>
+   <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:${i.isPrimary?'var(--brass2)':'var(--muted)'}">
+    <input type="radio" name="recipePrimary" ${i.isPrimary?'checked':''} onchange="setRecipePrimary(${idx})">
+    Main ingredient — drives the expected yield and scales the rest
+   </label>
+  </div>`).join('') || '<div class="empty">No ingredients added yet.</div>';
+}
+/* Which ingredient the recipe is anchored to. It decides two things the owner can see:
+   how many portions a batch is expected to yield, and what the other quantities become
+   when the store issues more or less than one batch. Anchoring jollof to the salt rather
+   than the rice would make both meaningless, so it is an explicit choice rather than
+   something inferred from entry order. */
+function setRecipePrimary(idx){
+ window.recipeIngredientsDraft.forEach((i,n)=>{ i.isPrimary = n===idx; });
+ renderRecipeIngredientsDraft();
+}
+function removeRecipeIngredient(idx){
+ const wasPrimary=window.recipeIngredientsDraft[idx] && window.recipeIngredientsDraft[idx].isPrimary;
+ window.recipeIngredientsDraft.splice(idx,1);
+ // Removing the main ingredient must not leave a recipe with no anchor at all.
+ if(wasPrimary && window.recipeIngredientsDraft.length) window.recipeIngredientsDraft[0].isPrimary=true;
+ renderRecipeIngredientsDraft();
 }
 async function saveRecipe(){
  const soldName=recipeSoldName.value.trim(), soldPrice=Number(recipeSoldPrice.value)||0, yieldsQty=Number(recipeYields.value), unitLabel=recipeUnitLabel.value.trim()||'units';
@@ -7444,9 +9015,39 @@ async function showOnlineOrderingSettings(){
 // Availability is what controls whether an item is offered, not whether it was published:
 // an unavailable item is simply excluded, so online, QR and phone orders can't select it.
 function isOfferable(p){
+ /* Only COUNTER items are sellable. Raw materials are issued to a kitchen, not sold — a
+    customer ordering 50kg of raw rice is not a sale, it is a mistake — and utilities like
+    diesel are consumed against a meter and have no sellable form at all. Without this both
+    appeared on the POS grid, the online menu and phone orders alongside real dishes, and
+    ordering one would have decremented raw stock as though it had been served. */
+ if(p.role==='raw' || p.role==='utility') return false;
  if(p.availableOnline===false) return false;      // explicitly switched off by the owner
  if(p.trackStock) return (Number(p.stockQty)||0)>0; // tracked goods must actually be in stock
  return true;                                      // made-to-order items have no stock to check
+}
+/* Republishes only when what is ORDERABLE has actually changed.
+   The menu was refreshed when a product was edited or toggled, but not when stock moved —
+   so the last bottle of Coke sold, isOfferable() went false, and the public menu carried on
+   offering it. A customer orders, pays, and there is nothing to give them.
+
+   Republishing after every sale would be a network call per transaction, which is wasteful
+   and would fail constantly on a poor connection. Instead the set of orderable product ids
+   is remembered and compared: a sale that merely reduces stock changes nothing, while the
+   sale that takes the last one changes the set and triggers a publish. Rare, and exactly
+   when it matters. */
+let __lastPublishedSet = null;
+async function menuSignature(){
+  const products=await bizProducts();
+  return products.filter(isOfferable).map(p=>p.id).sort().join(',');
+}
+async function republishMenuIfAvailabilityChanged(){
+  try{
+    if(!ServerAccount.token) return;
+    const sig=await menuSignature();
+    if(__lastPublishedSet === sig) return;   // nothing orderable changed
+    __lastPublishedSet = sig;
+    await republishMenuIfLive();
+  }catch(e){ console.error('Could not refresh the published menu after a stock change', e); }
 }
 async function republishMenuIfLive(){
  try{
@@ -7456,6 +9057,7 @@ async function republishMenuIfLive(){
   const b = await getBusiness();
   const items = products.map(p=>({productId:p.id, name:p.name, priceKobo:Math.round((Number(p.price)||0)*100), description:'', kind:p.kind||'regular'}));
   await ServerAccount.api('/api/menu/publish', {method:'POST', body: JSON.stringify({businessId, businessName:b.name, items})});
+  __lastPublishedSet = await menuSignature(); // keep the comparison honest after a manual publish
  }catch(e){ console.error('Could not refresh the published menu', e); }
 }
 async function showMenuAvailability(){
@@ -7670,8 +9272,18 @@ async function completeOnlineOrder(id){
   inv.deliveryAddress=o.deliveryAddress||'';
   inv.deliveryPhone=o.customerPhone||'';
  }
- await put('invoices',inv);
- await applyStockDelta(items, -1);
+ /* One transaction, exactly as the POS sale does. These were two separate writes: save the
+    invoice, then decrement stock. If the app died between them — a phone going flat, a
+    backgrounded tab reclaimed — the sale recorded but stock never moved, and the two
+    disagreed permanently. The POS was fixed for this and these channels were left behind,
+    which is worse than never having fixed it: the same action is reliable at the counter
+    and not on the phone. */
+ try{
+  await saveInvoiceWithStock(inv, items, -1);
+ }catch(e){
+  alert('This order could not be saved: '+(e && e.message || e)+'\n\nNothing was recorded and no stock was changed. Please try again.');
+  return;
+ }
  o.status='completed'; o.invoiceId=inv.id; await put('onlineOrders',o);
  try{ await ServerAccount.api('/api/orders/'+id+'/complete', {method:'POST'}); }
  catch(e){ /* the local completion still holds; a failed push here just means the server won't yet know until the next successful call */ }
@@ -7903,6 +9515,20 @@ async function downloadInvoicePDF(number){
   }
 }
 
+/* The account status shown to the person.
+   ServerAccount.tenant is read from local storage and only rewritten at login, so on a
+   device that has not logged in since the field was added it is simply absent — which
+   rendered as a bare "Status: ." with nothing after it. The live per-business billing
+   status is refreshed on every startup and business switch, so it is preferred; the cached
+   tenant value is the fallback, and an honest "unknown" beats an empty gap. */
+function currentAccountStatus(){
+ const live = window.billingStatus && window.billingStatus.status;
+ if(live) return live;
+ const cached = ServerAccount.tenant && ServerAccount.tenant.status;
+ if(cached) return cached;
+ return 'unknown — open Subscription to refresh';
+}
+
 /* ---------------- Backup / Sync UI ---------------- */
 function showCloudSync(){
  if(!requireOwnerMode('Backup & sync settings'))return;
@@ -7915,7 +9541,7 @@ function showCloudSync(){
  } else if(ServerAccount.token && ServerAccount.tenant) {
    const lastServerPush=localStorage.getItem('moborex_server_last_push'), lastServerPull=localStorage.getItem('moborex_server_last_pull');
    const isLite = currentModuleLevel()===0;
-   accountSyncModeLine = `<b>${esc(ServerAccount.tenant.name)}</b><br>Signed in as: <b>${esc(localStorage.getItem('moborex_server_email')||'—')}</b><br>Status: ${esc(ServerAccount.tenant.status)}${ServerAccount.tenant.status==='trialing'&&ServerAccount.tenant.trialEndsAt?' (trial ends '+esc(new Date(ServerAccount.tenant.trialEndsAt).toLocaleDateString())+')':''}. This data is stored on the server as-is — protected by your account login, not end-to-end encrypted.`;
+   accountSyncModeLine = `<b>${esc(ServerAccount.tenant.name)}</b><br>Signed in as: <b>${esc(localStorage.getItem('moborex_server_email')||'—')}</b><br>Status: ${esc(currentAccountStatus())}${currentAccountStatus()==='trialing'&&ServerAccount.tenant.trialEndsAt?' (trial ends '+esc(new Date(ServerAccount.tenant.trialEndsAt).toLocaleDateString())+')':''}. This data is stored on the server as-is — protected by your account login, not end-to-end encrypted.`;
    if(isLite){
     serverStatusHtml = `<div class="notice">Multi-device sync isn't included on the Personal plan — it keeps your account and trial/subscription status working, but doesn't push data between devices. <button class="btn accent full" style="margin-top:8px" onclick="closeModal();showBillingScreen()">Upgrade to Sync</button></div>`;
     serverActionsHtml = `<button class="btn danger full" onclick="logoutServerAccount()">Log Out</button>`;
