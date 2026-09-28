@@ -1,4 +1,4 @@
-const CACHE = 'moborex-invoice-v66';
+const CACHE = 'moborex-invoice-v73';
 
 /* All three entry points are cached, not just index.html. order.html (customers) and
    rider.html (riders) were previously never cached at all, so a rider with no signal had
@@ -10,6 +10,11 @@ const ASSETS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  // Shipped but previously uncached. The Apple touch icon is what an iPhone shows on the
+  // home screen, and the maskable icon is what Android uses for an adaptive one — a device
+  // that installs the app while offline would have had neither.
+  './apple-touch-icon.png',
+  './icon-512-maskable.png',
 ];
 
 const OPTIONAL_ASSETS = [

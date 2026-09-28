@@ -131,14 +131,34 @@ async function checkOutstandingOrder(){
     statusEl.innerHTML = `<div class="notice" style="background:#F7E7E7;color:var(--danger);border-color:#e6b8b8">Could not check right now — try again.</div>`;
   }
 }
+/* An error screen with no way out leaves the customer stranded on a blank page — they
+   close the tab, and whatever they were ordering is lost along with the sale. Every dead
+   end now offers a way back: try again, or return to the menu. */
+/* Returns to the menu without re-running init(), which would branch straight back into
+   tracking or the paid-confirmation screen depending on the URL and never reach the menu at
+   all. Reloading with a clean query is the reliable way back from any state. */
+function backToMenu(){
+  if(!businessId){ location.reload(); return; }
+  const clean = location.pathname + '?business=' + encodeURIComponent(businessId);
+  location.href = clean;
+}
 function renderError(msg){
-  document.getElementById('app').innerHTML = `<div class="center"><h2>Something's not right</h2><p>${esc(msg)}</p></div>`;
+  document.getElementById('app').innerHTML = `<div class="center">
+    <h2>Something's not right</h2>
+    <p>${esc(msg)}</p>
+    <button class="btn" onclick="location.reload()" style="margin-top:12px">Try again</button>
+    ${businessId ? `<button class="btn secondary" onclick="backToMenu()" style="margin-top:8px">Back to the menu</button>` : ''}
+  </div>`;
 }
 
 function renderPaidConfirmation(){
   document.getElementById('app').innerHTML = `<div class="center">
     <h2>Payment received 🎉</h2>
     <p>Your order is confirmed and the business has been notified. Thank you!</p>
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn secondary" onclick="backToMenu()">Order something else</button>
+      <button class="btn secondary" onclick="showFeedbackForm()">Leave feedback</button>
+    </div>
     ${paidReturnOrderId ? `<a href="${location.pathname}?track=${encodeURIComponent(paidReturnOrderId)}" style="display:inline-block;margin-top:16px;color:var(--brass2);font-weight:700;text-decoration:none">Track this order →</a>` : ''}
   </div>`;
 }
@@ -638,6 +658,10 @@ function renderQrConfirmation(orderId, totalKobo){
   document.getElementById('app').innerHTML = `<div class="center">
     <h2>Order placed ✅</h2>
     <p>Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.</p>
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn secondary" onclick="backToMenu()">Order something else</button>
+      <button class="btn secondary" onclick="showFeedbackForm()">Leave feedback</button>
+    </div>
     <p style="font-family:monospace;font-size:13px;color:var(--muted);margin-top:16px">Order ref: ${esc(orderId.slice(0,8))}</p>
     <a href="${location.pathname}?track=${encodeURIComponent(orderId)}" style="display:inline-block;margin-top:16px;color:var(--brass2);font-weight:700;text-decoration:none">Track this order →</a>
   </div>`;
