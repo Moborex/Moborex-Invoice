@@ -15,7 +15,7 @@
 
 Open the app → **Sync & Backup**. The line near the bottom reads:
 
-    App build v75
+    App build v77
 
 If it shows an older number, the browser is serving a cached copy:
 

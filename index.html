@@ -236,6 +236,11 @@ body.staffMode .topbar{margin-top:34px}
 body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hidden}
 .bizSwitch{background:none;border:0;padding:0;color:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:4px}
 .bizSwitch .chev{font-size:10px;opacity:.6}
+/* Admin mode: the customer app is hidden entirely and the admin sheet is the whole page. */
+body.admin-mode .shell, body.admin-mode #authGate, body.admin-mode #lockScreen, body.admin-mode .updateBanner,
+body.admin-mode .installBar, body.admin-mode #staffModeBanner, body.admin-mode #forceUpdateScreen { display:none !important; }
+body.admin-mode .modal { background: var(--paper, #f6f4ee) !important; }
+body.admin-mode .modal .sheet { max-width: 960px; margin: 0 auto; min-height: 100vh; border-radius: 0; box-shadow: none; }
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -251,7 +256,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 75;
+const APP_VERSION = 77;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -340,7 +345,13 @@ function showDbFailureScreen(message, reloadOnly){
   };
  }catch(e){ /* nothing more can be done at this point */ }
 }
+/* Opened ONCE: every caller shares the same opening, rather than each starting its own. */
 function openDB(){
+  if(idb) return Promise.resolve(idb);
+  if(!openDB.pending) openDB.pending = openDBRaw().catch(e=>{ openDB.pending=null; throw e; });
+  return openDB.pending;
+}
+function openDBRaw(){
  return new Promise((resolve,reject)=>{
   const r=indexedDB.open(DB_NAME,DB_VERSION);
   r.onupgradeneeded=e=>{const d=e.target.result;
@@ -418,7 +429,11 @@ function openDB(){
   };
  })
 }
-function req(store,mode,action){return new Promise((resolve,reject)=>{let t=idb.transaction(store,mode),s=t.objectStore(store),r=action(s);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+/* Waits for the database if something asks before it has finished opening. Anything that ran
+   a moment too early at start-up failed with "Cannot read properties of undefined (reading
+   'transaction')" — an old race, made visible in v73 when one such read lost the error
+   handling that had been hiding it. */
+function req(store,mode,action){if(!idb) return openDB().then(()=>req(store,mode,action));return new Promise((resolve,reject)=>{let t=idb.transaction(store,mode),s=t.objectStore(store),r=action(s);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 /* ---- Multi-business: each business is its own record in the 'business' store;
    invoices/customers/products/business-kind expenses & expense types carry a
    businessId. Personal expenses/categories stay global — they're the person's,
@@ -3531,7 +3546,7 @@ async function logoutServerAccount(){
  window.CURRENT_CURRENCY=null;
  window.billingStatus=null;
  window.currentBranchId=null; window.currentBranchName=null;
- window.staffModeActive=false; window.currentStaffName=null; window.currentRole=null; window.currentStaffPrefix=null;
+ window.staffModeActive=false; window.currentStaffName=null; window.currentStaffRole=null; window.currentStaffPrefix=null;
  try{ blankDashboardUI(); }catch(e){}
  try{ closeModal(); }catch(e){}
  // Restart, unconditionally. Showing the auth gate over a still-live app left every screen,
@@ -4032,7 +4047,12 @@ window.addEventListener('popstate',()=>{modal.classList.remove('show');drawerOve
 function openDrawer(){drawerOverlay.classList.add('show');pushNavIfNeeded()}
 function closeDrawer(e){if(!e||e.target===drawerOverlay){drawerOverlay.classList.remove('show');popNavIfNeeded()}}
 function openModal(h){sheet.innerHTML='<button class="sheetBack" onclick="closeModal()">← Back</button>'+h;modal.classList.add('show');pushNavIfNeeded()}
-function closeModal(){modal.classList.remove('show');popNavIfNeeded()}
+function closeModal(){
+ // In admin mode there is nothing behind the sheet to return to — "Back" goes to the admin home.
+ if(document.body.classList.contains('admin-mode')){ return localStorage.getItem('moborex_admin_token') ? showAdminSearch() : showAdminLogin(); }
+ modal.classList.remove('show');popNavIfNeeded()}
+// Moving between the app and #admin reloads, so each opens clean rather than one over the other.
+window.addEventListener('hashchange', ()=>{ if((location.hash==='#admin') !== document.body.classList.contains('admin-mode')) location.reload(); });
 
 async function refresh(){
  const b=await getBusiness(), invAll=await bizInvoices(), inv=invAll.filter(i=>i.status!=='void');
@@ -4045,7 +4065,7 @@ async function refresh(){
  }
  window.__lastRefreshBusinessId=b.id;
  if(businessChanged && ServerAccount.token) await refreshBillingStatus(); // awaited deliberately — a stale tier from the old business, even briefly, is exactly the bug this exists to prevent
- window.rolePermissions=b.rolePermissions||{}; applyModuleGatingUI(); applyRolePermissionsUI(); // per-business, so both must re-run on every business switch too, not just app startup — module gating first, since role-permission checks its result
+ window.rolePermissions=effectiveRolePermissions(b); applyModuleGatingUI(); applyRolePermissionsUI(); // per-business, so both must re-run on every business switch too, not just app startup — module gating first, since role-permission checks its result
  window.CURRENT_CURRENCY=b.currency||'NGN';
  const logoHtml=b.logo?`<img src="${b.logo}">`:'▦';
  document.getElementById('bizNameWide').textContent=b.name;
@@ -4333,7 +4353,13 @@ function turnOffAppLock(){if(!confirm('Turn off App Lock?'))return;const k=appLo
    own PIN, separate from App Lock. Staff Mode resets to OFF every time
    the app is freshly opened — it never stays unlocked in the background. ---------------- */
 function isStaffMode(){ return !!window.staffModeActive; }
-function currentRole(){ return isStaffMode() ? (window.currentRole||'staff') : 'owner'; } // 'owner' | 'staff' | 'supervisor' | 'pos_clerk'
+/* The staff member's role is kept in window.currentStaffRole — NOT window.currentRole.
+   In a browser every top-level function is also a property of window, so storing the role in
+   window.currentRole REPLACED this function: from the first time a role was stored (entering
+   staff mode, or even logging out, which set it to null) every call to currentRole() — and so
+   every permission check — failed with "currentRole is not a function". The build now refuses
+   any window.X assignment that shares a name with a function. */
+function currentRole(){ return isStaffMode() ? (window.currentStaffRole||'staff') : 'owner'; } // 'owner' | 'staff' | 'supervisor' | 'pos_clerk'
 function isOwner(){ return currentRole()==='owner'; }
 function isPosClerk(){ return currentRole()==='pos_clerk'; }
 function isHotelFrontDesk(){ return currentRole()==='hotel_front_desk'; }
@@ -4425,8 +4451,19 @@ const DEFAULT_ROLE_PERMISSIONS = {
  paymentAdvice:['supervisor'],
  dailySales:['supervisor'], endOfDay:['supervisor'], branches:['supervisor'], branchSwitch:['supervisor'],
 };
+/* The permissions that actually apply to a business. The suggested defaults were documented as
+   "applied when a business has never had permissions configured" — but every loader used
+   `b.rolePermissions || {}`, so an owner who had never opened Role Permissions had staff who
+   could do NOTHING: a POS clerk could not open the POS. Only a business that has never saved
+   permissions gets the defaults; an owner who deliberately untick everything saves an empty
+   set, and that is honoured. Every loader goes through here so the settings screen always shows
+   exactly what staff can do. */
+function effectiveRolePermissions(b){
+  if(b && b.rolePermissions && typeof b.rolePermissions === 'object') return b.rolePermissions;
+  return JSON.parse(JSON.stringify(DEFAULT_ROLE_PERMISSIONS));
+}
 async function refreshRolePermissions(){
- try{ const b=await getBusiness(); window.rolePermissions=b.rolePermissions||{}; }catch(e){ window.rolePermissions={}; }
+ try{ const b=await getBusiness(); window.rolePermissions=effectiveRolePermissions(b); }catch(e){ window.rolePermissions={}; }
  applyRolePermissionsUI();
 }
 function applyRolePermissionsUI(){
@@ -4456,14 +4493,19 @@ function applyRolePermissionsUI(){
 function requireOwnerMode(actionLabel, permKey){
  if(isStaffMode()){
   const granted = permKey && (window.rolePermissions[permKey]||[]).includes(currentRole());
-  if(!granted){ alert((actionLabel||'This action')+' is not available in Staff Mode.'); return false; }
+  if(!granted){
+   /* Said as it is: the owner has not allowed this role — not that staff can never use it. */
+   const roleName = (typeof GRANTABLE_ROLES!=='undefined' && GRANTABLE_ROLES[currentRole()]) || currentRole();
+   alert((actionLabel||'This action')+' has not been allowed for your role ('+roleName+').\n\nThe owner can allow it in Settings → Role Permissions.');
+   return false;
+  }
  }
  return true;
 }
 async function showRolePermissionsSettings(){
  if(!requireOwnerMode('Role Permissions'))return;
  const b=await getBusiness();
- const perms=b.rolePermissions||{};
+ const perms=effectiveRolePermissions(b);
  const roleKeys=Object.keys(GRANTABLE_ROLES);
  openModal(`<h2>Role Permissions ${hb("Owner always has everything. Tick a box to let that role into that feature. Role Permissions, Business Settings, Sync & Backup, and App Lock stay owner-only permanently and aren't listed here.")}</h2>
  <div class="notice">Tick what each role is allowed to use. Nothing is granted unless you tick it.</div>
@@ -4718,7 +4760,7 @@ async function revalidateStaffSession(reason){
    cred.unverified = false;
    // Role or branch may have been changed by the owner while this session was open — take
    // the server's version rather than keeping whatever was true at sign-in.
-   window.currentRole = res.staff.role || 'staff';
+   window.currentStaffRole = res.staff.role || 'staff';
    window.currentStaffName = res.staff.name || window.currentStaffName;
    if(res.staff.branchId){ window.currentBranchId=res.staff.branchId; window.currentBranchName=res.staff.branchName||''; }
    applyStaffModeUI();
@@ -4742,7 +4784,7 @@ async function revalidateStaffSession(reason){
 }
 function endStaffSession(message){
  clearStaffCredential();
- window.staffModeActive=false; window.currentStaffName=null; window.currentRole=null; window.currentStaffPrefix=null;
+ window.staffModeActive=false; window.currentStaffName=null; window.currentStaffRole=null; window.currentStaffPrefix=null;
  window.currentBranchId=null; window.currentBranchName=null;
  applyStaffModeUI();
  try{ closeModal(); }catch(e){}
@@ -4771,7 +4813,7 @@ async function submitEnterStaffMode(){
  }
  window.staffModeActive=true;
  window.currentStaffName=match.name;
- window.currentRole=match.role||'staff';
+ window.currentStaffRole=match.role||'staff';
  /* Backfilled for staff created before prefixes existed, so their transactions carry an
     identifier too rather than falling back to a generic one. Computed against everyone
     else's, so it cannot duplicate an existing code. */
@@ -4820,7 +4862,7 @@ async function submitEnterStaffMode(){
    }catch(e){ console.warn('Could not refresh permissions before staff login — using the last synced copy.', e); }
   }
   const bnow=await getBusiness();
-  window.rolePermissions = bnow.rolePermissions || {};
+  window.rolePermissions = effectiveRolePermissions(bnow);
   window.__permissionsFresh = fetched;
  }catch(e){ window.rolePermissions = window.rolePermissions || {}; }
  applyStaffModeUI();
@@ -4832,8 +4874,8 @@ async function submitEnterStaffMode(){
     permissions is the honest version, and naming the till matters because it appears on
     every receipt they print. */
  {
-  const granted=Object.keys(window.rolePermissions||{}).filter(k=>(window.rolePermissions[k]||[]).includes(window.currentRole));
-  alert((ROLE_LABELS[window.currentRole]||'Staff')+' mode is on for '+match.name+'.'
+  const granted=Object.keys(window.rolePermissions||{}).filter(k=>(window.rolePermissions[k]||[]).includes(window.currentStaffRole));
+  alert((ROLE_LABELS[window.currentStaffRole]||'Staff')+' mode is on for '+match.name+'.'
    + '\n\nTill: '+tillName()+'   ·   Your code on receipts: '+(window.currentStaffPrefix||'--')
    + '\n'+granted.length+' feature'+(granted.length===1?'':'s')+' available to this role.'
    + (window.__permissionsFresh===false ? '\n\nOffline — using the permissions last synced to this device.' : '')
@@ -4859,7 +4901,7 @@ async function submitExitStaffMode(){
  if(hash!==appLockHash){ exPinError.style.display='block'; exPin.value=''; exPin.focus(); return; }
  window.staffModeActive=false;
  window.currentStaffName='';
- window.currentRole='';
+ window.currentStaffRole='';
  clearStaffCredential(); // so the revalidation timer stops checking a session that has ended
  applyStaffModeUI();
  closeModal();
@@ -7967,6 +8009,7 @@ async function showAdminDashboard(){
   <button class="btn secondary full" onclick="showAdminBillingRules()">Billing Rules</button>
   <button class="btn secondary full" onclick="adminResetUserPassword()">Reset a User's Password</button>
   <button class="btn secondary full" onclick="showAdminIdleAccounts()">Idle Accounts</button>
+  <button class="btn secondary full" onclick="showAdminBehaviour()">Behaviour Log</button>
   <button class="btn secondary full" onclick="showAdminBroadcasts()">📣 Platform Notices</button>
   <button class="btn secondary full" onclick="showAdminFlaggedRiders()">Flagged Riders</button>
   <button class="btn danger full" onclick="localStorage.removeItem('moborex_admin_token');closeModal()">Log Out of Admin</button>`;
@@ -8329,6 +8372,49 @@ async function adminDeleteIdleSelected(){
   await showAdminIdleAccounts(window.__idleDays);
  }catch(e){ alert('Could not delete: '+e.message); }
 }
+/* ---------------- Admin: behaviour log ----------------
+   Problems grouped by kind, most frequent first, each with the steps that led to it. "Copy for
+   Claude" turns the lot into plain text to paste into a conversation for review. */
+const BEHAVIOUR_LABELS = {
+  home_after_action: 'Saved on a sub-screen, landed on the home screen',
+  repeated_failures: 'The same server call failed 3 times',
+  succeeded_after_failures: 'Went through only after failing more than once',
+  repeated_tap: 'Same button pressed 3 times in 3 seconds',
+  slow_action: 'An action took more than 8 seconds',
+  user_saw_error: 'The user was shown an error',
+  multiple_signups: 'Several accounts created from one connection in a day',
+};
+function behaviourSampleText(s){
+  const d=s.detail||{}, bits=Object.entries(d).map(([k,v])=>k+'='+(typeof v==='object'?JSON.stringify(v):v)).join(', ');
+  const steps=(s.trail||[]).map(behaviourLine).map(l=>'      '+l).join('\n');
+  return `  - ${s.at.replace('T',' ').slice(0,19)} · ${s.source||'app'} v${s.app_version||'?'} · device ${s.device||'?'}${s.tenant_id?' · account '+s.tenant_id.slice(0,8):''}\n    ${bits}${steps?'\n    steps:\n'+steps:''}`;
+}
+async function showAdminBehaviour(days){
+ days=Number(days)||Number(window.__behDays)||7; window.__behDays=days;
+ openModal(`<h2>Behaviour Log</h2>
+  <div class="notice" style="font-size:12px">Only what looked wrong is recorded — each with the steps that led to it. Names and outcomes only; nothing the user typed.</div>
+  <div class="field"><label for="behDays">Last (days)</label><input id="behDays" type="number" min="1" max="30" value="${days}" onchange="showAdminBehaviour(this.value)"></div>
+  <div id="behList"><div class="empty">Loading…</div></div>
+  <button class="btn accent full" onclick="copyBehaviourForReview()">Copy for Claude</button>
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
+ try{
+  const d=await adminApi('/api/admin/telemetry?days='+days);
+  window.__behData=d;
+  behList.innerHTML = (d.groups||[]).length ? `<div class="list">${d.groups.map((g,i)=>`
+   <div class="row-item" style="display:block;cursor:pointer" onclick="const x=document.getElementById('beh${i}');x.style.display=x.style.display==='none'?'block':'none'">
+    <div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(BEHAVIOUR_LABELS[g.name]||g.name)}</b><span class="stamp overdue">${g.n}×</span></div>
+    <small>${g.devices||0} device(s) · ${g.accounts||0} account(s) · last ${esc(String(g.last).replace('T',' ').slice(0,16))}</small>
+    <pre id="beh${i}" style="display:none;white-space:pre-wrap;font-size:11px;margin-top:8px">${esc(g.samples.map(behaviourSampleText).join('\n\n'))}</pre>
+   </div>`).join('')}</div>` : '<div class="empty">Nothing unusual recorded in this period.</div>';
+ }catch(e){ behList.innerHTML='<div class="empty">Could not load: '+esc(e.message)+'</div>'; }
+}
+async function copyBehaviourForReview(){
+ const d=window.__behData; if(!d||!(d.groups||[]).length) return alert('Nothing to copy.');
+ const text=`Business Vault behaviour log — last ${d.days} day(s), exported ${new Date().toISOString().slice(0,16)}\n\n`+
+  d.groups.map(g=>`## ${BEHAVIOUR_LABELS[g.name]||g.name}  [${g.name}]\n${g.n} time(s) on ${g.devices||0} device(s), ${g.accounts||0} account(s); last ${g.last}\n`+g.samples.map(behaviourSampleText).join('\n\n')).join('\n\n');
+ try{ await navigator.clipboard.writeText(text); alert('Copied — paste it into your conversation with Claude.'); }
+ catch(e){ openModal(`<h2>Copy this</h2><textarea style="width:100%;height:60vh;font-size:11px">${esc(text)}</textarea><button class="btn secondary full" onclick="showAdminBehaviour()">Back</button>`); }
+}
 async function adminResetUserPassword(){
  const email=prompt('Email of the account to reset:'); if(!email||!email.trim()) return;
  if(!confirm('Issue a temporary password for '+email.trim()+'?\n\nTheir current password stops working and every device they are signed in on is signed out.')) return;
@@ -8361,7 +8447,9 @@ async function sendIssueReport(kind, message, detail){
    method:'POST', headers:{'Content-Type':'application/json'},
    body: JSON.stringify({
     tenantId: (ServerAccount.tenant && ServerAccount.tenant.id) || null,
-    kind, message: String(message||'').slice(0,2000), detail: detail?String(detail).slice(0,4000):null,
+    kind, message: String(message||'').slice(0,2000),
+    // The steps leading up to the error, so a report says what the user was doing — not just where.
+    detail: ((detail?String(detail).slice(0,2000)+'\n\n':'') + (typeof Behaviour!=='undefined' ? 'STEPS BEFORE THIS:\n'+Behaviour.compact(25) : '')).slice(0,4000),
     screen: window.lastKnownScreen, appVersion: typeof APP_VERSION!=='undefined'?APP_VERSION:null,
    })
   });
@@ -10919,14 +11007,18 @@ async function verifyPayoutAccount(){
  window.payoutVerifiedName = null;
  payoutSaveBtn.style.display='none';
  const accountNumber = payoutAcctNumber.value.trim();
- if(accountNumber.length!==10){ payoutVerifyStatus.style.display='none'; return; }
- payoutVerifyStatus.style.display='block'; payoutVerifyStatus.textContent='Verifying…';
+ /* Looked up each time, and skipped if gone: the account check waits on Paystack, and if the
+    screen has changed by the time it answers, the element no longer exists — a bare reference
+    to it crashed with "payoutVerifyStatus is not defined". */
+ const __pvs=()=>document.getElementById('payoutVerifyStatus')||{style:{},textContent:''};
+ if(accountNumber.length!==10){ __pvs().style.display='none'; return; }
+ __pvs().style.display='block'; __pvs().textContent='Verifying…';
  try{
   const data = await ServerAccount.api('/api/business/verify-account', {method:'POST', body: JSON.stringify({accountNumber, bankCode:payoutBankSelect.value})});
   window.payoutVerifiedName = data.accountName;
-  payoutVerifyStatus.textContent = '✓ '+data.accountName;
+  __pvs().textContent = '✓ '+data.accountName;
   payoutSaveBtn.style.display='block';
- }catch(e){ payoutVerifyStatus.textContent = 'Could not verify this account — double-check the number and bank.'; }
+ }catch(e){ __pvs().textContent = 'Could not verify this account — double-check the number and bank.'; }
 }
 async function savePayoutAccount(){
  if(!window.payoutVerifiedName){ alert('Verify the account first.'); return; }
@@ -12067,11 +12159,154 @@ async function continueStartupAfterAuth(){
   }catch(e){ console.error('Startup (post-auth) failed', e); }
 }
 
+/* ---------------- Behaviour log ----------------
+   A short trail of what the user did — screens opened, actions taken, server calls and their
+   outcome — kept on the device. Names and outcomes only: never anything typed, no amounts, no
+   customer names. Nothing is sent while things go normally. When something LOOKS wrong, the
+   device reports it with the steps that led up to it:
+     home_after_action   a save made on a sub-screen dropped the user on the home screen
+                         instead of the menu they came from
+     repeated_failures   the same server call failed three times
+     succeeded_after_failures  it went through, but only after failing more than once
+     repeated_tap        the same button pressed three times in three seconds
+     slow_action         an action took more than eight seconds
+     user_saw_error      the user was shown an error message
+   Each kind is reported at most once every ten minutes per device, so a loop cannot flood the
+   server. Error reports carry the same trail. */
+const Behaviour = {
+  trail: [], stack: [], fails: {}, lastReported: {}, queue: [], taps: {}, actionDepth: 0, flushTimer: null,
+  step(t, n, extra){ this.trail.push(Object.assign({ t, n, at: Date.now() }, extra || {})); if(this.trail.length > 60) this.trail.shift(); },
+  current(){ return this.stack[this.stack.length - 1] || 'home'; },
+  // One line per step: "12:01:05 screen showProducts" / "12:01:40 action saveProduct ok 230ms"
+  compact(k){ return this.trail.slice(-(k || 30)).map(behaviourLine).join('\n'); },
+  pathShape(p){ return String(p || '').split('?')[0].split('/').map(s => ((/[0-9]/.test(s) && s.length >= 8) || /^[0-9a-f-]{16,}$/i.test(s)) ? ':id' : s).join('/'); },
+  report(name, detail){
+    const key = name + '|' + ((detail && (detail.action || detail.path || detail.message)) || '');
+    const now = Date.now();
+    if(this.lastReported[key] && now - this.lastReported[key] < 10 * 60000) return;
+    this.lastReported[key] = now;
+    this.queue.push({ kind: 'anomaly', name, detail: detail || {}, trail: this.trail.slice(-30), businessId: localStorage.getItem('moborex_active_business') || null });
+    if(this.queue.length > 40) this.queue.splice(0, this.queue.length - 40);
+    clearTimeout(this.flushTimer); this.flushTimer = setTimeout(() => this.flush(), 3000);
+  },
+  async flush(){
+    if(!this.queue.length || !window.MOBOREX_SERVER_URL) return;
+    const events = this.queue.splice(0, 20);
+    let device = null; try{ device = deviceCode(); }catch(e){}
+    try{
+      await fetch(window.MOBOREX_SERVER_URL + '/api/telemetry', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(ServerAccount.token ? { 'Authorization': 'Bearer ' + ServerAccount.token } : {}) },
+        body: JSON.stringify({ source: 'app', device, appVersion: typeof APP_VERSION !== 'undefined' ? String(APP_VERSION) : null, events }) });
+    }catch(e){ this.queue.unshift(...events); if(this.queue.length > 40) this.queue.length = 40; }   // offline: kept, bounded, sent later
+  },
+  noteApi(shape, ok, err){
+    const now = Date.now();
+    const list = (this.fails[shape] || []).filter(t => now - t < 10 * 60000);
+    if(ok){
+      if(list.length >= 2) this.report('succeeded_after_failures', { path: shape, failures: list.length });
+      delete this.fails[shape];
+      return;
+    }
+    list.push(now); this.fails[shape] = list;
+    if(list.length >= 3) this.report('repeated_failures', { path: shape, failures: list.length, status: (err && err.status) || 0, lastError: String((err && err.message) || '').slice(0, 120) });
+  },
+};
+function behaviourLine(s){
+  const tm = new Date(s.at).toTimeString().slice(0, 8);
+  if(s.t === 'result') return tm + '   ' + (s.ok ? 'ok' : 'FAILED') + ' ' + s.n + ' ' + s.ms + 'ms';
+  if(s.t === 'api') return tm + ' server ' + s.n + ' ' + (s.ok ? 'ok' : 'FAILED' + (s.status ? ' ' + s.status : '')) + ' ' + s.ms + 'ms';
+  if(s.t === 'home') return tm + ' --> home screen';
+  return tm + ' ' + s.t + ' ' + s.n;
+}
+/* The ONE sanctioned way to replace a global function: with a wrapper that still calls it.
+   The build refuses "window.name = …" for any function name, because storing data that way
+   silently destroyed currentRole(); deliberate wrapping goes through here instead. */
+function wrapGlobalFunction(name, makeWrapper){
+  const original = window[name];
+  if(typeof original !== 'function' || original.__behaviour) return;
+  const wrapped = makeWrapper(original);
+  wrapped.__behaviour = true;
+  window[name] = wrapped;
+}
+(function installBehaviourLog(){
+  if(location.hash === '#admin') return;   // the admin's own clicks are not customer behaviour
+  // Actions are functions that change something. openModal/closeModal and apply* (screen
+  // refreshes) are left out on purpose — they run constantly and say nothing about the user.
+  const ACTION = /^(save|add|record|delete|remove|finalize|complete|confirm|approve|reject|submit|mark|extend|move|checkIn|checkOut|void|settle|issue|produce|publish|cashier|take|release|restore|transfer|create|register|resolve|cancel|refund|grant|redeem|post)[A-Z]?/;
+  const screenStep = (name) => {
+    window.lastKnownScreen = name;
+    if(modal.classList.contains('show')) { Behaviour.stack.push(name); if(Behaviour.stack.length > 10) Behaviour.stack.shift(); }
+    else Behaviour.stack = [name];
+    Behaviour.step('screen', name);
+  };
+  const runAction = (name, f, self, args) => {
+    const t0 = Date.now(), outer = Behaviour.actionDepth === 0;
+    const before = { screen: Behaviour.current(), depth: Behaviour.stack.length, parent: Behaviour.stack[Behaviour.stack.length - 2] || null, modalOpen: modal.classList.contains('show') };
+    if(outer){
+      const taps = (Behaviour.taps[name] || []).filter(t => t0 - t < 3000); taps.push(t0); Behaviour.taps[name] = taps;
+      if(taps.length >= 3) Behaviour.report('repeated_tap', { action: name, count: taps.length, screen: before.screen });
+    }
+    Behaviour.step('action', name);
+    Behaviour.actionDepth++;
+    const done = (ok) => {
+      Behaviour.actionDepth = Math.max(0, Behaviour.actionDepth - 1);
+      const ms = Date.now() - t0;
+      Behaviour.step('result', name, { ok, ms });
+      if(!outer) return;
+      if(ms > 8000) Behaviour.report('slow_action', { action: name, ms, screen: before.screen });
+      // Saved from a sub-screen: the user should land back on the screen they came from.
+      if(ok && before.modalOpen && before.depth >= 2){
+        const mark = Behaviour.trail.length;
+        setTimeout(() => {
+          const stillOpen = modal.classList.contains('show');
+          const movedOn = Behaviour.trail.slice(mark).some(s => s.t === 'screen');
+          if(!stillOpen && !movedOn) Behaviour.report('home_after_action', { action: name, from: before.screen, expectedBackTo: before.parent });
+        }, 1200);
+      }
+    };
+    let r;
+    try{ r = f.apply(self, args); }catch(e){ done(false); throw e; }
+    if(r && typeof r.then === 'function') return r.then(v => { done(true); return v; }, e => { done(false); throw e; });
+    done(true); return r;
+  };
+  for(const name of Object.getOwnPropertyNames(window)){
+    let f; try{ f = window[name]; }catch(e){ continue; }
+    if(typeof f !== 'function' || !/^[a-z]/.test(name) || f.__behaviour) continue;
+    let src = ''; try{ src = Function.prototype.toString.call(f); }catch(e){ continue; }
+    if(src.includes('[native code]')) continue;            // the browser's own showOpenFilePicker etc.
+    const isScreen = /^show[A-Z]/.test(name), isAction = !isScreen && ACTION.test(name);
+    if(!isScreen && !isAction) continue;
+    wrapGlobalFunction(name, orig => isScreen
+      ? function(){ screenStep(name); return orig.apply(this, arguments); }
+      : function(){ return runAction(name, orig, this, arguments); });
+  }
+  wrapGlobalFunction('closeModal', orig => function(){ const r = orig.apply(this, arguments); Behaviour.stack = []; window.lastKnownScreen = 'home'; Behaviour.step('home', ''); return r; });
+  const origApi = ServerAccount.api;
+  ServerAccount.api = async function(path, opts){
+    const t0 = Date.now(), shape = Behaviour.pathShape(path);
+    try{ const r = await origApi.call(this, path, opts); Behaviour.step('api', shape, { ok: true, ms: Date.now() - t0 }); Behaviour.noteApi(shape, true); return r; }
+    catch(e){ Behaviour.step('api', shape, { ok: false, status: e.status || 0, ms: Date.now() - t0 }); Behaviour.noteApi(shape, false, e); throw e; }
+  };
+  const origAlert = window.alert;
+  window.alert = function(msg){
+    const m = String(msg == null ? '' : msg);
+    if(/could not|couldn.t|failed|error|not saved|refused|invalid|incorrect|wrong|too many|not allowed|unable|rejected/i.test(m)){
+      Behaviour.step('alert', m.slice(0, 100));
+      Behaviour.report('user_saw_error', { message: m.slice(0, 160), screen: Behaviour.current() });
+    }
+    return origAlert.apply(this, arguments);
+  };
+  window.addEventListener('online', () => Behaviour.flush());
+})();
+
 applyStaffModeUI(); // ensure nav/dashboard visibility matches the (default: off) state before any data loads
 openDB().then(async ()=>{
   if(location.hash === '#admin'){
-    // Admin route: entirely separate from the customer app and its auth gate.
-    // Doesn't touch business data, doesn't need App Lock or an account to reach.
+    /* Admin is its own page, like the POS and order links: the customer app is never drawn
+       behind it. It opened as a sheet over the normal app, so the module landing page sat
+       visibly underneath, and "Back" dropped you into the customer app. */
+    document.body.classList.add('admin-mode');
+    document.title = 'Business Vault — Admin';
     showAdminLogin();
     return;
   }
@@ -12127,7 +12362,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
         if(match){
           window.staffModeActive=true;
           window.currentStaffName=match.name;
-          window.currentRole=match.role||'staff';
+          window.currentStaffRole=match.role||'staff';
           window.currentBusinessNameForBanner=(b&&b.name)||'';
           if(match.branchId){ window.currentBranchId=match.branchId; window.currentBranchName=match.branchName||''; } // their PIN identifies their branch — no separate picker needed for them
           document.body.classList.remove('locked');

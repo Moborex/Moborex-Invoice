@@ -63,6 +63,44 @@ button{font-family:var(--font-body);cursor:pointer}
 const SERVER = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 const params = new URLSearchParams(location.search);
 const businessId = params.get('business');
+/* Behaviour log for the customer order page. Nothing is sent while orders go through. When the
+   same server call fails three times, or only succeeds after failing more than once — a
+   customer tapping "Place order" again and again until it takes — the page reports it with the
+   steps before it, so it can be fixed before anyone complains. No names, phones or addresses. */
+const OrderLog = {
+  trail: [], fails: {}, sent: {},
+  step(t, n, extra){ this.trail.push(Object.assign({ t, n, at: Date.now() }, extra || {})); if(this.trail.length > 40) this.trail.shift(); },
+  shape(url){ try{ return new URL(url).pathname.split('/').map(s => ((/[0-9]/.test(s) && s.length >= 8) || /^[0-9a-f-]{16,}$/i.test(s)) ? ':id' : s).join('/'); }catch(e){ return 'unknown'; } },
+  report(name, detail){
+    const key = name + '|' + (detail.path || detail.message || '');
+    if(this.sent[key] && Date.now() - this.sent[key] < 10 * 60000) return;
+    this.sent[key] = Date.now();
+    _rawFetch(SERVER + '/api/telemetry', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'order', businessId, events: [{ kind: 'anomaly', name, detail, trail: this.trail.slice(-30), businessId }] }) }).catch(() => {});
+  },
+  note(shape, ok, status, message){
+    const now = Date.now(), list = (this.fails[shape] || []).filter(t => now - t < 10 * 60000);
+    if(ok){ if(list.length >= 2) this.report('succeeded_after_failures', { path: shape, failures: list.length }); delete this.fails[shape]; return; }
+    list.push(now); this.fails[shape] = list;
+    if(list.length >= 3) this.report('repeated_failures', { path: shape, failures: list.length, status: status || 0, lastError: String(message || '').slice(0, 120) });
+  },
+};
+const _rawFetch = window.fetch.bind(window);
+window.fetch = async function(url, opts){
+  if(typeof url !== 'string' || !url.startsWith(SERVER) || url.includes('/api/telemetry')) return _rawFetch(url, opts);
+  const shape = OrderLog.shape(url), t0 = Date.now();
+  try{
+    const res = await _rawFetch(url, opts);
+    OrderLog.step('server', shape, { ok: res.ok, status: res.status, ms: Date.now() - t0 });
+    if(res.ok) OrderLog.note(shape, true);
+    else { let m = ''; try{ m = (await res.clone().json()).error || ''; }catch(e){} OrderLog.note(shape, false, res.status, m); }
+    return res;
+  }catch(e){
+    OrderLog.step('server', shape, { ok: false, status: 0, ms: Date.now() - t0 });
+    OrderLog.note(shape, false, 0, e.message);
+    throw e;
+  }
+};
 const source = params.get('source') === 'online' ? 'online' : 'qr'; // default to the safer, pay-later path if unspecified
 const paidReturn = params.get('paid') === '1';
 let trackOrderId = params.get('track');
