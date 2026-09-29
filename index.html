@@ -251,7 +251,7 @@ body.locked .shell,body.locked .installBar,body.locked #backupBar{visibility:hid
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 73;
+const APP_VERSION = 75;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 
 const CURRENCIES = {
@@ -3625,7 +3625,20 @@ function blankDashboardUI(){
       <input id="agLoginEmail" type="email" autocomplete="off" placeholder="Email" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
       <input id="agLoginPassword" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Password" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
       <button class="btn accent full" onclick="submitAuthGateLogin()">Log In</button>
+      <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showPasswordReset()">Forgot password?</button>
       <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showAuthGateLanding()">← Back</button>
+    </div>
+    <div id="agResetPane" style="display:none">
+      <div id="agResetHint" style="font-size:12px;opacity:.85;margin-bottom:10px;text-align:center">Enter your account email and we will send you a reset code.</div>
+      <input id="agResetEmail" type="email" autocomplete="off" placeholder="Email" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
+      <div id="agResetStep2" style="display:none">
+        <input id="agResetCode" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code from the email" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
+        <input id="agResetPw" type="password" autocomplete="off" placeholder="New password (8+ characters)" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
+        <input id="agResetPw2" type="password" autocomplete="off" placeholder="New password again" style="width:100%;padding:12px;border-radius:10px;border:0;font-size:14px;margin-bottom:8px">
+      </div>
+      <button class="btn accent full" id="agResetBtn" onclick="submitPasswordReset()">Send Code</button>
+      <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showPasswordReset()">Start again</button>
+      <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showAuthGateLogin()">← Back to log in</button>
     </div>
     <div id="ag2faPane" style="display:none">
       <div id="ag2faHint" style="font-size:12px;opacity:.8;margin-bottom:10px;text-align:center">—</div>
@@ -7855,7 +7868,7 @@ async function startSubscribe(plan, interval){
   const data = await ServerAccount.api('/api/billing/initialize', {method:'POST', body: JSON.stringify({plan, interval, businessId})});
   if(data.authorizationUrl) window.open(data.authorizationUrl, '_blank');
   else alert('Could not start payment.');
- }catch(e){ alert('Could not start payment: '+e.message); }
+ }catch(e){ alert(/^Could not start payment/.test(e.message||'') ? e.message : 'Could not start payment: '+e.message); }
 }
 
 /* ---------------- Admin panel — separate from customer auth entirely.
@@ -7952,6 +7965,8 @@ async function showAdminDashboard(){
   <button class="btn secondary full" onclick="showAdminIssues()">Issue Reports</button>
   <button class="btn secondary full" onclick="showAdminPlanPrices()">Plan Pricing</button>
   <button class="btn secondary full" onclick="showAdminBillingRules()">Billing Rules</button>
+  <button class="btn secondary full" onclick="adminResetUserPassword()">Reset a User's Password</button>
+  <button class="btn secondary full" onclick="showAdminIdleAccounts()">Idle Accounts</button>
   <button class="btn secondary full" onclick="showAdminBroadcasts()">📣 Platform Notices</button>
   <button class="btn secondary full" onclick="showAdminFlaggedRiders()">Flagged Riders</button>
   <button class="btn danger full" onclick="localStorage.removeItem('moborex_admin_token');closeModal()">Log Out of Admin</button>`;
@@ -7996,7 +8011,7 @@ async function runAdminBizSearch(){
     return `<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px${b.deactivated?';opacity:.55':''}">
      <div style="display:flex;justify-content:space-between;gap:8px">
       <b>${esc(b.business_name||'(unnamed)')}</b>
-      <span class="stamp ${b.status==='active'||b.status==='lifetime'?'paid':'overdue'}">${esc(b.status)}${b.deactivated?' · OFF':''}</span>
+      <span class="stamp ${(b.effective_status||b.status)==='active'||(b.effective_status||b.status)==='lifetime'?'paid':'overdue'}">${esc(b.effective_status||b.status)}${b.deactivated?' · OFF':''}</span>
      </div>
      <small>${esc(b.owner_email||'—')}</small>
      <small>${esc(PLAN_LABELS[b.plan]||b.plan||'(no module)')}${b.module_explicit?'':' · not explicitly chosen'}${b.has_data?' · has data':' · no data yet'}${b.transfers_enabled?' · transfers ON':''}</small>
@@ -8119,7 +8134,9 @@ async function showAdminTenant(id){
   <div class="notice">${(data.users||[]).map(u=>esc(u.email)).join(', ')} <small style="display:block;margin-top:4px;font-size:10px">Account ID: ${esc(t.id)}</small></div>
   <h3 style="font-size:13px;margin-top:14px">Businesses on this account (${businesses.length})</h3>
   <div class="list">${businesses.map(b=>`<div class="row-item"><div><b>${esc(b.business_name||'Unnamed business')}</b><small>${esc(b.status)}${b.plan?' · '+esc(b.plan):''}</small></div><button class="btn secondary" style="padding:6px 10px;font-size:11px" onclick="showAdminBusiness('${b.id}','${id}')">Manage</button></div>`).join('') || '<div class="empty">No businesses have checked in for billing yet — they show up here the first time each one opens its Subscription screen.</div>'}</div>
-  <button class="btn secondary full" style="margin-top:14px" onclick="showAdminSearch()">Back to Search</button>`);
+  ${adminAccountFactsHtml(data.facts)}
+  <button class="btn danger full" style="margin-top:14px" onclick="adminDeleteAccount('${esc(t.id)}')">Delete This Account</button>
+  <button class="btn secondary full" onclick="showAdminSearch()">Back to Search</button>`);
  }catch(e){ alert('Could not load account: '+e.message); }
 }
 async function showAdminBusiness(businessId, tenantId){
@@ -8256,6 +8273,73 @@ async function saveAdminBillingRules(){
   alert('Billing rules saved. Each business picks them up the next time its app checks in.');
   await showAdminBillingRules();
  }catch(e){ alert('Could not save: '+e.message); }
+}
+/* For when a customer is locked out and email reset is not working: a temporary password is
+   issued, shown once here, and every session on the account ends. Tell the customer to log in
+   with it and change it. */
+/* ---------------- Admin: removing accounts ----------------
+   Two ways. Idle Accounts clears ones that were never used — no data, never paid, no sign-in
+   or sync for the days chosen — and the server re-checks each at the moment of deletion.
+   Delete This Account removes any one account, and asks for its email to be typed, because
+   on a real business that is years of records. Both are recorded in the admin log. */
+function adminAccountFactsHtml(f){
+ if(!f) return '';
+ const last=f.lastActiveAt?new Date(f.lastActiveAt).toLocaleDateString():'never';
+ const warn=f.records>0||f.everPaid;
+ return `<div class="notice" style="font-size:12px;margin-top:12px${warn?';border-color:var(--danger)':''}">
+  <b>${f.records} record${f.records===1?'':'s'}</b> (invoices, customers, products, expenses) ·
+  ${f.everPaid?'<b>has paid before</b>':'never paid'} · last active ${esc(last)} · created ${esc(new Date(f.createdAt).toLocaleDateString())}
+  ${warn?'<br><b>Deleting this destroys real business data and cannot be undone.</b>':''}</div>`;
+}
+async function adminDeleteAccount(tenantId){
+ let data; try{ data=await adminApi('/api/admin/tenants/'+tenantId); }catch(e){ return alert('Could not load account: '+e.message); }
+ const f=data.facts||{};
+ const typed=prompt(`Delete ${f.email||'this account'} permanently?\n\nThis removes the account, every business on it and all their records${f.records?` (${f.records} records)`:''}${f.everPaid?', including a PAYING customer':''}. It cannot be undone.\n\nType the account's email to confirm:`);
+ if(typed===null) return;
+ try{
+  await adminApi('/api/admin/accounts/delete', {method:'POST', body: JSON.stringify({tenantId, confirmEmail:typed})});
+  alert('Account deleted.');
+  await showAdminSearch();
+ }catch(e){ alert('Not deleted: '+e.message); }
+}
+async function showAdminIdleAccounts(days){
+ days=Number(days)||Number(window.__idleDays)||14; window.__idleDays=days;
+ openModal(`<h2>Idle Accounts</h2>
+  <div class="notice" style="font-size:12px">Accounts older than the days below that have <b>no data</b>, have <b>never paid</b>, and have not signed in or synced in that time. Every one is checked again at the moment of deletion.</div>
+  <div class="field"><label for="idleDays">Unused for at least (days)</label><input id="idleDays" type="number" min="1" max="365" value="${days}" onchange="showAdminIdleAccounts(this.value)"></div>
+  <div id="idleList"><div class="empty">Looking…</div></div>
+  <button class="btn secondary full" onclick="showAdminSearch()">Back to Search</button>`);
+ try{
+  const d=await adminApi('/api/admin/accounts/idle?days='+days);
+  window.__idleAccounts=d.accounts||[];
+  idleList.innerHTML = window.__idleAccounts.length ? `
+   <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" onchange="document.querySelectorAll('.idleChk').forEach(c=>c.checked=this.checked)"> Select all (${window.__idleAccounts.length})</label>
+   <div class="list">${window.__idleAccounts.map(a=>`<label class="row-item" style="cursor:pointer"><div style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="idleChk" value="${esc(a.tenantId)}"><div><b>${esc(a.email||a.name)}</b><small>created ${esc(new Date(a.createdAt).toLocaleDateString())} · last active ${a.lastActiveAt?esc(new Date(a.lastActiveAt).toLocaleDateString()):'never'}</small></div></div></label>`).join('')}</div>
+   <button class="btn danger full" style="margin-top:10px" onclick="adminDeleteIdleSelected()">Delete Selected</button>`
+   : '<div class="empty">No idle accounts for that period.</div>';
+ }catch(e){ idleList.innerHTML='<div class="empty">Could not load: '+esc(e.message)+'</div>'; }
+}
+async function adminDeleteIdleSelected(){
+ const ids=[...document.querySelectorAll('.idleChk')].filter(c=>c.checked).map(c=>c.value);
+ if(!ids.length) return alert('Tick the accounts to delete.');
+ if(!confirm('Delete '+ids.length+' idle account(s)?\n\nEach is checked again first — any that has since signed in, added data or paid is skipped.')) return;
+ try{
+  const r=await adminApi('/api/admin/accounts/delete-idle', {method:'POST', body: JSON.stringify({tenantIds:ids, days:window.__idleDays||14})});
+  alert(`Deleted ${r.deleted.length}.`+(r.skipped.length?`\n\nSkipped ${r.skipped.length}:\n`+r.skipped.map(s=>'• '+(s.email||s.tenantId)+' — '+s.reason).join('\n'):''));
+  await showAdminIdleAccounts(window.__idleDays);
+ }catch(e){ alert('Could not delete: '+e.message); }
+}
+async function adminResetUserPassword(){
+ const email=prompt('Email of the account to reset:'); if(!email||!email.trim()) return;
+ if(!confirm('Issue a temporary password for '+email.trim()+'?\n\nTheir current password stops working and every device they are signed in on is signed out.')) return;
+ try{
+  const r=await adminApi('/api/admin/users/temp-password', {method:'POST', body: JSON.stringify({email:email.trim()})});
+  openModal(`<h2>Temporary Password</h2>
+   <div class="notice">For <b>${esc(r.email)}</b>. This is shown once — copy it now and give it to the customer.</div>
+   <div style="font-family:monospace;font-size:22px;letter-spacing:2px;text-align:center;padding:14px;background:var(--surface2,#f3f1ea);border-radius:10px;user-select:all">${esc(r.tempPassword)}</div>
+   <button class="btn secondary full" style="margin-top:10px" onclick="navigator.clipboard&&navigator.clipboard.writeText('${esc(r.tempPassword)}');alert('Copied.')">Copy</button>
+   <button class="btn secondary full" onclick="showAdminSearch()">Done</button>`);
+ }catch(e){ alert('Could not reset: '+e.message); }
 }
 async function showAdminIssues(){
  try{
@@ -11772,6 +11856,11 @@ async function submitAuthGate2FA(){
   await continueStartupAfterAuth();
  }catch(e){ agBusy.style.display='none'; agError.textContent=e.message||'That code is not correct.'; agError.style.display='block'; }
 }
+function showAuthGateLogin(){
+ for(const id of ['agLandingPane','agSignupPane','ag2faPane','agResetPane']){ const e=document.getElementById(id); if(e) e.style.display='none'; }
+ agLoginPane.style.display='block';
+ agTagline.textContent='Log in to your account.';
+}
 function showAuthGateLoginFromLanding(){
  window.chosenSignupModule=null; // this is a plain login, not part of an "add a module" flow
  agLandingPane.style.display='none'; agSignupPane.style.display='none'; agLoginPane.style.display='block';
@@ -11839,6 +11928,40 @@ async function submitAuthGateSignup(){
     agError.textContent=e.message||'Could not create account.'; agError.style.display='block';
   }
 }
+/* ---------------- Forgotten password ----------------
+   There was no way back into an account whose password had been forgotten. Two steps on the
+   login screen: the email gets a six-digit code, then the code and a new password are entered.
+   Setting it signs out every other device on the account. */
+function showPasswordReset(){
+ for(const id of ['agLoginPane','ag2faPane']){ const e=document.getElementById(id); if(e) e.style.display='none'; }
+ const p=document.getElementById('agResetPane'); if(p) p.style.display='block';
+ agResetStep2.style.display='none'; agResetBtn.textContent='Send Code'; window.__resetStage=1;
+ agResetHint.textContent='Enter your account email and we will send you a reset code.';
+ if(agLoginEmail && agLoginEmail.value) agResetEmail.value=agLoginEmail.value;
+ agError.style.display='none';
+}
+async function submitPasswordReset(){
+ const email=agResetEmail.value.trim();
+ agError.style.display='none';
+ if(!email){ agError.textContent='Enter your email.'; agError.style.display='block'; return; }
+ try{
+  if(window.__resetStage!==2){
+   const r=await ServerAccount.api('/api/password/forgot', {method:'POST', body: JSON.stringify({email})});
+   agResetHint.textContent=r.message||'If that email has an account, a code is on its way.';
+   agResetStep2.style.display='block'; agResetBtn.textContent='Set New Password'; window.__resetStage=2;
+   return;
+  }
+  const code=agResetCode.value.trim(), pw=agResetPw.value, pw2=agResetPw2.value;
+  if(!code){ agError.textContent='Enter the code from the email.'; agError.style.display='block'; return; }
+  if(pw.length<8){ agError.textContent='The new password must be at least 8 characters.'; agError.style.display='block'; return; }
+  if(pw!==pw2){ agError.textContent='The two passwords do not match.'; agError.style.display='block'; return; }
+  await ServerAccount.api('/api/password/reset', {method:'POST', body: JSON.stringify({email, code, newPassword:pw})});
+  agResetPane.style.display='none';
+  showAuthGateLogin();
+  agLoginEmail.value=email; agLoginPassword.value='';
+  agError.textContent='Password changed. Log in with your new password.'; agError.style.display='block';
+ }catch(e){ agError.textContent=e.message||'Something went wrong.'; agError.style.display='block'; }
+}
 async function submitAuthGateLogin(){
   const email=agLoginEmail.value.trim(), pw=agLoginPassword.value;
   agError.style.display='none';
@@ -11858,6 +11981,19 @@ async function submitAuthGateLogin(){
       // continueStartupAfterAuth() below finds it already set up and active, alongside
       // whatever else this account already had.
       const chosen=window.pendingModuleAfterLogin; window.pendingModuleAfterLogin=null;
+      /* A returning customer who taps their own module on the front page is logging in, not
+         adding a second business. They were asked to name a new one, and a device left on an
+         empty business then showed that instead of the one they already had. If the account
+         already has this module, open it. */
+      let existing=null;
+      try{ const d=await ServerAccount.api('/api/sync/businesses'); existing=(d.businesses||[]).find(b=>b.module===chosen)||null; }catch(e){}
+      if(existing){
+       localStorage.setItem('moborex_active_business', existing.businessId);
+       localStorage.setItem('moborex_device_module_set','1');
+       if(!(await all('business')).some(b=>b.id===existing.businessId)) await ServerAccount.pull(existing.businessId, true);
+       await continueStartupAfterAuth();
+       return;
+      }
       const bizName=prompt('Name for this new business ('+PLAN_LABELS[chosen]+'):');
       let created=false;
       if(bizName && bizName.trim()){
@@ -11900,8 +12036,26 @@ async function backfillBusinessModuleIfMissing(){
   applyModuleGatingUI(); // re-apply immediately so the menu trims without needing a reload
  }catch(e){ console.error('Could not backfill the business module', e); }
 }
+/* After any login, the active business must belong to the account that just signed in.
+   A real logout clears it, but a session that simply expired did not — so the next login
+   carried on with whatever was active before: another account's business, or an empty one
+   never saved to the server, which the account then appeared to "have". If the active
+   business is not this account's, it is forgotten and the normal "which business?" check
+   runs again. A business made on this device for this account but not yet synced is kept. */
+async function ensureActiveBusinessIsThisAccounts(){
+  if(!ServerAccount.token || !ServerAccount.tenant) return;
+  const activeId=localStorage.getItem('moborex_active_business'); if(!activeId) return;
+  const local=(await all('business')).find(b=>b.id===activeId);
+  if(local && local.ownerTenantId && local.ownerTenantId===ServerAccount.tenant.id) return;
+  let remote=null;
+  try{ remote=((await ServerAccount.api('/api/sync/businesses')).businesses||[]).map(b=>b.businessId); }catch(e){ return; } // offline: leave it
+  if(remote.includes(activeId)) return;
+  localStorage.removeItem('moborex_active_business');
+  localStorage.removeItem('moborex_device_module_set');
+}
 async function continueStartupAfterAuth(){
   try{
+    await ensureActiveBusinessIsThisAccounts();
     await showModuleSelectionIfNeeded(); // self-gated — only does real work on first device setup or after an explicit Switch Module
     await migrateBusinessScopeIfNeeded();
     await autoGenerateSalaryIfDue();
