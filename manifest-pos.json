@@ -1,35 +1,34 @@
 {
-  "name": "Mobo-Vault",
-  "short_name": "Mobo-Vault",
-  "description": "Retail & Hospitality Sales Management — POS, invoicing, inventory, recipes, hotel front desk, online ordering, staff, books and tax, in one place.",
-  "id": "/index.html",
-  "start_url": "./index.html",
-  "scope": "./",
+  "id": "/pos.html",
+  "name": "Mobo-Vault POS",
+  "short_name": "Mobo-Vault POS",
+  "description": "The Mobo-Vault till — for counter staff and cashiers. Staff sign in with their own PIN and see only their screens.",
+  "start_url": "./pos.html",
+  "scope": "./pos.html",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#FAF3DD",
   "theme_color": "#8C6A1C",
+  "lang": "en",
   "categories": [
     "business",
-    "finance",
-    "productivity"
+    "finance"
   ],
-  "lang": "en",
   "icons": [
     {
-      "src": "mobovault-192.png",
+      "src": "mobovault-pos-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "mobovault-512.png",
+      "src": "mobovault-pos-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "mobovault-512-maskable.png",
+      "src": "mobovault-pos-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

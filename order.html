@@ -2,10 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8C6A1C">
+<link rel="icon" type="image/png" sizes="32x32" href="./mobovault-32.png">
+<link rel="apple-touch-icon" href="./mobovault-apple-180.png">
 <title>Order</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Gloock&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Pinyon+Script&display=swap" rel="stylesheet">
 <style>
 :root{
   --ink:#16233D; --ink2:#223258; --paper:#F1F3EF; --card:#FFFFFF;
@@ -46,6 +49,49 @@ button{font-family:var(--font-body);cursor:pointer}
 .center h2{font-size:22px;margin-bottom:10px}
 .center p{color:var(--muted);font-size:14px}
 .hidden{display:none}
+
+/* =========== Mobo-Vault design v2 — the customer's order page ===========
+   Warm gold, white and crimson with banknote engraving, matching the business app. The
+   restaurant's name is signed in copperplate script; prices and buttons stay in the clean sans. */
+:root{
+  --ink:#2A2214; --ink2:#3A2F1C; --paper:#FAF3DD; --card:#FFFBEF; --line:#E3D3A6; --muted:#6B5D40;
+  --brass:#B8902F; --brass2:#B8902F; --brassSoft:#F2E2B4; --gold-deep:#7E5F17; --band:#8C6A1C; --crimson:#B5172F;
+  --good:#2F7A4F; --goodSoft:#E1EEDD; --danger:#B5172F; --cream-on-band:#FFF6DC;
+  --font-display:'Gloock',Georgia,serif; --font-body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  --font-sig:'Pinyon Script','Snell Roundhand','Apple Chancery',cursive;
+}
+body{background:var(--paper) var(--pat-page,none);background-size:180px 180px;font-size:16px}
+h1,h2,h3{font-weight:400}
+.wrap::before{content:"";display:block;height:58px;margin:-18px -18px 16px;background:var(--band) var(--pat-band,none);background-size:auto 100%;border-bottom:3px double var(--brass)}
+.bizName{font-family:var(--font-sig);font-weight:400;font-size:46px;line-height:1.05;color:var(--gold-deep);margin-top:-6px}
+.tagline{font-size:15px;color:var(--muted);display:flex;align-items:center;gap:12px}
+.tagline::after{content:"";flex:1;height:7px;border-top:3px double var(--brass);margin-top:4px}
+.tileGrid{gap:9px}
+.tile{position:relative;text-align:left;align-items:flex-start;justify-content:space-between;gap:8px;min-height:96px;padding:13px 12px 11px;
+  background:#FFFDF6 var(--pat-page,none);background-size:180px 180px;border:1px solid var(--line);border-top:4px solid var(--brass);border-radius:4px}
+.tile b{font-size:15.5px;font-weight:700}
+.tile small{color:var(--gold-deep);font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+.tile.inCart{background-color:var(--brassSoft);border-color:var(--brass);border-top-color:var(--crimson)}
+.qtyBadge{position:absolute;top:8px;right:8px;margin:0;background:var(--crimson);color:#fff;border-radius:3px;font-size:12.5px;padding:2px 8px}
+.sectionhead{font-family:var(--font-display);font-weight:400;font-size:22px;text-transform:none;letter-spacing:0;color:var(--ink);display:flex;align-items:center;gap:12px}
+.sectionhead::after{content:"";flex:1;height:7px;border-top:3px double var(--brass);margin-top:6px}
+.cartRow{border-bottom-color:var(--line);font-size:15px}
+.field label{font-size:14px;color:var(--ink)}
+.field input{border:1px solid var(--line);border-radius:6px;background:#FFFDF6;font-size:16px}
+.field input:focus{outline:2px solid var(--brassSoft);border-color:var(--brass)}
+.btn{border-radius:6px;font-size:16px}
+.btn.accent{background:var(--crimson);color:#fff}
+.btn.ink{background:var(--band) var(--pat-band,none);background-size:auto 100%;color:var(--cream-on-band)}
+.btn.secondary{background:var(--card);border:1px solid var(--line)}
+.bar{background:var(--card);border-top:3px double var(--brass);box-shadow:0 -6px 20px rgba(42,34,20,.10)}
+.bar .total{font-family:var(--font-display);font-weight:400;font-size:26px;font-variant-numeric:tabular-nums}
+.notice{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brass);border-radius:4px;color:var(--ink)}
+.center{background:var(--pat-rosette,none) no-repeat center 30px;background-size:220px 220px}
+.center h2{font-family:var(--font-display);font-size:30px}
+.poweredBy{display:flex;align-items:center;justify-content:center;gap:8px;margin:28px auto 12px;color:var(--muted);font-size:13px}
+.poweredBy img{width:28px;height:auto}
+.poweredBy b{font-family:var(--font-display);font-weight:400;color:var(--ink)}
+.bizName{color:#9A1530}  /* the restaurant's name, in royal crimson as in the app */
 </style>
 </head>
 <body>
@@ -61,6 +107,26 @@ button{font-family:var(--font-body);cursor:pointer}
 
 <script>
 const SERVER = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
+/* Banknote engraving for the order page, drawn once in the browser — no downloads. */
+(function engraveOrderPage(){
+  try{
+    const gold='#B8902F', light='#F2D58A';
+    const svg=(w,h,body)=>`url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>${body}</svg>`)}")`;
+    const wave=(w,h,n,amp,freq,op,sw,col,shift)=>{ let p='';
+      for(let k=0;k<n;k++){ let d=''; const ph=k*Math.PI/n*2, base=h*(k+.5)/n;
+        for(let x=0;x<=w;x+=4){ const y=base+amp*Math.sin(x/w*Math.PI*2*freq+ph)+amp*.45*Math.sin(x/w*Math.PI*2*freq*3-ph*(shift||1)); d+=(x?'L':'M')+x+' '+y.toFixed(1); }
+        p+=`<path d='${d}' fill='none' stroke='${col}' stroke-opacity='${op}' stroke-width='${sw}'/>`; } return p; };
+    const s=document.documentElement.style;
+    s.setProperty('--pat-page',svg(180,180,wave(180,180,6,9,1,.16,.7,gold)+`<g transform='rotate(90 90 90)'>${wave(180,180,6,9,1,.12,.7,gold,2)}</g>`));
+    s.setProperty('--pat-band',svg(600,140,wave(600,140,16,10,3,.30,.8,light)));
+    let ros=''; const c=120;
+    for(let k=0;k<28;k++){ let d=''; const rot=k/28*Math.PI*2;
+      for(let t=0;t<=360;t+=3){ const a=t*Math.PI/180, r=72+26*Math.sin(7*a)+10*Math.sin(19*a+rot); d+=(t?'L':'M')+(c+r*Math.cos(a+rot)).toFixed(1)+' '+(c+r*Math.sin(a+rot)).toFixed(1); }
+      ros+=`<path d='${d}Z' fill='none' stroke='${gold}' stroke-opacity='.18' stroke-width='.6'/>`; }
+    s.setProperty('--pat-rosette',svg(240,240,ros));
+  }catch(e){}
+})();
+
 const params = new URLSearchParams(location.search);
 const businessId = params.get('business');
 /* Behaviour log for the customer order page. Nothing is sent while orders go through. When the
@@ -110,6 +176,12 @@ const deliveryJobId = params.get('deliveryJob'); // customer paying for a delive
 let menu = [];
 let businessName = '';
 let serviceFeePercent = 7;
+/* Whether this business can take payment online at all. It was never asked, so the page offered
+   online payment, the payment failed, and the customer ordered again — three orders for one. */
+let onlinePaymentAvailable = true;
+/* An order already created but not yet paid for. A failed payment retries THIS order instead of
+   placing a new one each time the customer taps Place Order. */
+let pendingOrder = null;
 let serviceFeeCapKobo = 500000;
 let wantsDelivery = false;
 let people = [{ label: 'Person 1', cart: {} }]; // each person gets their own cart — id -> {name, priceKobo, qty}
@@ -131,6 +203,7 @@ async function init(){
     document.title = businessName ? businessName+' — Order' : 'Order'; // browser tab identifies which business this is, not just generic "Order"
     menu = data.items || [];
     serviceFeePercent = data.serviceFeePercent || 7;
+    onlinePaymentAvailable = data.onlinePayment !== false;
     serviceFeeCapKobo = data.serviceFeeCapKobo || 500000;
     renderCheckOrderGate();
   }catch(e){
@@ -141,7 +214,7 @@ async function init(){
 function renderCheckOrderGate(){
   document.getElementById('app').innerHTML = `
     <div class="bizName">${esc(businessName)}</div>
-    <div style="text-align:center;margin:-4px 0 10px"><button type="button" onclick="showFeedbackForm()" style="background:none;border:0;color:#1F6F5C;text-decoration:underline;font:inherit;cursor:pointer;font-size:13px">Leave feedback or report a problem</button></div>
+    <div style="text-align:center;margin:-4px 0 10px"><button type="button" onclick="showFeedbackForm()" style="background:none;border:0;color:var(--crimson);text-decoration:underline;font:inherit;cursor:pointer;font-size:13px">Leave feedback or report a problem</button></div>
     <div class="tagline">Have an order already in progress? Enter your phone number to check it — or skip straight to ordering.</div>
     <div class="field"><label>Phone number</label><input id="gatePhone" type="tel" placeholder="The number you ordered with"></div>
     <div id="gateStatus"></div>
@@ -552,7 +625,8 @@ function showCheckout(){
   const activePeople = people.filter(p=>Object.keys(p.cart).length);
   const enriched = activePeople.map(p=>({label:p.label, ...packagingPreview(p.cart)}));
   const orderValue = enriched.reduce((a,p)=>a+p.subtotal,0);
-  const fee = source==='online' ? Math.min(Math.round(orderValue * (serviceFeePercent/100)), serviceFeeCapKobo) : 0;
+  const paysOnline = source==='online' && onlinePaymentAvailable;
+  const fee = paysOnline ? Math.min(Math.round(orderValue * (serviceFeePercent/100)), serviceFeeCapKobo) : 0;
   const peopleHtml = enriched.map(p=>`
     <div class="sectionhead">${esc(p.label)}</div>
     ${p.items.map(it=>`<div class="cartRow"><div>${esc(it.name)}<small>Qty ${it.qty} × ${money(it.priceKobo)}</small></div><b>${money(it.priceKobo*it.qty)}</b></div>`).join('')}
@@ -563,7 +637,8 @@ function showCheckout(){
     <div class="sectionhead">Your Order</div>
     ${peopleHtml}
     <div class="cartRow"><div>Order Value</div><div>${money(orderValue)}</div></div>
-    ${source==='online' ? `<div class="cartRow"><div>Service Fee${fee < Math.round(orderValue*(serviceFeePercent/100)) ? ' (capped)' : ' ('+serviceFeePercent+'%)'}</div><div>${money(fee)}</div></div>` : ''}
+    ${source==='online' && !onlinePaymentAvailable ? `<div class="notice" style="margin:8px 0;font-size:13px">This business doesn't take payment online yet — you'll pay when you collect your order, or on delivery.</div>` : ''}
+    ${paysOnline ? `<div class="cartRow"><div>Service Fee${fee < Math.round(orderValue*(serviceFeePercent/100)) ? ' (capped)' : ' ('+serviceFeePercent+'%)'}</div><div>${money(fee)}</div></div>` : ''}
     <div class="cartRow" style="border:0;font-weight:800;font-size:16px;padding-top:14px"><div>Total</div><div>${money(orderValue+fee)}</div></div>
     <div class="sectionhead">Your Details</div>
     <div class="field"><label>Your name</label><input id="custName" placeholder="Who should we call for this?"></div>
@@ -667,23 +742,31 @@ async function placeOrder(){
     items: Object.values(p.cart).map(c=>({name:c.name, priceKobo:c.priceKobo, qty:c.qty})),
   }));
   try{
-    const res = await fetch(`${SERVER}/api/public/orders`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ businessId, source, customerName:name, customerPhone:phone, people:peoplePayload, deliveryRequested:wantsDelivery, deliveryAddress })
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'Could not place the order.');
-
-    if(source === 'qr'){
-      renderQrConfirmation(data.orderId, data.totalKobo); // server's authoritative total — never trust the client's own cart math for what's actually owed
+    const orderSig = JSON.stringify([peoplePayload, name, phone, wantsDelivery, deliveryAddress]);
+    let data;
+    if(pendingOrder && pendingOrder.sig === orderSig){
+      data = pendingOrder.data;                       // already placed — this is a retry of the PAYMENT only
     } else {
+      const res = await fetch(`${SERVER}/api/public/orders`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ businessId, source, customerName:name, customerPhone:phone, people:peoplePayload, deliveryRequested:wantsDelivery, deliveryAddress })
+      });
+      data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Could not place the order.');
+    }
+
+    if(source === 'qr' || data.paymentStatus !== 'awaiting_online_payment'){
+      pendingOrder = null;
+      renderQrConfirmation(data.orderId, data.totalKobo, data.paymentStatus); // server's authoritative total — never trust the client's own cart math for what's actually owed
+    } else {
+      pendingOrder = { sig: orderSig, data };
       const callbackUrl = location.origin + location.pathname + `?business=${encodeURIComponent(businessId)}&paid=1&order=${data.orderId}`;
       const payRes = await fetch(`${SERVER}/api/public/orders/${data.orderId}/pay/initialize`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ email, callbackUrl })
       });
       const payData = await payRes.json();
-      if(!payRes.ok) throw new Error(payData.error || 'Could not start payment.');
+      if(!payRes.ok) throw new Error('Your order is placed, but the payment did not start: ' + (payData.error || 'please try again.') + '\n\nTap Place Order to try the payment again — it will not create a second order.');
       location.href = payData.authorizationUrl;
     }
   }catch(e){
@@ -691,11 +774,11 @@ async function placeOrder(){
   }
 }
 
-function renderQrConfirmation(orderId, totalKobo){
+function renderQrConfirmation(orderId, totalKobo, paymentStatus){
   document.getElementById('cartBar').classList.add('hidden');
   document.getElementById('app').innerHTML = `<div class="center">
     <h2>Order placed ✅</h2>
-    <p>Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.</p>
+    <p>${paymentStatus==='pay_on_delivery' ? `Pay ${money(totalKobo)} when your order is delivered.` : `Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.`}</p>
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
       <button class="btn secondary" onclick="backToMenu()">Order something else</button>
       <button class="btn secondary" onclick="showFeedbackForm()">Leave feedback</button>
@@ -707,5 +790,6 @@ function renderQrConfirmation(orderId, totalKobo){
 
 init();
 </script>
+<footer class="poweredBy"><picture><source type="image/webp" srcset="./mobovault-emblem.webp"><img src="./mobovault-emblem.png" alt=""></picture><span>Powered by <b>Mobo-Vault</b></span></footer>
 </body>
 </html>

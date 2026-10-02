@@ -1,4 +1,4 @@
-const CACHE = 'moborex-invoice-v77';
+const CACHE = 'moborex-invoice-v80';
 
 /* All three entry points are cached, not just index.html. order.html (customers) and
    rider.html (riders) were previously never cached at all, so a rider with no signal had
@@ -8,19 +8,34 @@ const ASSETS = [
   './order.html',
   './rider.html',
   './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
+  './mobovault-192.png',
+  './mobovault-512.png',
   // Shipped but previously uncached. The Apple touch icon is what an iPhone shows on the
   // home screen, and the maskable icon is what Android uses for an adaptive one — a device
   // that installs the app while offline would have had neither.
-  './apple-touch-icon.png',
-  './icon-512-maskable.png',
+  './mobovault-apple-180.png',
+  './mobovault-32.png',
+  './mobovault-badge.png',
+  './mobovault-badge.webp',
+  './mobovault-emblem.png',
+  './mobovault-emblem.webp',
+  './mobovault-512-maskable.png',
+  // Mobo-Vault POS, the till app: its own page, manifest and icons — cached so a till opens offline
+  './pos.html',
+  './manifest-pos.json',
+  './mobovault-pos-192.png',
+  './mobovault-pos-512.png',
+  './mobovault-pos-512-maskable.png',
+  './mobovault-pos-apple-180.png',
 ];
 
 const OPTIONAL_ASSETS = [
-  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+  // Hosted with the app, not fetched from an outside CDN: no third-party server can alter them,
+  // and PDF export and statement import work offline once cached.
+  './vendor/html2canvas.min.js',
+  './vendor/jspdf.umd.min.js',
+  './vendor/xlsx.full.min.js',
+  './vendor/xlsx-reader-worker.js'
 ];
 
 // Anything from the API is live data and must never be answered from cache first.
