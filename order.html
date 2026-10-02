@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="./mobovault-apple-180.png">
 <title>Order</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Gloock&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Pinyon+Script&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Gloock&family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
   --ink:#16233D; --ink2:#223258; --paper:#F1F3EF; --card:#FFFFFF;
@@ -58,7 +58,7 @@ button{font-family:var(--font-body);cursor:pointer}
   --brass:#B8902F; --brass2:#B8902F; --brassSoft:#F2E2B4; --gold-deep:#7E5F17; --band:#8C6A1C; --crimson:#B5172F;
   --good:#2F7A4F; --goodSoft:#E1EEDD; --danger:#B5172F; --cream-on-band:#FFF6DC;
   --font-display:'Gloock',Georgia,serif; --font-body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
-  --font-sig:'Pinyon Script','Snell Roundhand','Apple Chancery',cursive;
+  --font-sig:'Cinzel','Trajan Pro',Georgia,'Times New Roman',serif;
 }
 body{background:var(--paper) var(--pat-page,none);background-size:180px 180px;font-size:16px}
 h1,h2,h3{font-weight:400}
@@ -92,6 +92,21 @@ h1,h2,h3{font-weight:400}
 .poweredBy img{width:28px;height:auto}
 .poweredBy b{font-family:var(--font-display);font-weight:400;color:var(--ink)}
 .bizName{color:#9A1530}  /* the restaurant's name, in royal crimson as in the app */
+
+/* ---------- Typography v2: clearer, bolder ----------
+   The business name is set in Cinzel — the lettering of inscriptions, banknotes and royal crests:
+   still regal, but clear at a glance, where the copperplate script was hard to read on a phone.
+   Everything else is a step bolder: medium body text, bold labels, names, buttons and tabs, and
+   headings with slightly thickened strokes. */
+:root{--font-sig:'Cinzel','Trajan Pro',Georgia,'Times New Roman',serif}
+body{font-weight:500}
+b,strong{font-weight:800}
+.sig,.sheetBiz,.bizname{font-family:var(--font-sig)!important;font-weight:700;letter-spacing:.03em}
+h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCartTotal{-webkit-text-stroke:.45px currentColor}
+.bizName{font-family:var(--font-sig)!important;font-size:31px;font-weight:800;line-height:1.15;margin-top:2px;letter-spacing:.03em}
+.tile b{font-weight:800}
+.btn{font-weight:800}
+.field label{font-weight:700}
 </style>
 </head>
 <body>
