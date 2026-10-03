@@ -550,6 +550,11 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
 .oaItems{color:var(--muted);font-weight:600;margin:6px 0 4px}
 .oaMore{color:var(--royal-crimson);font-weight:800;margin-top:6px}
 .oaBtn{margin-top:16px;font-size:18px;padding:16px}
+
+/* Screens that slide up must sit ABOVE the tab bar (layer 60). At layer 50 the tab bar covered
+   the bottom of every long screen — hiding its last button. On the required secret-questions
+   screen, which has no Back button, that trapped people on the page. */
+.modal{z-index:70}
 </style>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -565,7 +570,7 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 84;
+const APP_VERSION = 85;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 /* Banknote engraving (guilloche) for the design system — drawn once at start-up as SVG in the
    theme's gold, so it is crisp at any size and costs no downloads. Sets three CSS variables the
