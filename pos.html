@@ -616,7 +616,7 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 87;
+const APP_VERSION = 88;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 /* Banknote engraving (guilloche) for the design system — drawn once at start-up as SVG in the
    theme's gold, so it is crisp at any size and costs no downloads. Sets three CSS variables the
@@ -4610,7 +4610,7 @@ function blankDashboardUI(){
       <button class="btn accent full" onclick="submitAuthGate2FA()">Verify &amp; Sign In</button>
       <button class="btn secondary full" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3);margin-top:8px" onclick="showAuthGateLanding()">← Cancel</button>
     </div>
-    <div id="agError" style="display:none;color:#f2a5a5;font-size:12px;margin-top:10px;text-align:center">—</div>
+    <div id="agError" role="alert" aria-live="assertive" style="display:none">—</div>
     <div id="agBusy" style="display:none;color:#fff;font-size:12px;margin-top:10px;text-align:center;opacity:.7">Working…</div>
   </div>
 </div>
@@ -15099,6 +15099,30 @@ async function submitAuthGateSignup(){
    Setting it signs out every other device on the account. */
 /* Recovery, in order: secret questions, then a code by email, then support (an admin reset).
    Email delivery can fail, so the questions come first. */
+/* Sign-in messages ("wrong answer", "wrong password", "password changed") sat below every button,
+   so on a phone they appeared off-screen and the screen looked frozen. Shown now as a clear box
+   that scrolls itself into view the moment it appears. */
+(function(){
+ const st=document.createElement('style');
+ st.textContent='#agError{margin:12px 0 4px;padding:11px 14px;border-radius:10px;background:#a3122a;color:#fff;font-size:14px;font-weight:700;text-align:center;line-height:1.4;box-shadow:0 2px 10px rgba(0,0,0,.25)}#agError.ok{background:#2f6b3a}#agBusy{font-size:13px!important;opacity:.9!important}';
+ document.head.appendChild(st);
+ const watch=()=>{ const e=document.getElementById('agError'); if(!e) return setTimeout(watch,200);
+  /* Shown right above the main button of whichever screen is open — the button just tapped —
+     so it is in view without any scrolling; then scrolled into view as a safety net. */
+  const place=()=>{
+   const pane=['agLoginPane','agSignupPane','agRecoverPane','agResetPane','ag2faPane','agLandingPane'].map(id=>document.getElementById(id)).find(x=>x && x.style.display!=='none' && x.offsetParent!==null);
+   const btn=pane && pane.querySelector('.btn.accent');
+   if(btn && e.nextSibling!==btn){ btn.parentNode.insertBefore(e, btn); const busy=document.getElementById('agBusy'); if(busy) btn.parentNode.insertBefore(busy, btn); }
+  };
+  new MutationObserver(()=>{ if(e.style.display!=='none' && e.textContent.trim()){ place(); try{ e.scrollIntoView({block:'nearest'}); }catch(_){} } })
+   .observe(e,{attributes:true, attributeFilter:['style'], childList:true, characterData:true, subtree:true});
+  const busy=document.getElementById('agBusy'); if(busy) new MutationObserver(()=>{ if(busy.style.display!=='none') place(); }).observe(busy,{attributes:true, attributeFilter:['style']});
+  // A message is red unless it is good news; good news is marked by the code that shows it.
+  new MutationObserver(()=>{ if(e.style.display==='none') e.classList.remove('ok'); }).observe(e,{attributes:true, attributeFilter:['style']});
+ };
+ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+})();
+function agNotice(m, good){ agError.classList.toggle('ok', !!good); agError.textContent=m; agError.style.display='block'; }
 function showPasswordReset(){
  for(const id of ['agLoginPane','ag2faPane','agResetPane']){ const e=document.getElementById(id); if(e) e.style.display='none'; }
  const p=document.getElementById('agRecoverPane'); if(p) p.style.display='block';
@@ -15109,13 +15133,14 @@ function showPasswordReset(){
 }
 async function submitRecovery(){
  const email=agRecoverEmail.value.trim(); agError.style.display='none';
- const fail=m=>{ agError.textContent=m; agError.style.display='block'; };
+ const fail=m=>agNotice(m, false);
  if(!email) return fail('Enter your email.');
+ agBusy.style.display='block'; agRecoverBtn.disabled=true;
  try{
   if(window.__recoverStage!==2){
    const r=await ServerAccount.api('/api/recovery/lookup', {method:'POST', body: JSON.stringify({email})});
    agRecoverQ1.textContent=r.questions[0]; agRecoverQ2.textContent=r.questions[1];
-   agRecoverHint.textContent='Answer both questions and choose a new password. Capitals and spacing don\'t matter.';
+   agRecoverHint.textContent='Answer both questions and choose a new password. Capitals and extra spaces don\'t matter.';
    agRecoverStep2.style.display='block'; agRecoverBtn.textContent='Reset my password'; window.__recoverStage=2;
    return;
   }
@@ -15126,8 +15151,9 @@ async function submitRecovery(){
   await ServerAccount.api('/api/recovery/reset', {method:'POST', body: JSON.stringify({email, a1, a2, newPassword:pw})});
   agRecoverPane.style.display='none'; showAuthGateLogin();
   agLoginEmail.value=email; agLoginPassword.value='';
-  fail('Password changed. Log in with your new password.');
+  agNotice('Password changed. Log in with your new password.', true);
  }catch(e){ fail(e.message||'Something went wrong.'); }
+ finally{ agBusy.style.display='none'; agRecoverBtn.disabled=false; }
 }
 function showRecoverySupport(){
  alert('Contact Mobo-Vault support with the email on your account. After checking it is really you, support issues a temporary password; you then set your own.');
@@ -15159,7 +15185,7 @@ async function submitPasswordReset(){
   agResetPane.style.display='none';
   showAuthGateLogin();
   agLoginEmail.value=email; agLoginPassword.value='';
-  agError.textContent='Password changed. Log in with your new password.'; agError.style.display='block';
+  agNotice('Password changed. Log in with your new password.', true);
  }catch(e){ agError.textContent=e.message||'Something went wrong.'; agError.style.display='block'; }
 }
 async function submitAuthGateLogin(){
