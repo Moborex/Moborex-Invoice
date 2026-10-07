@@ -72,7 +72,7 @@ h1,h2,h3{font-weight:400}
 .tile b{font-size:15.5px;font-weight:700}
 .tile small{color:var(--gold-deep);font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
 .tile.inCart{background-color:var(--brassSoft);border-color:var(--brass);border-top-color:var(--crimson)}
-.qtyBadge{position:absolute;top:8px;right:8px;margin:0;background:var(--crimson);color:#fff;border-radius:3px;font-size:12.5px;padding:2px 8px}
+.qtyBadge{position:absolute;top:auto;bottom:10px;right:8px;margin:0;background:var(--crimson);color:#fff;border-radius:3px;font-size:12.5px;padding:2px 8px}
 .sectionhead{font-family:var(--font-display);font-weight:400;font-size:22px;text-transform:none;letter-spacing:0;color:var(--ink);display:flex;align-items:center;gap:12px}
 .sectionhead::after{content:"";flex:1;height:7px;border-top:3px double var(--brass);margin-top:6px}
 .cartRow{border-bottom-color:var(--line);font-size:15px}
@@ -227,6 +227,29 @@ async function ensureBusinessName(){
 }
 
 let serviceFeePercent = 7;
+/* Tax shown as its own line. The server's price_kobo is what the customer pays (tax included) and
+   every total uses it; net_price_kobo is the food price before tax. By default the menu shows the
+   food price and the checkout shows each tax separately — some businesses prefer tax-inclusive
+   prices, and choose that in their app. Either way the customer agrees the full total. */
+let menuTaxes = [], taxDisplay = 'separate';
+const separateTax = () => taxDisplay === 'separate';
+function shownPrice(m){ return separateTax() && m && m.net_price_kobo != null ? m.net_price_kobo : (m ? m.price_kobo : 0); }
+function lineShown(it){ return separateTax() && it.netKobo != null ? it.netKobo : it.priceKobo; }
+/* Splits the tax on a set of lines into the business's taxes (VAT, consumption tax ...). The parts
+   always add up exactly to the tax inside the total. */
+function taxSplit(lines){
+  const gross = lines.reduce((a, it) => a + it.priceKobo * it.qty, 0);
+  const net = lines.reduce((a, it) => a + (it.netKobo != null ? it.netKobo : it.priceKobo) * it.qty, 0);
+  const tax = gross - net, rates = menuTaxes.filter(t => t.rate > 0), sum = rates.reduce((a, t) => a + t.rate, 0);
+  let parts = [];
+  if (tax > 0) {
+    if (!rates.length) parts = [{ name: 'Tax', kobo: tax }];
+    else { let left = tax; parts = rates.map((t, i) => { const k = i === rates.length - 1 ? left : Math.round(tax * t.rate / sum); left -= k; return { name: `${t.name} (${t.rate}%)`, kobo: k }; }); }
+  }
+  return { gross, net, tax, parts };
+}
+function allCartLines(){ return people.flatMap(p => Object.values(p.cart)); }
+let lastOrderTax = null;   // shown on the confirmation, from the order the customer agreed
 /* Whether this business can take payment online at all. It was never asked, so the page offered
    online payment, the payment failed, and the customer ordered again — three orders for one. */
 let onlinePaymentAvailable = true;
@@ -256,6 +279,8 @@ async function init(){
     menu = data.items || []; promos = data.promos || [];
     if(roomParam){ roomInfo = data.room || { missing: true }; if(roomInfo.missing){ renderError("This room's QR code is out of date — please call the front desk."); return; } }
     serviceFeePercent = data.serviceFeePercent || 7;
+    menuTaxes = Array.isArray(data.taxes) ? data.taxes.filter(t => t && Number(t.rate) > 0).map(t => ({ name: String(t.name || 'Tax'), rate: Number(t.rate) })) : [];
+    taxDisplay = data.taxDisplay === 'inclusive' ? 'inclusive' : 'separate';
     onlinePaymentAvailable = data.onlinePayment !== false;
     serviceFeeCapKobo = data.serviceFeeCapKobo || 500000;
     renderCheckOrderGate();
@@ -624,7 +649,7 @@ function renderTiles(){
       const inCart = cart[item.id];
       return `<button class="tile ${inCart?'inCart':''}" onclick="addToCart('${item.id}')">
         <b>${esc(item.name)}</b>
-        <small>${money(item.price_kobo)}</small>
+        <small>${money(shownPrice(item))}</small>
         ${inCart ? `<span class="qtyBadge">${inCart.qty} in cart</span>` : ''}
       </button>`;
     }).join('');
@@ -635,7 +660,7 @@ function renderTiles(){
       const inCart = cart[item.id];
       return `<button class="tile ${inCart?'inCart':''}" onclick="addToCart('${item.id}')">
         <b>${esc(item.name)}</b>
-        <small>${money(item.price_kobo)}</small>
+        <small>${money(shownPrice(item))}</small>
         ${inCart ? `<span class="qtyBadge">${inCart.qty} in cart</span>` : ''}
       </button>`;
     }).join('');
@@ -648,7 +673,7 @@ function addToCart(id){
   const item = menu.find(m=>m.id===id); if(!item) return;
   const cart = people[currentPersonIdx].cart;
   if(cart[id]) cart[id].qty++;
-  else cart[id] = {name:item.name, priceKobo:item.price_kobo, qty:1};
+  else cart[id] = {name:item.name, priceKobo:item.price_kobo, netKobo:item.net_price_kobo!=null?item.net_price_kobo:null, qty:1};
   renderTiles();
 }
 
@@ -659,7 +684,10 @@ function updateCartBar(){
   const bar = document.getElementById('cartBar');
   if(cartCount() > 0){
     bar.classList.remove('hidden');
-    document.getElementById('cartBarTotal').textContent = money(cartTotal()) + ` (${cartCount()} item${cartCount()>1?'s':''})`;
+    const tx = taxSplit(allCartLines());
+    // Matches the tiles: with tax shown separately, the food total "+ VAT"; otherwise the full total.
+    const taxWord = menuTaxes.length === 1 ? menuTaxes[0].name : 'tax';
+    document.getElementById('cartBarTotal').textContent = (separateTax() && tx.tax > 0 ? money(tx.net) + ' + ' + taxWord : money(cartTotal())) + ` (${cartCount()} item${cartCount()>1?'s':''})`;
   } else {
     bar.classList.add('hidden');
   }
@@ -669,16 +697,16 @@ function packagingPreview(personCart){
   // Client-side mirror of the server's auto-packaging logic, for an accurate preview before
   // submitting — the server recalculates authoritatively regardless, so this only has to be
   // right, not trusted.
-  const items = Object.values(personCart).map(c=>({name:c.name, priceKobo:c.priceKobo, qty:c.qty}));
+  const items = Object.values(personCart).map(c=>({name:c.name, priceKobo:c.priceKobo, netKobo:c.netKobo!=null?c.netKobo:null, qty:c.qty}));
   const findMenuItem = (name) => menu.find(m=>m.name===name);
   const already = (name) => items.some(it=>it.name===name);
   const hasFood = items.some(it => { const m=findMenuItem(it.name); return m && m.kind==='food'; });
   const foodPack = menu.find(m=>m.kind==='food_pack'), foodNylon = menu.find(m=>m.kind==='food_nylon'), nonfoodPack = menu.find(m=>m.kind==='nonfood_packaging');
   if(hasFood){
-    if(foodPack && !already(foodPack.name)) items.push({name:foodPack.name, priceKobo:foodPack.price_kobo, qty:1});
-    if(foodNylon && !already(foodNylon.name)) items.push({name:foodNylon.name, priceKobo:foodNylon.price_kobo, qty:1});
+    if(foodPack && !already(foodPack.name)) items.push({name:foodPack.name, priceKobo:foodPack.price_kobo, netKobo:foodPack.net_price_kobo, qty:1});
+    if(foodNylon && !already(foodNylon.name)) items.push({name:foodNylon.name, priceKobo:foodNylon.price_kobo, netKobo:foodNylon.net_price_kobo, qty:1});
   } else if(nonfoodPack && nonfoodPack.price_kobo>0 && !already(nonfoodPack.name)){
-    items.push({name:nonfoodPack.name, priceKobo:nonfoodPack.price_kobo, qty:1});
+    items.push({name:nonfoodPack.name, priceKobo:nonfoodPack.price_kobo, netKobo:nonfoodPack.net_price_kobo, qty:1});
   }
   return { items, subtotal: items.reduce((a,it)=>a+it.priceKobo*it.qty,0) };
 }
@@ -690,17 +718,21 @@ function showCheckout(){
   const orderValue = enriched.reduce((a,p)=>a+p.subtotal,0);
   const paysOnline = source==='online' && onlinePaymentAvailable;
   const fee = paysOnline ? Math.min(Math.round(orderValue * (serviceFeePercent/100)), serviceFeeCapKobo) : 0;
+  const tx = taxSplit(enriched.flatMap(p => p.items)), showTax = separateTax() && tx.tax > 0;
+  lastOrderTax = tx.tax > 0 ? tx : null;
   const peopleHtml = enriched.map(p=>`
     <div class="sectionhead">${esc(p.label)}</div>
-    ${p.items.map(it=>`<div class="cartRow"><div>${esc(it.name)}<small>Qty ${it.qty} × ${money(it.priceKobo)}</small></div><b>${money(it.priceKobo*it.qty)}</b></div>`).join('')}
-    <div class="cartRow" style="font-weight:700"><div>${esc(p.label)} Subtotal</div><div>${money(p.subtotal)}</div></div>
+    ${p.items.map(it=>`<div class="cartRow"><div>${esc(it.name)}<small>Qty ${it.qty} × ${money(lineShown(it))}</small></div><b>${money(lineShown(it)*it.qty)}</b></div>`).join('')}
+    <div class="cartRow" style="font-weight:700"><div>${esc(p.label)} Subtotal${showTax ? ' (before tax)' : ''}</div><div>${money(p.items.reduce((a, it) => a + lineShown(it) * it.qty, 0))}</div></div>
   `).join('');
+  const taxHtml = showTax ? `${enriched.length > 1 ? `<div class="cartRow"><div>Items</div><div>${money(tx.net)}</div></div>` : ''}${tx.parts.map(t => `<div class="cartRow"><div>${esc(t.name)}</div><div>${money(t.kobo)}</div></div>`).join('')}` : '';
   document.getElementById('app').innerHTML = `
     <div class="bizName">${esc(businessName)}</div>
     ${whereBanner()}
     <div class="sectionhead">Your Order</div>
     ${peopleHtml}
-    <div class="cartRow"><div>Order Value</div><div>${money(orderValue)}</div></div>
+    ${taxHtml}
+    <div class="cartRow"><div>Order Value${showTax ? ' (with tax)' : ''}</div><div>${money(orderValue)}</div></div>
     ${source==='online' && !onlinePaymentAvailable ? `<div class="notice" style="margin:8px 0;font-size:13px">This business doesn't take payment online yet — you'll pay when you collect your order, or on delivery.</div>` : ''}
     ${paysOnline ? `<div class="cartRow"><div>Service Fee${fee < Math.round(orderValue*(serviceFeePercent/100)) ? ' (capped)' : ' ('+serviceFeePercent+'%)'}</div><div>${money(fee)}</div></div>` : ''}
     <div class="cartRow" style="border:0;font-weight:800;font-size:16px;padding-top:14px"><div>Total</div><div>${money(orderValue+fee)}</div></div>
@@ -864,6 +896,7 @@ function renderQrConfirmation(orderId, totalKobo, paymentStatus, spot){
     <p>${paymentStatus==='charge_to_room' ? `${money(totalKobo)} goes on your ${esc(spot||'room')} bill — pay at check-out. We'll bring it to your room.`
       : spot ? `We'll bring it to ${esc(spot)}. Pay ${money(totalKobo)} when it arrives.`
       : paymentStatus==='pay_on_delivery' ? `Pay ${money(totalKobo)} when your order is delivered.` : `Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.`}</p>
+    ${lastOrderTax && separateTax() && lastOrderTax.gross === totalKobo ? `<p style="font-size:13px;color:var(--muted)">Items ${money(lastOrderTax.net)} · ${lastOrderTax.parts.map(t => esc(t.name) + ' ' + money(t.kobo)).join(' · ')}</p>` : ''}
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
       <button class="btn secondary" onclick="backToMenu()">Order something else</button>
       <button class="btn secondary" onclick="showFeedbackForm()">Leave feedback</button>

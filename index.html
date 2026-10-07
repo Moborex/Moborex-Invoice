@@ -615,7 +615,7 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 86;
+const APP_VERSION = 87;
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
 /* Banknote engraving (guilloche) for the design system — drawn once at start-up as SVG in the
    theme's gold, so it is crisp at any size and costs no downloads. Sets three CSS variables the
@@ -13787,6 +13787,12 @@ async function showOnlineOrderingSettings(){
  <button class="btn secondary full" style="margin-top:8px" onclick="showPublicPage()">📣 Your public page — promotions &amp; Discover listing</button>
  <div id="publicProfilePanel"></div>
  <div id="packagingPanel"></div>
+ <div class="sectionhead" style="margin-top:14px"><h3>Prices and tax on your menu</h3></div>
+ <div class="field"><select id="menuTaxDisplay" onchange="saveMenuTaxDisplay(this.value)">
+  <option value="separate" ${(await getBusiness()).menuTaxDisplay!=='inclusive'?'selected':''}>Food price, with VAT/tax shown as its own line at checkout (recommended)</option>
+  <option value="inclusive" ${(await getBusiness()).menuTaxDisplay==='inclusive'?'selected':''}>Prices with tax already included</option>
+ </select></div>
+ <small style="display:block;color:var(--muted);margin:-4px 0 10px">Either way the customer sees and agrees the full total, tax included, before ordering. Items set to zero-rated or exempt carry no tax.</small>
  <button class="btn secondary full" onclick="closeModal()">Close</button>`);
  { const box=document.getElementById('packagingPanel'); if(box) box.innerHTML=await packagingPanelHtml(); }
  { const pp=document.getElementById('publicProfilePanel'); if(pp) pp.innerHTML=await publicProfileHtml(); }
@@ -14035,9 +14041,17 @@ async function republishMenuIfLive(){
             // from a rate that may have changed since the menu was published.
             netPriceKobo:Math.round(base*100), description:'', kind:p.kind||'regular'};
   });
-  await ServerAccount.api('/api/menu/publish', {method:'POST', body: JSON.stringify({businessId, businessName:b.name, items})});
+  /* The taxes added on top (the ones not already inside the price), sent so the order page can show
+     the food price plainly and each tax as its own line — or, if the owner prefers, tax-inclusive
+     prices. Either way the customer agrees the full total before ordering. */
+  const taxes = taxRates.filter(t=>!t.inclusive && Number(t.rate)>0).map(t=>({name:String(t.name||'Tax').slice(0,40), rate:Number(t.rate)}));
+  await ServerAccount.api('/api/menu/publish', {method:'POST', body: JSON.stringify({businessId, businessName:b.name, items, taxes, taxDisplay: b.menuTaxDisplay==='inclusive'?'inclusive':'separate'})});
   __lastPublishedSet = await menuSignature(); // keep the comparison honest after a manual publish
  }catch(e){ console.error('Could not refresh the published menu', e); }
+}
+async function saveMenuTaxDisplay(v){
+ const b=await getBusiness(); b.menuTaxDisplay = v==='inclusive' ? 'inclusive' : 'separate'; await put('business', b);
+ await republishMenuIfLive(); flashNotice(v==='inclusive' ? 'Your menu now shows prices with tax included' : 'Your menu now shows food prices, with tax as its own line');
 }
 async function showMenuAvailability(){
  if(!requireOwnerMode('Menu availability','menuAvailability'))return;
