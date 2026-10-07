@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8C6A1C">
+<link rel="icon" type="image/png" sizes="32x32" href="./mobovault-32.png">
+<link rel="apple-touch-icon" href="./mobovault-apple-180.png">
+<title>Book a room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gloock&family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16233D; --ink2:#223258; --paper:#F1F3EF; --card:#FFFFFF;
+  --line:#E1E6E0; --muted:#6B7280;
+  --brass:#B8863B; --brass2:#D4A24C; --brassSoft:#F3E7D2;
+  --good:#2F7A5D; --goodSoft:#E4F1EB; --danger:#B23A3A;
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;padding-bottom:90px}
+h1,h2,h3{font-family:var(--font-display);letter-spacing:-.01em;margin:0}
+button{font-family:var(--font-body);cursor:pointer}
+.wrap{max-width:520px;margin:0 auto;padding:18px}
+.bizName{font-size:26px;font-weight:700;margin-bottom:2px}
+.tagline{font-size:13px;color:var(--muted);margin-bottom:18px}
+.tileGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.tile{border:1.4px solid var(--line);border-radius:14px;padding:14px 10px;background:var(--card);text-align:center;cursor:pointer;min-height:78px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.tile b{font-size:14px;line-height:1.25}
+.tile small{color:var(--brass2);font-weight:700}
+.tile.inCart{border-color:var(--brass2);background:var(--brassSoft)}
+.qtyBadge{position:relative;top:-2px;background:var(--ink);color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;display:inline-block;margin-top:2px}
+.sectionhead{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);margin:22px 0 8px}
+.cartRow{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.cartRow small{display:block;color:var(--muted)}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:5px}
+.field input{width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:15px;font-family:inherit;background:var(--card)}
+.btn{display:block;width:100%;padding:14px;border-radius:12px;border:0;font-size:15px;font-weight:700;text-align:center}
+.btn.accent{background:var(--brass2);color:#fff}
+.btn.ink{background:var(--ink);color:#fff}
+.btn.secondary{background:var(--card);color:var(--ink);border:1.4px solid var(--line)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1.4px solid var(--line);padding:12px 18px;box-shadow:0 -6px 20px rgba(22,35,61,.08)}
+.bar .row{display:flex;justify-content:space-between;align-items:center;max-width:520px;margin:0 auto}
+.bar .total{font-size:18px;font-weight:800}
+.notice{background:var(--goodSoft);border:1.4px solid #bfe0d1;color:var(--good);border-radius:12px;padding:14px;font-size:13.5px;margin-bottom:14px}
+.center{text-align:center;padding:60px 20px}
+.center h2{font-size:22px;margin-bottom:10px}
+.center p{color:var(--muted);font-size:14px}
+.hidden{display:none}
+
+/* =========== Mobo-Vault design v2 — the customer's order page ===========
+   Warm gold, white and crimson with banknote engraving, matching the business app. The
+   restaurant's name is signed in copperplate script; prices and buttons stay in the clean sans. */
+:root{
+  --ink:#2A2214; --ink2:#3A2F1C; --paper:#FAF3DD; --card:#FFFBEF; --line:#E3D3A6; --muted:#6B5D40;
+  --brass:#B8902F; --brass2:#B8902F; --brassSoft:#F2E2B4; --gold-deep:#7E5F17; --band:#8C6A1C; --crimson:#B5172F;
+  --good:#2F7A4F; --goodSoft:#E1EEDD; --danger:#B5172F; --cream-on-band:#FFF6DC;
+  --font-display:'Gloock',Georgia,serif; --font-body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  --font-sig:'Cinzel','Trajan Pro',Georgia,'Times New Roman',serif;
+}
+body{background:var(--paper) var(--pat-page,none);background-size:180px 180px;font-size:16px}
+h1,h2,h3{font-weight:400}
+.wrap::before{content:"";display:block;height:58px;margin:-18px -18px 16px;background:var(--band) var(--pat-band,none);background-size:auto 100%;border-bottom:3px double var(--brass)}
+.bizName{font-family:var(--font-sig);font-weight:400;font-size:46px;line-height:1.05;color:var(--gold-deep);margin-top:-6px}
+.tagline{font-size:15px;color:var(--muted);display:flex;align-items:center;gap:12px}
+.tagline::after{content:"";flex:1;height:7px;border-top:3px double var(--brass);margin-top:4px}
+.tileGrid{gap:9px}
+.tile{position:relative;text-align:left;align-items:flex-start;justify-content:space-between;gap:8px;min-height:96px;padding:13px 12px 11px;
+  background:#FFFDF6 var(--pat-page,none);background-size:180px 180px;border:1px solid var(--line);border-top:4px solid var(--brass);border-radius:4px}
+.tile b{font-size:15.5px;font-weight:700}
+.tile small{color:var(--gold-deep);font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+.tile.inCart{background-color:var(--brassSoft);border-color:var(--brass);border-top-color:var(--crimson)}
+.qtyBadge{position:absolute;top:8px;right:8px;margin:0;background:var(--crimson);color:#fff;border-radius:3px;font-size:12.5px;padding:2px 8px}
+.sectionhead{font-family:var(--font-display);font-weight:400;font-size:22px;text-transform:none;letter-spacing:0;color:var(--ink);display:flex;align-items:center;gap:12px}
+.sectionhead::after{content:"";flex:1;height:7px;border-top:3px double var(--brass);margin-top:6px}
+.cartRow{border-bottom-color:var(--line);font-size:15px}
+.field label{font-size:14px;color:var(--ink)}
+.field input{border:1px solid var(--line);border-radius:6px;background:#FFFDF6;font-size:16px}
+.field input:focus{outline:2px solid var(--brassSoft);border-color:var(--brass)}
+.btn{border-radius:6px;font-size:16px}
+.btn.accent{background:var(--crimson);color:#fff}
+.btn.ink{background:var(--band) var(--pat-band,none);background-size:auto 100%;color:var(--cream-on-band)}
+.btn.secondary{background:var(--card);border:1px solid var(--line)}
+.bar{background:var(--card);border-top:3px double var(--brass);box-shadow:0 -6px 20px rgba(42,34,20,.10)}
+.bar .total{font-family:var(--font-display);font-weight:400;font-size:26px;font-variant-numeric:tabular-nums}
+.notice{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brass);border-radius:4px;color:var(--ink)}
+.center{background:var(--pat-rosette,none) no-repeat center 30px;background-size:220px 220px}
+.center h2{font-family:var(--font-display);font-size:30px}
+.poweredBy{display:flex;align-items:center;justify-content:center;gap:8px;margin:28px auto 12px;color:var(--muted);font-size:13px}
+.poweredBy img{width:28px;height:auto}
+.poweredBy b{font-family:var(--font-display);font-weight:400;color:var(--ink)}
+.bizName{color:#9A1530}  /* the restaurant's name, in royal crimson as in the app */
+
+/* ---------- Typography v2: clearer, bolder ----------
+   The business name is set in Cinzel — the lettering of inscriptions, banknotes and royal crests:
+   still regal, but clear at a glance, where the copperplate script was hard to read on a phone.
+   Everything else is a step bolder: medium body text, bold labels, names, buttons and tabs, and
+   headings with slightly thickened strokes. */
+:root{--font-sig:'Cinzel','Trajan Pro',Georgia,'Times New Roman',serif}
+body{font-weight:500}
+b,strong{font-weight:800}
+.sig,.sheetBiz,.bizname{font-family:var(--font-sig)!important;font-weight:700;letter-spacing:.03em}
+h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCartTotal{-webkit-text-stroke:.45px currentColor}
+.bizName{font-family:var(--font-sig)!important;font-size:31px;font-weight:800;line-height:1.15;margin-top:2px;letter-spacing:.03em}
+.tile b{font-weight:800}
+.btn{font-weight:800}
+.field label{font-weight:700}
+.bizMotto{text-align:center;font-style:italic;font-weight:700;margin:-2px 0 8px;opacity:.85}
+.bizMessage{margin:0 0 12px;padding:10px 12px;border-left:4px solid #B5172F;background:rgba(181,23,47,.06);border-radius:4px;white-space:pre-line;font-size:14px;line-height:1.45}
+</style>
+<style>
+.rtCard{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;border:1.6px solid var(--line,#E4D6AE);border-radius:10px;padding:13px 14px;background:var(--card,#FFFBEF);margin-bottom:8px;cursor:pointer;font:inherit;color:inherit}
+.rtCard.on{border-color:#B5172F;box-shadow:0 0 0 2px rgba(181,23,47,.18)}
+.rtCard b{font-size:16px}.rtCard span{font-weight:800;white-space:nowrap}
+.rsv label{display:block;font-weight:700;font-size:14px;margin:10px 0 4px}
+.rsv input,.rsv textarea{width:100%;box-sizing:border-box;padding:12px;border:1.4px solid var(--line,#E4D6AE);border-radius:8px;font:inherit;background:#fff}
+.rsvRow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.quote{margin:14px 0;padding:12px 14px;border-left:4px solid #8C6A1C;background:rgba(140,106,28,.08);border-radius:4px;font-weight:700}
+.rsvErr{color:#B5172F;font-weight:700;margin-top:10px}
+.rtCard .step{display:flex;align-items:center;gap:8px}
+.rtCard .step button{width:36px;height:36px;border-radius:8px;border:1.4px solid var(--line,#E4D6AE);background:#fff;font-size:20px;font-weight:800;line-height:1;color:inherit}
+.rtCard .step button:disabled{opacity:.35;cursor:default}
+.rtCard .step output{min-width:22px;text-align:center;font-size:17px;font-weight:800}
+.lineRow{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line,#E4D6AE);text-align:left}
+.lineRow small{display:block;font-weight:600;opacity:.85;margin-top:2px}
+.lineRow .why{color:#B5172F;opacity:1}
+.pill{white-space:nowrap;font-size:12.5px;font-weight:800;padding:3px 9px;border-radius:20px;align-self:flex-start}
+.pill.pending{background:#F2E2B4;color:#7E5F17}.pill.confirmed{background:#E1EEDD;color:#2F7A4F}.pill.declined,.pill.cancelled{background:rgba(181,23,47,.1);color:#B5172F}
+.policy{font-size:13px;margin:6px 0 14px;padding:9px 12px;border:1px dashed var(--line,#E4D6AE);border-radius:6px;line-height:1.45}
+.actions{display:grid;gap:8px;margin-top:14px}
+.panel{text-align:left;margin-top:14px;padding:14px;border:1.4px solid var(--line,#E4D6AE);border-radius:10px;background:var(--card,#FFFBEF)}
+.panel h3{font-size:19px;margin-bottom:8px}
+.lineRow .mini{font-size:12.5px;padding:4px 10px;border-radius:6px;border:1px solid var(--line,#E4D6AE);background:#fff;font-weight:700;margin-top:6px;width:auto;display:inline-block}
+.chkLine{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line,#E4D6AE)}
+.chkLine input{width:20px;height:20px;margin-top:2px}
+.bizMotto{text-align:center;font-style:italic;font-weight:700;margin:-2px 0 8px;opacity:.85}
+.bizMessage{margin:0 0 12px;padding:10px 12px;border-left:4px solid #B5172F;background:rgba(181,23,47,.06);border-radius:4px;white-space:pre-line;font-size:14px;line-height:1.45}
+
+.promoRow{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 10px;margin:4px 0 8px;scroll-snap-type:x mandatory}
+.promoTile{flex:0 0 78%;max-width:300px;scroll-snap-align:start;border:1.4px solid var(--line,#E4D6AE);border-radius:12px;background:var(--card,#FFFBEF);overflow:hidden;display:flex;flex-direction:column}
+.promoTile img{width:100%;height:120px;object-fit:cover;display:block}
+.promoTile .pt{padding:10px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+.promoTile b{font-size:15.5px;line-height:1.25}
+.promoTile small{font-size:13px;opacity:.85;line-height:1.35}
+.promoBadge{align-self:flex-start;background:#B5172F;color:#fff;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:800}
+.promoTile button{margin-top:auto;padding:8px;border-radius:8px;border:0;background:#8C6A1C;color:#fff;font-weight:800}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="center"><p>Loading…</p></div></div>
+<script>
+/* Mobo-Vault — book a room. A guest chooses dates and how many rooms of each type, and sends one
+   booking REQUEST; the hotel's front desk confirms or declines each room (holding a specific room for
+   each one confirmed). The guest sees every room's answer — and, for a declined room, why — and pays
+   only for the rooms confirmed. Payment is taken by the
+   hotel — at least one night before check-in. Every rule here is checked again by the server. */
+const SERVER = (window.MOBOREX_SERVER_URL || "https://moborex-ledger-vault-api.ravoseh.workers.dev");
+const qs = new URLSearchParams(location.search);
+const businessId = qs.get('business') || '';
+let hotel = null, qty = {};   // room type -> how many rooms the guest wants
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const naira = k => '₦' + ((Number(k)||0)/100).toLocaleString('en-NG', {minimumFractionDigits:2, maximumFractionDigits:2});
+const lagosToday = () => new Date(Date.now() + 3600000).toISOString().slice(0,10);
+const addDays = (d, n) => new Date(Date.parse(d) + n*86400000).toISOString().slice(0,10);
+const app = () => document.getElementById('app');
+function header(){ return `<div class="bizName">${esc(hotel ? hotel.businessName : '')}</div>${hotel && hotel.motto ? `<div class="bizMotto">${esc(hotel.motto)}</div>` : ''}`; }
+async function api(path, opts){
+  const r = await fetch(SERVER + path, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{}));
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok){ const e=new Error(d.error || 'Something went wrong. Please try again.'); e.data=d; throw e; }
+  return d;
+}
+let fixed=null;   // when adding rooms to a booking: its dates, and how many rooms it already has
+const dates=()=>fixed?{ci:fixed.checkIn, co:fixed.checkOut}:{ci:document.getElementById('rIn').value, co:document.getElementById('rOut').value};
+function nights(){ const d=dates(); const n=Math.round((Date.parse(d.co)-Date.parse(d.ci))/86400000); return Number.isFinite(n)?n:0; }
+const maxRooms=()=>((hotel&&hotel.policy&&hotel.policy.maxRooms)||10)-(fixed?fixed.active:0);
+function policyText(){
+  const p=(hotel&&hotel.policy)||{maxRooms:10,cancelFeePercent:5,freeCancelDays:0};
+  const fee=Number(p.cancelFeePercent)||0;
+  return `Up to ${plural(p.maxRooms,'room')} in one booking. `+(fee?`If you cancel a paid room, ${fee}% of what you paid is kept and the rest refunded`:'Cancelling is free')
+    +(fee&&p.freeCancelDays?` — free if you cancel ${plural(p.freeCancelDays,'day')} or more before arrival`:'')+'.';
+}
+const phoneKey=v=>String(v||'').replace(/\D/g,'').slice(-10);
+function savedPhone(){ try{ return sessionStorage.getItem('mv_resv_phone_'+(qs.get('request')||new URLSearchParams(location.search).get('request')))||''; }catch(e){ return ''; } }
+function rememberPhone(id, ph){ try{ sessionStorage.setItem('mv_resv_phone_'+id, ph); }catch(e){} }
+const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+function chosenRooms(){ return Object.entries(qty).filter(([,c])=>c>0).map(([roomType,count])=>({roomType,count})); }
+function drawQuote(){
+  const n=nights(), el=document.getElementById('quote'); if(!el) return;
+  const picked=chosenRooms().map(c=>({...c, rt:(avail.find(a=>a.name===c.roomType)||(hotel.roomTypes||[]).find(a=>a.name===c.roomType))})).filter(c=>c.rt);
+  if(!picked.length || n<1){ el.style.display='none'; return; }
+  const total=picked.reduce((a,c)=>a+c.rt.rate_kobo*c.count*n,0);
+  el.style.display=''; el.innerHTML=picked.map(c=>`<div>${plural(c.count,esc(c.rt.name)+' room')} · ${plural(n,'night')} × ${naira(c.rt.rate_kobo)} = ${naira(c.rt.rate_kobo*c.count*n)}</div>`).join('')
+    +(picked.length>1||picked[0].count>1?`<div style="margin-top:6px;border-top:1px solid rgba(0,0,0,.12);padding-top:6px">Total for ${plural(picked.reduce((a,c)=>a+c.count,0),'room')}: ${naira(total)}</div>`:'')
+    +`<div style="font-weight:500;font-size:13px;margin-top:4px">You pay the hotel only for the rooms it confirms — at least one night before check-in. Nothing is charged now.</div>`;
+}
+function step(name, d){
+  const rt=avail.find(a=>a.name===name); if(!rt) return;
+  const total=Object.values(qty).reduce((a,c)=>a+c,0), max=maxRooms();
+  const next=Math.max(0, Math.min(rt.free, max, (qty[name]||0)+d));
+  if(d>0 && total>=max) return document.getElementById('rErr').textContent=fixed?`This hotel takes up to ${plural(hotel.policy.maxRooms,'room')} in one booking — you have ${fixed.active}. For more, please call the hotel.`:`This hotel takes up to ${plural(max,'room')} in one booking. For more, please call the hotel.`;
+  qty[name]=next; document.getElementById('rErr').textContent='';
+  drawRooms(); drawQuote();
+}
+/* Only rooms actually free for the chosen dates can be requested: the server checks the hotel's
+   bookings and any rooms held back, and the request is checked again when it is sent. */
+let avail=[];
+function drawRooms(){
+  const box=document.getElementById('rtList'); if(!box) return;
+  box.innerHTML = avail.map(rt=>{ const q=qty[rt.name]||0;
+    return rt.free>0
+    ? `<div class="rtCard${q?' on':''}" data-name="${esc(rt.name)}"><b>${esc(rt.name)}<small style="display:block;font-weight:600;opacity:.75">${naira(rt.rate_kobo)} / night · ${rt.free===1?'1 room left':rt.free+' rooms free'}</small></b>
+       <span class="step"><button type="button" aria-label="One fewer" ${q?'':'disabled'} onclick="step(this.closest('.rtCard').dataset.name,-1)">−</button><output>${q}</output><button type="button" aria-label="One more" ${q>=rt.free?'disabled':''} onclick="step(this.closest('.rtCard').dataset.name,1)">+</button></span></div>`
+    : `<div class="rtCard" style="opacity:.5;cursor:default"><b>${esc(rt.name)}<small style="display:block;font-weight:600">Fully booked for these dates</small></b><span>${naira(rt.rate_kobo)} / night</span></div>`; }).join('')
+    + (avail.some(a=>a.free>0) ? '' : '<p style="font-weight:700">Nothing is free for these dates. Try other dates, or call the hotel.</p>');
+}
+async function loadAvailability(){
+  const box=document.getElementById('rtList'); if(!box || !(hotel.roomTypes||[]).length) return;
+  if(nights()<1){ box.innerHTML='<p>Choose a departure after your arrival.</p>'; return; }
+  const d=dates();
+  try{ avail=(await api(`/api/public/hotel/${encodeURIComponent(businessId)}/availability?checkIn=${d.ci}&checkOut=${d.co}`)).roomTypes||[]; }
+  catch(e){ box.innerHTML=`<p>${esc(e.message)}</p>`; return; }
+  // Keep what the guest chose, but never more than is free now.
+  for(const k of Object.keys(qty)){ const a=avail.find(x=>x.name===k); qty[k]=Math.min(qty[k], a?a.free:0); }
+  drawRooms(); drawQuote();
+}
+function renderForm(){
+  const t=lagosToday();
+  app().innerHTML = `${header()}${hotel.message?`<div class="bizMessage">${esc(hotel.message)}</div>`:''}
+  <div class="tagline">Book a room — the hotel confirms your booking.</div>
+  <div class="policy">${esc(policyText())}</div>
+  ${(hotel.promos||[]).length?`<div class="sectionhead" style="margin-top:4px">Offers</div><div class="promoRow">${hotel.promos.map(p=>`<div class="promoTile">${p.image?`<img src="${p.image}" alt="">`:''}<div class="pt">${p.badge?`<span class="promoBadge">${esc(p.badge)}</span>`:''}<b>${esc(p.title)}</b>${p.body?`<small>${esc(p.body)}</small>`:''}<small style="opacity:.6">Until ${esc(p.endsOn)}</small></div></div>`).join('')}</div>`:''}
+  <div class="rsv">
+   <div class="rsvRow"><div><label for="rIn">Arrival</label><input id="rIn" type="date" min="${t}" value="${t}" onchange="document.getElementById('rOut').min=addDays(this.value,1); if(document.getElementById('rOut').value<=this.value) document.getElementById('rOut').value=addDays(this.value,1); loadAvailability()"></div>
+   <div><label for="rOut">Departure</label><input id="rOut" type="date" min="${addDays(t,1)}" value="${addDays(t,1)}" onchange="loadAvailability()"></div></div>
+   <div class="sectionhead">Choose your rooms</div>
+   <div id="rtList">${(hotel.roomTypes||[]).length ? '<p style="opacity:.7">Checking which rooms are free…</p>' : '<div class="center"><p>This hotel is not taking online bookings yet. Please call them.</p></div>'}</div>
+   <div class="rsvRow"><div><label for="rName">Your name</label><input id="rName" autocomplete="name" maxlength="80"></div>
+   <div><label for="rPhone">Phone</label><input id="rPhone" type="tel" autocomplete="tel" maxlength="30"></div></div>
+   <label for="rGuests">Guests in all</label><input id="rGuests" type="number" min="1" max="40" value="1">
+   <label for="rNote">Anything the hotel should know? <span style="font-weight:500">(optional)</span></label><textarea id="rNote" rows="2" maxlength="300"></textarea>
+   <div class="quote" id="quote" style="display:none"></div>
+   <div class="rsvErr" id="rErr"></div>
+   <button class="btn accent full" style="margin-top:12px" onclick="send()">Send booking request</button>
+  </div>`;
+  loadAvailability();
+}
+async function send(){
+  const err=document.getElementById('rErr'); err.textContent='';
+  const rooms=chosenRooms();
+  const body={businessId, rooms, checkIn:rIn.value, checkOut:rOut.value, guestName:rName.value.trim(), guestPhone:rPhone.value.trim(), guests:Number(rGuests.value)||1, note:rNote.value.trim()};
+  if(!rooms.length) return err.textContent='Choose at least one room.';
+  if(nights()<1) return err.textContent='Departure must be after arrival.';
+  if(!body.guestName) return err.textContent='Please enter your name.';
+  if(body.guestPhone.replace(/[^\d+]/g,'').length<7) return err.textContent='Please enter a valid phone number.';
+  try{
+    const r=await api('/api/public/reservations', {method:'POST', body:JSON.stringify(body)});
+    history.replaceState(null,'', `?business=${encodeURIComponent(businessId)}&request=${encodeURIComponent(r.requestId)}`);
+    rememberPhone(r.requestId, body.guestPhone);
+    renderStatus(r, true);
+  }catch(e){
+    // e.g. the last room went to a walk-in guest while they were typing: say which, room by room.
+    const lines=(e.data&&e.data.lines)||[];
+    err.innerHTML=esc(e.message)+(lines.length?`<div style="font-weight:600;margin-top:6px">${lines.map(l=>`<div>${esc(l.roomType)}: ${esc(l.reason||'')}</div>`).join('')}</div>`:'');
+    loadAvailability();
+  }
+}
+/* The booking, room by room: waiting, confirmed (with the room held), declined (with the hotel's
+   reason) or cancelled (with the fee and refund). The guest can then change the booking — add rooms,
+   drop rooms still waiting — pay for the rooms secured, or cancel. Everything is checked again by
+   the server, with the phone number the booking was made with. */
+let current=null;
+function renderStatus(r, justSent){
+  current=r; fixed=null;
+  const lines=(r.lines||[{roomType:r.roomType, status:r.status, room:r.room, reason:null, totalKobo:0}]).slice()
+    .sort((x,y)=>({confirmed:0,pending:1,declined:2,cancelled:3}[x.status]??4)-({confirmed:0,pending:1,declined:2,cancelled:3}[y.status]??4)||String(x.room||'').localeCompare(String(y.room||'')));
+  const count=st=>lines.filter(l=>l.status===st).length;
+  const pend=count('pending'), conf=count('confirmed'), decl=count('declined'), canc=count('cancelled');
+  const started=(r.checkIn||'')<lagosToday();
+  let head, sub;
+  if(pend){ head=justSent?'Request sent':'Waiting for the hotel';
+    sub=(decl?`${plural(decl,'room')} could not be booked — see why below. `:'')+'The hotel will confirm your booking. Keep this page — you can check back here any time.'; }
+  else if(conf && decl){ head='Partly confirmed'; sub=`${plural(conf,'room')} confirmed, ${plural(decl,'room')} not available — see why below. You can change your booking, or go ahead with the rooms secured.`; }
+  else if(conf){ head='Booking confirmed'; sub=r.dueKobo>0?`${conf===1?'Your room is':'Your rooms are'} held for you. Pay the hotel at least one night before check-in.`:`${conf===1?'Your room is':'Your rooms are'} held for you and paid for.`; }
+  else if(canc && !decl){ head='Booking cancelled'; sub='This booking has been cancelled.'; }
+  else { head='Not available'; sub='The hotel could not take this booking — see why below. Please try other dates, or call them.'; }
+  const word={pending:'Waiting',confirmed:'Confirmed',declined:'Not available',cancelled:'Cancelled'};
+  const refundOwed=lines.filter(l=>l.status==='cancelled').reduce((a,l)=>a+(l.refundDueKobo||0),0);
+  app().innerHTML = `${header()}<div class="center" style="padding-top:30px"><h2 style="margin:8px 0">${esc(head)}</h2><p>${esc(sub)}</p>
+   <div class="quote" style="text-align:left">${esc(r.checkIn||'')} → ${esc(r.checkOut||'')}${r.nights?` · ${plural(r.nights,'night')}`:''}
+    ${lines.map(l=>`<div class="lineRow"><div>${esc(l.roomType)}${l.totalKobo?` · ${naira(l.totalKobo)}`:''}
+      ${l.status==='confirmed'&&l.room?`<small>${esc(l.room)} is held for you</small>`:''}
+      ${(l.status==='confirmed'||l.status==='cancelled')&&l.paidKobo?`<small>Paid ${naira(l.paidKobo)}</small>`:''}
+      ${l.status==='declined'?`<small class="why">Why: ${esc(l.reason||'Not available for these dates.')}</small>`:''}
+      ${l.status==='cancelled'?`<small class="why">Cancelled by ${esc(l.cancelledBy||'')}${l.cancelReason?' — '+esc(l.cancelReason):''}${l.paidKobo?`. Fee kept ${naira(l.feeKobo)}, refund ${naira(l.refundDueKobo)}`:''}</small>`:''}
+      ${l.status==='pending'&&!started?`<button class="mini" onclick="removeLine('${esc(l.lineId)}')">Remove this room</button>`:''}</div>
+      <span class="pill ${esc(l.status)}">${word[l.status]||esc(l.status)}</span></div>`).join('')}
+    ${conf?`<div style="margin-top:10px">Confirmed rooms: ${naira(r.confirmedTotalKobo)}${r.paidKobo?` · paid ${naira(r.paidKobo)}`:''}</div>
+      <div style="margin-top:2px">${r.dueKobo>0?`To pay: ${naira(r.dueKobo)}`:'Fully paid'}</div>`:''}
+    ${pend?`<div style="margin-top:${conf?4:10}px;font-weight:600">Still waiting: ${naira(r.pendingTotalKobo)} — pay only if confirmed</div>`:''}
+    ${refundOwed?`<div style="margin-top:6px;font-weight:600">The hotel owes you a refund of ${naira(refundOwed)}.</div>`:''}
+   </div>
+   <div class="actions">
+    ${conf && r.dueKobo>0 ? (r.onlinePayment ? `<button class="btn accent full" onclick="payNow()">Pay ${naira(r.dueKobo)} now for the ${plural(conf,'room')} secured</button>`
+        : `<div class="policy" style="margin:0">Pay ${naira(r.dueKobo)} at the hotel for the ${plural(conf,'room')} secured — at least one night before check-in.</div>`) : ''}
+    ${(pend||conf) && !started ? `<button class="btn ink full" onclick="showAdd()">Change my booking — add rooms</button>` : ''}
+    ${pend ? `<button class="btn secondary full" onclick="checkStatus()">Check again</button>` : ''}
+    ${(pend||conf) && !started ? `<button class="btn secondary full" onclick="showCancel()">Cancel rooms or the whole booking</button>` : ''}
+    ${!pend && !conf ? `<button class="btn ink full" onclick="location.href='?business='+encodeURIComponent(businessId)">Book other rooms or dates</button>` : ''}
+   </div>
+   <div id="act"></div>
+   <div class="policy" style="text-align:left">${esc(policyText())}</div></div>`;
+}
+function phoneField(){ return `<label for="aPhone" style="display:block;font-weight:700;margin:10px 0 4px">Phone number you booked with</label><input id="aPhone" type="tel" value="${esc(savedPhone())}" style="width:100%;box-sizing:border-box;padding:12px;border:1.4px solid var(--line,#E4D6AE);border-radius:8px;font:inherit">`; }
+function readPhone(){ const v=document.getElementById('aPhone').value.trim(); if(phoneKey(v).length<7){ document.getElementById('aErr').textContent='Enter the phone number you booked with.'; return null; } rememberPhone(current.requestId, v); return v; }
+const groupId=()=>current.requestId||qs.get('request')||new URLSearchParams(location.search).get('request');
+/* Add rooms to the same dates: only what is free now, within the hotel's maximum. */
+async function showAdd(){
+  const active=(current.lines||[]).filter(l=>l.status==='pending'||l.status==='confirmed').length;
+  fixed={checkIn:current.checkIn, checkOut:current.checkOut, active}; qty={};
+  const box=document.getElementById('act');
+  if(maxRooms()<=0){ box.innerHTML=`<div class="panel"><h3>Add rooms</h3><p>This booking already has the most rooms this hotel takes online (${plural(hotel.policy.maxRooms,'room')}). For more, please call the hotel.</p></div>`; return; }
+  box.innerHTML=`<div class="panel rsv"><h3>Add rooms — ${esc(current.checkIn)} → ${esc(current.checkOut)}</h3>
+    <div id="rtList"><p style="opacity:.7">Checking which rooms are free…</p></div>
+    <div class="quote" id="quote" style="display:none"></div>${phoneField()}
+    <div class="rsvErr" id="rErr"></div><div class="rsvErr" id="aErr"></div>
+    <button class="btn accent full" style="margin-top:10px" onclick="doAdd()">Add to my booking</button></div>`;
+  await loadAvailability(); if(box.scrollIntoView) box.scrollIntoView({behavior:'smooth'});
+}
+async function doAdd(){
+  document.getElementById('aErr').textContent=''; const rooms=chosenRooms();
+  if(!rooms.length) return document.getElementById('aErr').textContent='Choose at least one room.';
+  const phone=readPhone(); if(!phone) return;
+  try{ const r=await api(`/api/public/reservations/${encodeURIComponent(groupId())}/add`, {method:'POST', body:JSON.stringify({phone, rooms})}); renderStatus(Object.assign(r,{onlinePayment:current.onlinePayment})); }
+  catch(e){ const lines=(e.data&&e.data.lines)||[]; document.getElementById('aErr').innerHTML=esc(e.message)+(lines.length?lines.map(l=>`<div style="font-weight:600">${esc(l.roomType)}: ${esc(l.reason||'')}</div>`).join(''):''); loadAvailability(); }
+}
+function removeLine(lineId){ showCancel([lineId]); }
+/* Cancel: each room's answer before anything is done — what was paid, the fee kept, the refund. */
+function showCancel(only){
+  const lines=(current.lines||[]).filter(l=>(l.status==='pending'||l.status==='confirmed') && (!only||only.includes(l.lineId)));
+  const box=document.getElementById('act');
+  box.innerHTML=`<div class="panel"><h3>${only?'Remove this room':'Cancel rooms'}</h3>
+   ${lines.map(l=>{ const c=l.cancelNow||{feeKobo:0,refundKobo:0,feePercent:0};
+     return `<label class="chkLine"><input type="checkbox" class="cxl" value="${esc(l.lineId)}" ${only?'checked':''}><span><b>${esc(l.roomType)}</b>${l.room?' — '+esc(l.room):''} · ${l.status==='pending'?'waiting':'confirmed'}
+      <small style="display:block">${l.paidKobo?`Paid ${naira(l.paidKobo)} · fee ${naira(c.feeKobo)} (${c.feePercent}%) · refund ${naira(c.refundKobo)}`:'Nothing paid — nothing to pay or refund'}</small></span></label>`; }).join('')}
+   ${!only&&lines.length>1?`<button class="mini" style="margin-top:8px" onclick="document.querySelectorAll('.cxl').forEach(x=>x.checked=true)">Select all</button>`:''}
+   ${phoneField()}<div class="rsvErr" id="aErr"></div>
+   <button class="btn accent full" style="margin-top:10px" onclick="doCancel()">${only?'Remove this room':'Cancel the rooms ticked'}</button></div>`;
+  if(box.scrollIntoView) box.scrollIntoView({behavior:'smooth'});
+}
+async function doCancel(){
+  document.getElementById('aErr').textContent='';
+  const lineIds=[...document.querySelectorAll('.cxl')].filter(x=>x.checked).map(x=>x.value);
+  if(!lineIds.length) return document.getElementById('aErr').textContent='Tick the rooms to cancel.';
+  const phone=readPhone(); if(!phone) return;
+  try{ const r=await api(`/api/public/reservations/${encodeURIComponent(groupId())}/cancel`, {method:'POST', body:JSON.stringify({phone, lineIds})}); renderStatus(Object.assign(r,{onlinePayment:current.onlinePayment})); }
+  catch(e){ document.getElementById('aErr').textContent=e.message; }
+}
+/* Pay online for the rooms secured — straight to the hotel's account. The page comes back here. */
+async function payNow(){
+  const box=document.getElementById('act');
+  box.innerHTML=`<div class="panel"><h3>Pay for your rooms</h3><p style="text-align:left">${naira(current.dueKobo)} for the confirmed rooms, plus a small online payment fee shown on the next screen.</p>
+   <label for="pEmail" style="display:block;font-weight:700;margin:10px 0 4px">Email for your receipt (optional)</label><input id="pEmail" type="email" style="width:100%;box-sizing:border-box;padding:12px;border:1.4px solid var(--line,#E4D6AE);border-radius:8px;font:inherit">
+   <div class="rsvErr" id="aErr"></div><button class="btn accent full" style="margin-top:10px" id="payGo" onclick="goPay()">Continue to payment</button></div>`;
+}
+async function goPay(){
+  const b=document.getElementById('payGo'); b.disabled=true; b.textContent='Starting payment…';
+  try{ const r=await api(`/api/public/reservations/${encodeURIComponent(groupId())}/pay/initialize`, {method:'POST', body:JSON.stringify({email:document.getElementById('pEmail').value.trim(), callbackUrl:location.href})}); location.href=r.authorizationUrl; }
+  catch(e){ document.getElementById('aErr').textContent=e.message; b.disabled=false; b.textContent='Continue to payment'; }
+}
+async function checkStatus(){
+  try{ renderStatus(await api('/api/public/reservations/'+encodeURIComponent(new URLSearchParams(location.search).get('request')||qs.get('request')))); }
+  catch(e){ app().innerHTML=`${header()}<div class="center"><p>${esc(e.message)}</p></div>`; }
+}
+(async()=>{
+  if(!businessId){ app().innerHTML='<div class="center"><p>This booking link is incomplete. Ask the hotel for their link.</p></div>'; return; }
+  try{
+    hotel=await api('/api/public/hotel/'+encodeURIComponent(businessId));
+    document.title=hotel.businessName+' — Book a room';
+    if(new URLSearchParams(location.search).get('request')) await checkStatus(); else renderForm();
+  }catch(e){ app().innerHTML=`<div class="center"><p>${esc(e.message)}</p></div>`; }
+})();
+</script>
+</body>
+</html>

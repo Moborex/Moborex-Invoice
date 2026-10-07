@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#8C6A1C">
+<link rel="icon" type="image/png" sizes="32x32" href="./mobovault-32.png">
+<link rel="apple-touch-icon" href="./mobovault-apple-180.png">
+<title>Discover — Mobo-Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gloock&family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=Cinzel:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16233D; --ink2:#223258; --paper:#F1F3EF; --card:#FFFFFF;
+  --line:#E1E6E0; --muted:#6B7280;
+  --brass:#B8863B; --brass2:#D4A24C; --brassSoft:#F3E7D2;
+  --good:#2F7A5D; --goodSoft:#E4F1EB; --danger:#B23A3A;
+  --font-display:'Fraunces',Georgia,serif; --font-body:'Inter',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);-webkit-font-smoothing:antialiased;padding-bottom:90px}
+h1,h2,h3{font-family:var(--font-display);letter-spacing:-.01em;margin:0}
+button{font-family:var(--font-body);cursor:pointer}
+.wrap{max-width:520px;margin:0 auto;padding:18px}
+.bizName{font-size:26px;font-weight:700;margin-bottom:2px}
+.tagline{font-size:13px;color:var(--muted);margin-bottom:18px}
+.tileGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.tile{border:1.4px solid var(--line);border-radius:14px;padding:14px 10px;background:var(--card);text-align:center;cursor:pointer;min-height:78px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.tile b{font-size:14px;line-height:1.25}
+.tile small{color:var(--brass2);font-weight:700}
+.tile.inCart{border-color:var(--brass2);background:var(--brassSoft)}
+.qtyBadge{position:relative;top:-2px;background:var(--ink);color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;display:inline-block;margin-top:2px}
+.sectionhead{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);margin:22px 0 8px}
+.cartRow{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+.cartRow small{display:block;color:var(--muted)}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:5px}
+.field input{width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:15px;font-family:inherit;background:var(--card)}
+.btn{display:block;width:100%;padding:14px;border-radius:12px;border:0;font-size:15px;font-weight:700;text-align:center}
+.btn.accent{background:var(--brass2);color:#fff}
+.btn.ink{background:var(--ink);color:#fff}
+.btn.secondary{background:var(--card);color:var(--ink);border:1.4px solid var(--line)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1.4px solid var(--line);padding:12px 18px;box-shadow:0 -6px 20px rgba(22,35,61,.08)}
+.bar .row{display:flex;justify-content:space-between;align-items:center;max-width:520px;margin:0 auto}
+.bar .total{font-size:18px;font-weight:800}
+.notice{background:var(--goodSoft);border:1.4px solid #bfe0d1;color:var(--good);border-radius:12px;padding:14px;font-size:13.5px;margin-bottom:14px}
+.center{text-align:center;padding:60px 20px}
+.center h2{font-size:22px;margin-bottom:10px}
+.center p{color:var(--muted);font-size:14px}
+.hidden{display:none}
+
+/* =========== Mobo-Vault design v2 — the customer's order page ===========
+   Warm gold, white and crimson with banknote engraving, matching the business app. The
+   restaurant's name is signed in copperplate script; prices and buttons stay in the clean sans. */
+:root{
+  --ink:#2A2214; --ink2:#3A2F1C; --paper:#FAF3DD; --card:#FFFBEF; --line:#E3D3A6; --muted:#6B5D40;
+  --brass:#B8902F; --brass2:#B8902F; --brassSoft:#F2E2B4; --gold-deep:#7E5F17; --band:#8C6A1C; --crimson:#B5172F;
+  --good:#2F7A4F; --goodSoft:#E1EEDD; --danger:#B5172F; --cream-on-band:#FFF6DC;
+  --font-display:'Gloock',Georgia,serif; --font-body:'Hanken Grotesk',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  --font-sig:'Cinzel','Trajan Pro',Georgia,'Times New Roman',serif;
+}
+body{background:var(--paper) var(--pat-page,none);background-size:180px 180px;font-size:16px}
+h1,h2,h3{font-weight:400}
+.wrap::before{content:"";display:block;height:58px;margin:-18px -18px 16px;background:var(--band) var(--pat-band,none);background-size:auto 100%;border-bottom:3px double var(--brass)}
+.bizName{font-family:var(--font-sig);font-weight:400;font-size:46px;line-height:1.05;color:var(--gold-deep);margin-top:-6px}
+.tagline{font-size:15px;color:var(--muted);display:flex;align-items:center;gap:12px}
+.tagline::after{content:"";flex:1;height:7px;border-top:3px double var(--brass);margin-top:4px}
+.tileGrid{gap:9px}
+.tile{position:relative;text-align:left;align-items:flex-start;justify-content:space-between;gap:8px;min-height:96px;padding:13px 12px 11px;
+  background:#FFFDF6 var(--pat-page,none);background-size:180px 180px;border:1px solid var(--line);border-top:4px solid var(--brass);border-radius:4px}
+.tile b{font-size:15.5px;font-weight:700}
+.tile small{color:var(--gold-deep);font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+.tile.inCart{background-color:var(--brassSoft);border-color:var(--brass);border-top-color:var(--crimson)}
+.qtyBadge{position:absolute;top:8px;right:8px;margin:0;background:var(--crimson);color:#fff;border-radius:3px;font-size:12.5px;padding:2px 8px}
+.sectionhead{font-family:var(--font-display);font-weight:400;font-size:22px;text-transform:none;letter-spacing:0;color:var(--ink);display:flex;align-items:center;gap:12px}
+.sectionhead::after{content:"";flex:1;height:7px;border-top:3px double var(--brass);margin-top:6px}
+.cartRow{border-bottom-color:var(--line);font-size:15px}
+.field label{font-size:14px;color:var(--ink)}
+.field input{border:1px solid var(--line);border-radius:6px;background:#FFFDF6;font-size:16px}
+.field input:focus{outline:2px solid var(--brassSoft);border-color:var(--brass)}
+.btn{border-radius:6px;font-size:16px}
+.btn.accent{background:var(--crimson);color:#fff}
+.btn.ink{background:var(--band) var(--pat-band,none);background-size:auto 100%;color:var(--cream-on-band)}
+.btn.secondary{background:var(--card);border:1px solid var(--line)}
+.bar{background:var(--card);border-top:3px double var(--brass);box-shadow:0 -6px 20px rgba(42,34,20,.10)}
+.bar .total{font-family:var(--font-display);font-weight:400;font-size:26px;font-variant-numeric:tabular-nums}
+.notice{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brass);border-radius:4px;color:var(--ink)}
+.center{background:var(--pat-rosette,none) no-repeat center 30px;background-size:220px 220px}
+.center h2{font-family:var(--font-display);font-size:30px}
+.poweredBy{display:flex;align-items:center;justify-content:center;gap:8px;margin:28px auto 12px;color:var(--muted);font-size:13px}
+.poweredBy img{width:28px;height:auto}
+.poweredBy b{font-family:var(--font-display);font-weight:400;color:var(--ink)}
+.bizName{color:#9A1530}  /* the restaurant's name, in royal crimson as in the app */
+
+/* ---------- Typography v2: clearer, bolder ----------
+   The business name is set in Cinzel — the lettering of inscriptions, banknotes and royal crests:
+   still regal, but clear at a glance, where the copperplate script was hard to read on a phone.
+   Everything else is a step bolder: medium body text, bold labels, names, buttons and tabs, and
+   headings with slightly thickened strokes. */
+:root{--font-sig:'Cinzel','Trajan Pro',Georgia,'Times New Roman',serif}
+body{font-weight:500}
+b,strong{font-weight:800}
+.sig,.sheetBiz,.bizname{font-family:var(--font-sig)!important;font-weight:700;letter-spacing:.03em}
+h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCartTotal{-webkit-text-stroke:.45px currentColor}
+.bizName{font-family:var(--font-sig)!important;font-size:31px;font-weight:800;line-height:1.15;margin-top:2px;letter-spacing:.03em}
+.tile b{font-weight:800}
+.btn{font-weight:800}
+.field label{font-weight:700}
+.bizMotto{text-align:center;font-style:italic;font-weight:700;margin:-2px 0 8px;opacity:.85}
+.bizMessage{margin:0 0 12px;padding:10px 12px;border-left:4px solid #B5172F;background:rgba(181,23,47,.06);border-radius:4px;white-space:pre-line;font-size:14px;line-height:1.45}
+</style>
+<style>
+.promoRow{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 10px;margin:4px 0 8px;scroll-snap-type:x mandatory}
+.promoTile{flex:0 0 78%;max-width:300px;scroll-snap-align:start;border:1.4px solid var(--line,#E4D6AE);border-radius:12px;background:var(--card,#FFFBEF);overflow:hidden;display:flex;flex-direction:column}
+.promoTile img{width:100%;height:120px;object-fit:cover;display:block}
+.promoTile .pt{padding:10px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+.promoTile b{font-size:15.5px;line-height:1.25}
+.promoTile small{font-size:13px;opacity:.85;line-height:1.35}
+.promoBadge{align-self:flex-start;background:#B5172F;color:#fff;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:800}
+.promoTile button{margin-top:auto;padding:8px;border-radius:8px;border:0;background:#8C6A1C;color:#fff;font-weight:800}
+
+.discTop{text-align:center;margin-bottom:10px}
+.discTop .bizName{font-size:30px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin:8px 0}
+.chip{white-space:nowrap;border:1.4px solid var(--line,#E4D6AE);background:var(--card,#FFFBEF);border-radius:20px;padding:7px 12px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;color:inherit}
+.chip.on{background:#8C6A1C;color:#fff;border-color:#8C6A1C}
+.search{width:100%;box-sizing:border-box;padding:12px;border:1.4px solid var(--line,#E4D6AE);border-radius:10px;font:inherit;background:#fff}
+.bcard{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line,#E4D6AE);border-top:3px solid var(--brass,#B8902F);border-radius:6px;background:var(--card,#FFFBEF);padding:12px;margin-bottom:10px;cursor:pointer}
+.blogo{width:52px;height:52px;border-radius:10px;object-fit:cover;flex:0 0 52px;background:#F2E2B4;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;color:#7E5F17}
+.bcard b{font-size:16px}.bcard small{display:block;opacity:.85;font-size:13px;line-height:1.35;margin-top:2px}
+.offers{display:inline-block;background:#B5172F;color:#fff;border-radius:4px;padding:1px 7px;font-size:11.5px;font-weight:800;margin-left:6px}
+.featTile{cursor:pointer}
+.featBy{font-size:12px;font-weight:800;color:#7E5F17}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="center"><p>Loading…</p></div></div>
+<script>
+/* Mobo-Vault Discover — the businesses on the platform that chose to be listed: restaurants, hotels,
+   shops and services. Featured tiles at the top are paid placements. Each business opens its own order
+   or booking page, or its profile. Everything shown comes from the server, which lists only businesses
+   that opted in, with an active subscription, and not taken down. */
+const SERVER = (window.MOBOREX_SERVER_URL || "https://moborex-ledger-vault-api.ravoseh.workers.dev");
+const qs = new URLSearchParams(location.search);
+const app = () => document.getElementById('app');
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function api(path){ const r=await fetch(SERVER+path); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||'Something went wrong. Please try again.'); return d; }
+function linkFor(id, kind){ return kind==='order' ? `order.html?business=${encodeURIComponent(id)}&source=online` : kind==='reserve' ? `reserve.html?business=${encodeURIComponent(id)}` : `discover.html?business=${encodeURIComponent(id)}`; }
+const actionWord = k => k==='order' ? 'Order now' : k==='reserve' ? 'Book a room' : 'View';
+const logoHtml = b => b.logo ? `<img class="blogo" src="${b.logo}" alt="">` : `<div class="blogo">${esc(String(b.name||'?').trim().charAt(0).toUpperCase())}</div>`;
+let state={q:'', category:'', city:''}, data={businesses:[], categories:[], cities:[]}, featured=[];
+async function loadList(){
+  const p=new URLSearchParams(); if(state.q) p.set('q',state.q); if(state.category) p.set('category',state.category); if(state.city) p.set('city',state.city);
+  try{ data=await api('/api/public/directory?'+p.toString()); }catch(e){ document.getElementById('list').innerHTML=`<p>${esc(e.message)}</p>`; return; }
+  drawList();
+}
+function drawList(){
+  document.getElementById('chips').innerHTML=['', ...(data.categories||[])].map(c=>`<button type="button" class="chip${state.category===c?' on':''}" data-c="${esc(c)}" onclick="state.category=this.dataset.c;loadList()">${esc(c||'All')}</button>`).join('');
+  const cs=document.getElementById('city'); if(cs && cs.options.length<=1) cs.innerHTML='<option value="">Every city</option>'+(data.cities||[]).map(c=>`<option>${esc(c)}</option>`).join('');
+  document.getElementById('list').innerHTML=(data.businesses||[]).map(b=>`<div class="bcard" onclick="location.href='${linkFor(b.id,b.link)}'">${logoHtml(b)}<div style="flex:1;min-width:0">
+     <b>${esc(b.name)}</b>${b.promos?`<span class="offers">${b.promos} offer${b.promos===1?'':'s'}</span>`:''}
+     <small>${esc(b.category||'')}${b.area||b.city?' · '+esc([b.area,b.city].filter(Boolean).join(', ')):''}</small>
+     ${b.motto?`<small style="font-style:italic">${esc(b.motto)}</small>`:''}<small>${esc(b.about||'')}</small>
+     <small style="margin-top:6px;font-weight:800;color:#B5172F">${actionWord(b.link)} →</small></div></div>`).join('')
+    || `<div class="center" style="padding:30px 10px"><p>No businesses match${state.q?` “${esc(state.q)}”`:''}. Try another search.</p></div>`;
+}
+function renderHome(){
+  app().innerHTML=`<div class="discTop"><div class="bizName">Discover</div><div class="bizMotto">Restaurants, hotels, shops and services on Mobo-Vault</div></div>
+  ${featured.length?`<div class="sectionhead">Featured</div><div class="promoRow">${featured.map(f=>`<div class="promoTile featTile" onclick="location.href='${linkFor(f.businessId,f.link)}'">${f.image?`<img src="${f.image}" alt="">`:''}<div class="pt">${f.badge?`<span class="promoBadge">${esc(f.badge)}</span>`:''}<b>${esc(f.title)}</b>${f.body?`<small>${esc(f.body)}</small>`:''}<span class="featBy">${esc(f.businessName)}</span></div></div>`).join('')}</div>`:''}
+  <input class="search" id="q" type="search" placeholder="Search by name, food, area…" oninput="clearTimeout(window.__t);window.__t=setTimeout(()=>{state.q=this.value.trim();loadList()},300)">
+  <div class="chips" id="chips"></div>
+  <select class="search" id="city" style="margin-bottom:12px" onchange="state.city=this.value;loadList()"><option value="">Every city</option></select>
+  <div id="list"><p style="opacity:.7">Loading…</p></div>
+  <div class="poweredBy" style="flex-direction:column;text-align:center"><span>Run a business? <a href="index.html" style="color:#B5172F;font-weight:800">Get Mobo-Vault</a> and list it here.</span></div>`;
+  loadList();
+}
+async function renderBusiness(id){
+  let b; try{ b=await api('/api/public/business/'+encodeURIComponent(id)); }catch(e){ app().innerHTML=`<div class="center"><p>${esc(e.message)}</p><p><a href="discover.html">← Back to Discover</a></p></div>`; return; }
+  document.title=b.name+' — Discover';
+  const digits=String(b.phone||'').replace(/\D/g,''), wa=digits.startsWith('0')?'234'+digits.slice(1):digits;
+  app().innerHTML=`<p style="margin:0 0 6px"><a href="discover.html" style="color:inherit">← Discover</a></p>
+  <div style="display:flex;gap:12px;align-items:center">${logoHtml(b)}<div><div class="bizName" style="font-size:26px">${esc(b.name)}</div><small>${esc(b.category||'')}${b.area||b.city?' · '+esc([b.area,b.city].filter(Boolean).join(', ')):''}</small></div></div>
+  ${b.motto?`<div class="bizMotto" style="margin-top:8px">${esc(b.motto)}</div>`:''}
+  <p style="line-height:1.5">${esc(b.about||'')}</p>
+  ${b.message?`<div class="bizMessage">${esc(b.message)}</div>`:''}
+  ${b.link!=='profile'?`<a class="btn accent" style="display:block;text-decoration:none;margin:10px 0" href="${linkFor(id,b.link)}">${actionWord(b.link)}</a>`:''}
+  ${digits?`<div style="display:flex;gap:8px;margin:8px 0"><a class="btn ink" style="flex:1;text-decoration:none" href="tel:${esc(digits)}">📞 Call</a><a class="btn secondary" style="flex:1;text-decoration:none" href="https://wa.me/${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a></div>`:''}
+  ${(b.promos||[]).length?`<div class="sectionhead">Offers</div><div class="promoRow">${b.promos.map(p=>`<div class="promoTile">${p.image?`<img src="${p.image}" alt="">`:''}<div class="pt">${p.badge?`<span class="promoBadge">${esc(p.badge)}</span>`:''}<b>${esc(p.title)}</b>${p.body?`<small>${esc(p.body)}</small>`:''}<small style="opacity:.6">Until ${esc(p.endsOn)}</small></div></div>`).join('')}</div>`:''}`;
+}
+(async()=>{
+  if(qs.get('business')) return renderBusiness(qs.get('business'));
+  try{ featured=(await api('/api/public/featured')).featured||[]; }catch(e){ featured=[]; }
+  renderHome();
+})();
+</script>
+</body>
+</html>

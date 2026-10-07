@@ -1,4 +1,4 @@
-const CACHE = 'moborex-invoice-v85';
+const CACHE = 'moborex-invoice-v86';
 
 /* All three entry points are cached, not just index.html. order.html (customers) and
    rider.html (riders) were previously never cached at all, so a rider with no signal had
@@ -6,6 +6,8 @@ const CACHE = 'moborex-invoice-v85';
 const ASSETS = [
   './index.html',
   './order.html',
+  './reserve.html',
+  './discover.html',
   './rider.html',
   './manifest.json',
   './mobovault-192.png',
@@ -35,7 +37,8 @@ const OPTIONAL_ASSETS = [
   './vendor/html2canvas.min.js',
   './vendor/jspdf.umd.min.js',
   './vendor/xlsx.full.min.js',
-  './vendor/xlsx-reader-worker.js'
+  './vendor/xlsx-reader-worker.js',
+  './vendor/zxing.min.js'
 ];
 
 // Anything from the API is live data and must never be answered from cache first.

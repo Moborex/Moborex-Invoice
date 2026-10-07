@@ -107,6 +107,17 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
 .tile b{font-weight:800}
 .btn{font-weight:800}
 .field label{font-weight:700}
+.bizMotto{text-align:center;font-style:italic;font-weight:700;margin:-2px 0 8px;opacity:.85}
+.bizMessage{margin:0 0 12px;padding:10px 12px;border-left:4px solid #B5172F;background:rgba(181,23,47,.06);border-radius:4px;white-space:pre-line;font-size:14px;line-height:1.45}
+
+.promoRow{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 10px;margin:4px 0 8px;scroll-snap-type:x mandatory}
+.promoTile{flex:0 0 78%;max-width:300px;scroll-snap-align:start;border:1.4px solid var(--line,#E4D6AE);border-radius:12px;background:var(--card,#FFFBEF);overflow:hidden;display:flex;flex-direction:column}
+.promoTile img{width:100%;height:120px;object-fit:cover;display:block}
+.promoTile .pt{padding:10px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+.promoTile b{font-size:15.5px;line-height:1.25}
+.promoTile small{font-size:13px;opacity:.85;line-height:1.35}
+.promoBadge{align-self:flex-start;background:#B5172F;color:#fff;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:800}
+.promoTile button{margin-top:auto;padding:8px;border-radius:8px;border:0;background:#8C6A1C;color:#fff;font-weight:800}
 </style>
 </head>
 <body>
@@ -186,10 +197,35 @@ const source = params.get('source') === 'online' ? 'online' : 'qr'; // default t
 const paidReturn = params.get('paid') === '1';
 let trackOrderId = params.get('track');
 const paidReturnOrderId = params.get('order');
-const deliveryJobId = params.get('deliveryJob'); // customer paying for a delivery directly — works for any job, online-order-linked or a regular in-store invoice
+const deliveryJobId = params.get('deliveryJob');
+/* Where the QR code was: a table or spot ("Table 5", "Pool bar") named on the code, or a hotel room —
+   whose name comes from the hotel's own records. A room's guest can put the order on their bill. */
+const spotParam = (params.get('spot') || '').slice(0, 40), roomParam = params.get('room') || '';
+let roomInfo = null, chargeToRoom = false;
+const whereLabel = () => (roomInfo && roomInfo.label) || spotParam || '';
+function whereBanner(){ const w = whereLabel(); return w ? `<div class="notice" style="margin:6px 0 12px;font-weight:800">📍 Ordering for ${esc(w)}${roomParam ? ' — room service' : ''}</div>` : ''; } // customer paying for a delivery directly — works for any job, online-order-linked or a regular in-store invoice
 
-let menu = [];
-let businessName = '';
+let menu = [], promos = [];
+/* The business's own promotions — specials, occasions, discounts — shown before the menu. One linked to
+   a menu item adds it to the order with a tap. */
+function promoHtml(){
+  if(!promos.length) return '';
+  return `<div class="sectionhead" style="margin-top:4px">Specials</div><div class="promoRow">${promos.map(p=>{ const item=p.productRef && menu.find(m=>m.productRef===p.productRef);
+    return `<div class="promoTile">${p.image?`<img src="${p.image}" alt="">`:''}<div class="pt">${p.badge?`<span class="promoBadge">${esc(p.badge)}</span>`:''}<b>${esc(p.title)}</b>${p.body?`<small>${esc(p.body)}</small>`:''}<small style="opacity:.6">Until ${esc(p.endsOn)}</small>${item?`<button type="button" onclick="addToCart('${esc(item.id)}');this.textContent='Added ✓'">Add ${esc(item.name)}</button>`:''}</div></div>`; }).join('')}</div>`;
+}
+let businessName = '', bizMotto = '', bizMessage = '';
+/* Every screen names the business. Many businesses share this page design, so a customer on the
+   payment confirmation or order-status screen must still see WHOSE page it is. */
+function bizLine(sub){ return `<div class="bizName bizNameLive">${esc(businessName||'')}</div>${sub?`<div class="tagline">${esc(sub)}</div>`:''}`; }
+async function ensureBusinessName(){
+  if(businessName || !businessId) return;
+  try{
+    const r = await fetch(`${SERVER}/api/public/menu/${encodeURIComponent(businessId)}`);
+    const d = await r.json();
+    if(d && d.businessName){ businessName = d.businessName; document.querySelectorAll('.bizNameLive').forEach(e=>{ e.textContent = businessName; }); if(!/—/.test(document.title)) document.title = businessName + ' — ' + document.title; }
+  }catch(e){ /* the screen still works without it */ }
+}
+
 let serviceFeePercent = 7;
 /* Whether this business can take payment online at all. It was never asked, so the page offered
    online payment, the payment failed, and the customer ordered again — three orders for one. */
@@ -211,12 +247,14 @@ async function init(){
   if(paidReturn){ renderPaidConfirmation(); return; }
   if(!businessId){ renderError("This link is missing some details — ask the business for the correct ordering link or QR code."); return; }
   try{
-    const res = await fetch(`${SERVER}/api/public/menu/${businessId}`);
+    const res = await fetch(`${SERVER}/api/public/menu/${businessId}${roomParam ? '?room=' + encodeURIComponent(roomParam) : ''}`);
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'Could not load the menu.');
     businessName = data.businessName;
+    bizMotto = data.motto || ''; bizMessage = data.message || '';   // the owner's own words, set in Online Ordering
     document.title = businessName ? businessName+' — Order' : 'Order'; // browser tab identifies which business this is, not just generic "Order"
-    menu = data.items || [];
+    menu = data.items || []; promos = data.promos || [];
+    if(roomParam){ roomInfo = data.room || { missing: true }; if(roomInfo.missing){ renderError("This room's QR code is out of date — please call the front desk."); return; } }
     serviceFeePercent = data.serviceFeePercent || 7;
     onlinePaymentAvailable = data.onlinePayment !== false;
     serviceFeeCapKobo = data.serviceFeeCapKobo || 500000;
@@ -229,7 +267,9 @@ async function init(){
 function renderCheckOrderGate(){
   document.getElementById('app').innerHTML = `
     <div class="bizName">${esc(businessName)}</div>
+    ${bizMotto ? `<div class="bizMotto">${esc(bizMotto)}</div>` : ''}
     <div style="text-align:center;margin:-4px 0 10px"><button type="button" onclick="showFeedbackForm()" style="background:none;border:0;color:var(--crimson);text-decoration:underline;font:inherit;cursor:pointer;font-size:13px">Leave feedback or report a problem</button></div>
+    ${whereBanner()}
     <div class="tagline">Have an order already in progress? Enter your phone number to check it — or skip straight to ordering.</div>
     <div class="field"><label>Phone number</label><input id="gatePhone" type="tel" placeholder="The number you ordered with"></div>
     <div id="gateStatus"></div>
@@ -269,7 +309,8 @@ function backToMenu(){
   location.href = clean;
 }
 function renderError(msg){
-  document.getElementById('app').innerHTML = `<div class="center">
+  ensureBusinessName();
+  document.getElementById('app').innerHTML = `${bizLine()}<div class="center">
     <h2>Something's not right</h2>
     <p>${esc(msg)}</p>
     <button class="btn" onclick="location.reload()" style="margin-top:12px">Try again</button>
@@ -278,7 +319,8 @@ function renderError(msg){
 }
 
 function renderPaidConfirmation(){
-  document.getElementById('app').innerHTML = `<div class="center">
+  ensureBusinessName();
+  document.getElementById('app').innerHTML = `${bizLine()}<div class="center">
     <h2>Payment received 🎉</h2>
     <p>Your order is confirmed and the business has been notified. Thank you!</p>
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
@@ -360,6 +402,8 @@ async function payForDeliveryJobDirect(jobId){
 }
 let lastTrackData = null;
 function renderTracking(data){
+  if(!businessName && data && data.businessName) businessName=data.businessName;
+  ensureBusinessName();
   lastTrackData = data;
   const s = data.stages || {};
   const steps = [
@@ -411,7 +455,7 @@ function renderTracking(data){
     }
   }
   document.getElementById('app').innerHTML = `
-    <div class="bizName">Order Status</div>
+    ${bizLine('Order status')}
     ${data.status==='cancelled' ? `<div class="notice" style="background:#F7E7E7;color:var(--danger);border-color:#e6b8b8">This order was cancelled.</div>` : ''}
     <div style="margin-top:14px">${stepsHtml}</div>
     ${deliveryHtml}
@@ -542,7 +586,11 @@ function renderMenu(){
   const sellable = sellableMenu(), packaging = packagingMenu();
   document.getElementById('app').innerHTML = `
     <div class="bizName">${esc(businessName)}</div>
-    <div class="tagline">${source==='qr' ? 'Tap items to add them, then pay at the cashier when your order is ready.' : 'Tap items to add them, then pay online to confirm your order.'}</div>
+    ${bizMotto ? `<div class="bizMotto">${esc(bizMotto)}</div>` : ''}
+    ${bizMessage ? `<div class="bizMessage">${esc(bizMessage)}</div>` : ''}
+    ${whereBanner()}
+    ${promoHtml()}
+    <div class="tagline">${roomParam ? 'Tap items to add them — we bring them to your room.' : spotParam ? 'Tap items to add them — we bring them to you; pay when it arrives.' : source==='qr' ? 'Tap items to add them, then pay at the cashier when your order is ready.' : 'Tap items to add them, then pay online to confirm your order.'}</div>
     <div class="sectionhead" style="margin-top:4px">Ordering for</div>
     <div id="personTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
     ${sellable.length ? `<div class="tileGrid" id="tileGrid"></div>` : `<div class="center"><p>No items available to order right now.</p></div>`}
@@ -649,6 +697,7 @@ function showCheckout(){
   `).join('');
   document.getElementById('app').innerHTML = `
     <div class="bizName">${esc(businessName)}</div>
+    ${whereBanner()}
     <div class="sectionhead">Your Order</div>
     ${peopleHtml}
     <div class="cartRow"><div>Order Value</div><div>${money(orderValue)}</div></div>
@@ -673,11 +722,26 @@ function showCheckout(){
       <label class="hidden" id="saveAddressLabel" style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:500"><input type="checkbox" id="saveAddressCheck" checked style="width:auto"> Save this address for next time</label>
     </div>
     ` : ''}
+    ${roomParam && roomInfo && roomInfo.canCharge ? `
+    <div class="field"><label>How will you pay?</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" id="payRoomBtn" class="btn secondary" style="flex:1" onclick="setChargeToRoom(true)">Charge to my room</button>
+        <button type="button" id="payNowBtn" class="btn secondary" style="flex:1" onclick="setChargeToRoom(false)">Pay when it arrives</button>
+      </div>
+    </div>
+    <div class="field hidden" id="roomCheckField"><label>Last 4 digits of the phone number you checked in with</label><input id="roomCheck" inputmode="numeric" maxlength="4" placeholder="e.g. 4567" autocomplete="off"><small style="display:block;margin-top:4px;color:var(--muted)">So only the guest in ${esc(roomInfo.label)} can add to its bill. It goes on your bill and you pay at check-out.</small></div>` : ''}
     <div id="checkoutError" class="hidden" style="color:var(--danger);font-size:13px;margin-bottom:10px"></div>
     <button class="btn ink" onclick="placeOrder()">${source==='online' ? 'Continue to Payment' : 'Place Order'}</button>
     <button class="btn secondary" style="margin-top:8px" onclick="renderMenu()">Back to Menu</button>
   `;
   if(source==='online'){ wantsDelivery=false; setWantsDelivery(false); }
+  if(roomParam && roomInfo && roomInfo.canCharge) setChargeToRoom(true);
+}
+function setChargeToRoom(val){
+  chargeToRoom = !!val;
+  const a=document.getElementById('payRoomBtn'), b=document.getElementById('payNowBtn'), f=document.getElementById('roomCheckField');
+  if(a) a.className = 'btn ' + (val ? 'ink' : 'secondary'); if(b) b.className = 'btn ' + (val ? 'secondary' : 'ink');
+  if(f) f.classList.toggle('hidden', !val);
 }
 
 function setWantsDelivery(val){
@@ -736,6 +800,8 @@ async function placeOrder(){
   const errEl = document.getElementById('checkoutError');
   const showErr = (m)=>{ errEl.textContent = m; errEl.classList.remove('hidden'); };
   if(!name){ showErr('Enter your name.'); return; }
+  const roomCheckEl = document.getElementById('roomCheck'), roomCheck = roomCheckEl ? roomCheckEl.value.trim() : '';
+  if(chargeToRoom && !/^\d{4}$/.test(roomCheck)){ showErr('Enter the last 4 digits of the phone number you checked in with.'); return; }
   if(!phone){ showErr('Enter a phone number.'); return; }
   if(source==='online' && wantsDelivery && !deliveryAddress){ showErr('Enter a delivery address.'); return; }
   errEl.classList.add('hidden');
@@ -757,14 +823,15 @@ async function placeOrder(){
     items: Object.values(p.cart).map(c=>({name:c.name, priceKobo:c.priceKobo, qty:c.qty})),
   }));
   try{
-    const orderSig = JSON.stringify([peoplePayload, name, phone, wantsDelivery, deliveryAddress]);
+    const orderSig = JSON.stringify([peoplePayload, name, phone, wantsDelivery, deliveryAddress, chargeToRoom, roomCheck]);
     let data;
     if(pendingOrder && pendingOrder.sig === orderSig){
       data = pendingOrder.data;                       // already placed — this is a retry of the PAYMENT only
     } else {
       const res = await fetch(`${SERVER}/api/public/orders`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ businessId, source, customerName:name, customerPhone:phone, people:peoplePayload, deliveryRequested:wantsDelivery, deliveryAddress })
+        body: JSON.stringify({ businessId, source, customerName:name, customerPhone:phone, people:peoplePayload, deliveryRequested:wantsDelivery, deliveryAddress,
+          spot: spotParam || undefined, roomId: roomParam || undefined, chargeToRoom: chargeToRoom || undefined, roomCheck: chargeToRoom ? roomCheck : undefined })
       });
       data = await res.json();
       if(!res.ok) throw new Error(data.error || 'Could not place the order.');
@@ -772,7 +839,7 @@ async function placeOrder(){
 
     if(source === 'qr' || data.paymentStatus !== 'awaiting_online_payment'){
       pendingOrder = null;
-      renderQrConfirmation(data.orderId, data.totalKobo, data.paymentStatus); // server's authoritative total — never trust the client's own cart math for what's actually owed
+      renderQrConfirmation(data.orderId, data.totalKobo, data.paymentStatus, data.spot); // server's authoritative total — never trust the client's own cart math for what's actually owed
     } else {
       pendingOrder = { sig: orderSig, data };
       const callbackUrl = location.origin + location.pathname + `?business=${encodeURIComponent(businessId)}&paid=1&order=${data.orderId}`;
@@ -789,11 +856,14 @@ async function placeOrder(){
   }
 }
 
-function renderQrConfirmation(orderId, totalKobo, paymentStatus){
+function renderQrConfirmation(orderId, totalKobo, paymentStatus, spot){
+  ensureBusinessName();
   document.getElementById('cartBar').classList.add('hidden');
-  document.getElementById('app').innerHTML = `<div class="center">
+  document.getElementById('app').innerHTML = `${bizLine()}<div class="center">
     <h2>Order placed ✅</h2>
-    <p>${paymentStatus==='pay_on_delivery' ? `Pay ${money(totalKobo)} when your order is delivered.` : `Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.`}</p>
+    <p>${paymentStatus==='charge_to_room' ? `${money(totalKobo)} goes on your ${esc(spot||'room')} bill — pay at check-out. We'll bring it to your room.`
+      : spot ? `We'll bring it to ${esc(spot)}. Pay ${money(totalKobo)} when it arrives.`
+      : paymentStatus==='pay_on_delivery' ? `Pay ${money(totalKobo)} when your order is delivered.` : `Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.`}</p>
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
       <button class="btn secondary" onclick="backToMenu()">Order something else</button>
       <button class="btn secondary" onclick="showFeedbackForm()">Leave feedback</button>

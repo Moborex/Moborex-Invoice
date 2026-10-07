@@ -6,8 +6,9 @@
 
 1. Go to your repository on github.com (`moborex/Moborex-Invoice`).
 2. **Add file → Upload files.**
-3. Drag in **every file from this folder** — including `sw.js`, `order.html` and `rider.html`,
-   not just `index.html`. A partial upload leaves the ordering pages on an older version.
+3. Drag in **every file and the `vendor` folder from this folder** — including `sw.js`, `pos.html`,
+   `order.html`, `reserve.html`, `discover.html` and `rider.html`, not just `index.html`. A partial
+   upload leaves some pages on an older version. (New in v86: `discover.html` and `vendor/zxing.min.js`.)
 4. **Commit changes.**
 5. Wait a minute or two for GitHub Pages to publish.
 
@@ -15,7 +16,7 @@
 
 Open the app → **Sync & Backup**. The line near the bottom reads:
 
-    App build v79
+    App build v86
 
 If it shows an older number, the browser is serving a cached copy:
 
@@ -37,8 +38,12 @@ anything that holds records, and the server refuses even if the button is presse
 | File | What it is |
 |---|---|
 | `index.html` | the app |
-| `order.html` | customer ordering page (QR and online link) |
+| `pos.html` | Mobo-Vault POS — the till app for counter staff |
+| `order.html` | customer ordering page (QR and online link, room service) |
+| `reserve.html` | hotel booking page for guests |
+| `discover.html` | public directory of businesses, with featured tiles |
 | `rider.html` | delivery rider app |
+| `vendor/` | PDF, Excel, image and barcode-scanner libraries, hosted with the app |
 | `sw.js` | offline support and update detection |
 | `manifest.json`, icons | what the phone shows when the app is installed |
 
