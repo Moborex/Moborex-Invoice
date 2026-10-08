@@ -8,7 +8,7 @@
 2. **Add file → Upload files.**
 3. Drag in **every file and the `vendor` folder from this folder** — including `sw.js`, `pos.html`,
    `order.html`, `reserve.html`, `discover.html` and `rider.html`, not just `index.html`. A partial
-   upload leaves some pages on an older version. (New in v86: `discover.html` and `vendor/zxing.min.js`.)
+   upload leaves some pages on an older version. (New in v89: `privacy.html`. New in v86: `discover.html` and `vendor/zxing.min.js`.)
 4. **Commit changes.**
 5. Wait a minute or two for GitHub Pages to publish.
 
@@ -16,7 +16,7 @@
 
 Open the app → **Sync & Backup**. The line near the bottom reads:
 
-    App build v88
+    App build v89
 
 If it shows an older number, the browser is serving a cached copy:
 
@@ -38,6 +38,7 @@ anything that holds records, and the server refuses even if the button is presse
 | File | What it is |
 |---|---|
 | `index.html` | the app |
+| `privacy.html` | Privacy Policy & Terms; linked from sign-up and every public page |
 | `pos.html` | Mobo-Vault POS — the till app for counter staff |
 | `order.html` | customer ordering page (QR and online link, room service) |
 | `reserve.html` | hotel booking page for guests |
