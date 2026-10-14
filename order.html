@@ -118,6 +118,7 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
 .promoTile small{font-size:13px;opacity:.85;line-height:1.35}
 .promoBadge{align-self:flex-start;background:#B5172F;color:#fff;border-radius:4px;padding:2px 8px;font-size:12px;font-weight:800}
 .promoTile button{margin-top:auto;padding:8px;border-radius:8px;border:0;background:#8C6A1C;color:#fff;font-weight:800}
+.tileDesc{display:block;font-size:11.5px;font-weight:400;line-height:1.3;margin:3px 0 4px;opacity:.75;text-align:left}
 </style>
 </head>
 <body>
@@ -203,7 +204,11 @@ const deliveryJobId = params.get('deliveryJob');
 const spotParam = (params.get('spot') || '').slice(0, 40), roomParam = params.get('room') || '';
 let roomInfo = null, chargeToRoom = false;
 const whereLabel = () => (roomInfo && roomInfo.label) || spotParam || '';
-function whereBanner(){ const w = whereLabel(); return w ? `<div class="notice" style="margin:6px 0 12px;font-weight:800">📍 Ordering for ${esc(w)}${roomParam ? ' — room service' : ''}</div>` : ''; } // customer paying for a delivery directly — works for any job, online-order-linked or a regular in-store invoice
+/* v92: online orders are paid online, always (the owner's decision, 14 Oct). A business not yet set up to be paid online
+   takes no online orders: its menu still shows, with this said plainly at the top. QR-at-the-table and room orders are unchanged. */
+function noOnlineOrdersYet(){ return source==='online' && !onlinePaymentAvailable; }
+function noOnlineBanner(){ return noOnlineOrdersYet() ? `<div class="notice" style="margin:6px 0 12px;font-weight:700">${esc(businessName||'This business')} is not taking online orders yet. You can still look at the menu, call them, or visit.</div>` : ''; }
+function whereBanner(){ if(noOnlineOrdersYet()) return noOnlineBanner(); const w = whereLabel(); return w ? `<div class="notice" style="margin:6px 0 12px;font-weight:800">📍 Ordering for ${esc(w)}${roomParam ? ' — room service' : ''}</div>` : ''; } // customer paying for a delivery directly — works for any job, online-order-linked or a regular in-store invoice
 
 let menu = [], promos = [];
 /* The business's own promotions — specials, occasions, discounts — shown before the menu. One linked to
@@ -258,6 +263,8 @@ let onlinePaymentAvailable = true;
 let pendingOrder = null;
 let serviceFeeCapKobo = 500000;
 let wantsDelivery = false;
+// v90: the delivery fee, shown at checkout and paid with the order.
+let deliveryOpts = null, deliveryQuoteRes = null, dropoffLoc = null, checkoutBaseKobo = 0, checkoutOrderValueKobo = 0;
 let people = [{ label: 'Person 1', cart: {} }]; // each person gets their own cart — id -> {name, priceKobo, qty}
 let currentPersonIdx = 0;
 
@@ -430,12 +437,18 @@ function renderTracking(data){
   if(!businessName && data && data.businessName) businessName=data.businessName;
   ensureBusinessName();
   lastTrackData = data;
-  const s = data.stages || {};
-  const steps = [
+  const s = Object.assign({}, data.stages || {});
+  // v90: "Rider has your order" between packed and delivered, so the customer knows to have the code ready.
+  if(data.pickedUpAt) s.pickedUpAt = data.pickedUpAt;
+  const steps = data.delivery ? [
     { key:'processingAt', label:'Order received' },
     { key:'packedAt', label:'Packed & ready' },
-    { key:'dispatchedAt', label:'Out for delivery' },
+    { key:'dispatchedAt', label:'Rider on the way to collect it' },
+    { key:'pickedUpAt', label:'Rider has your order' },
     { key:'deliveredAt', label:'Delivered' },
+  ] : [
+    { key:'processingAt', label:'Order received' },
+    { key:'packedAt', label:'Packed & ready' },
   ];
   const stepsHtml = steps.map(step=>{
     const done = !!s[step.key];
@@ -447,8 +460,9 @@ function renderTracking(data){
   const deliveryHtml = data.delivery && data.delivery.riderName ? `
     <div class="notice" style="margin-top:16px">
       <b>${esc(data.delivery.riderName)}</b>${data.delivery.riderPhone?' · '+esc(data.delivery.riderPhone):''} is bringing your order.<br>
-      Your collection code: <b style="font-size:18px;letter-spacing:2px">${esc(data.delivery.collectionCode||'')}</b> — give this to them on arrival.
+      Your handover code: <b style="font-size:22px;letter-spacing:3px">${esc(data.delivery.collectionCode||'')}</b><br>Give this code to the rider only when your order is in your hands.
     </div>` : '';
+  const feeHtml = data.deliveryFeeKobo ? `<p style="font-size:13px;color:var(--muted);margin-top:8px">Delivery fee ${money(data.deliveryFeeKobo)} — paid with your order.</p>` : '';
   // Option B: the delivery charge is its own separate payment, only shown once a rider
   // has actually accepted — never bundled into the order total, since who it's paying
   // wasn't known before that.
@@ -483,7 +497,7 @@ function renderTracking(data){
     ${bizLine('Order status')}
     ${data.status==='cancelled' ? `<div class="notice" style="background:#F7E7E7;color:var(--danger);border-color:#e6b8b8">This order was cancelled.</div>` : ''}
     <div style="margin-top:14px">${stepsHtml}</div>
-    ${deliveryHtml}
+    ${deliveryHtml}${feeHtml}
     ${deliveryPayHtml}
     ${payHtml}
     ${businessId && menu.length ? `
@@ -649,6 +663,7 @@ function renderTiles(){
       const inCart = cart[item.id];
       return `<button class="tile ${inCart?'inCart':''}" onclick="addToCart('${item.id}')">
         <b>${esc(item.name)}</b>
+        ${item.description ? `<span class="tileDesc">${esc(item.description)}</span>` : ''}
         <small>${money(shownPrice(item))}</small>
         ${inCart ? `<span class="qtyBadge">${inCart.qty} in cart</span>` : ''}
       </button>`;
@@ -684,10 +699,13 @@ function updateCartBar(){
   const bar = document.getElementById('cartBar');
   if(cartCount() > 0){
     bar.classList.remove('hidden');
-    const tx = taxSplit(allCartLines());
-    // Matches the tiles: with tax shown separately, the food total "+ VAT"; otherwise the full total.
-    const taxWord = menuTaxes.length === 1 ? menuTaxes[0].name : 'tax';
-    document.getElementById('cartBarTotal').textContent = (separateTax() && tx.tax > 0 ? money(tx.net) + ' + ' + taxWord : money(cartTotal())) + ` (${cartCount()} item${cartCount()>1?'s':''})`;
+    /* v90: the same total checkout shows — packs and nylons included. The bar used to show the items
+       alone "+ VAT", which disagreed with checkout by the packaging (a field report: ₦27,500 + VAT on
+       the bar, ₦30,650 at checkout). */
+    const enriched = people.filter(p=>Object.keys(p.cart).length).map(p=>packagingPreview(p.cart));
+    const total = enriched.reduce((a,p)=>a+p.subtotal,0), packs = enriched.reduce((a,p)=>a+p.items.length,0) > people.reduce((a,p)=>a+Object.keys(p.cart).length,0);
+    const tx = taxSplit(enriched.flatMap(p=>p.items)), taxWord = menuTaxes.length === 1 ? menuTaxes[0].name : 'tax';
+    document.getElementById('cartBarTotal').innerHTML = esc(money(total)) + `<small style="display:block;font-size:12px;font-family:inherit;color:var(--muted);font-weight:600;letter-spacing:0">${cartCount()} item${cartCount()>1?'s':''}${packs?' + packs':''}${separateTax() && tx.tax > 0 ? ', incl. ' + esc(taxWord) : ''}</small>`;
   } else {
     bar.classList.add('hidden');
   }
@@ -713,6 +731,7 @@ function packagingPreview(personCart){
 
 function showCheckout(){
   if(!cartCount()) return;
+  if(noOnlineOrdersYet()){ alert((businessName||'This business')+' is not taking online orders yet. You can call them or visit.'); return; }
   const activePeople = people.filter(p=>Object.keys(p.cart).length);
   const enriched = activePeople.map(p=>({label:p.label, ...packagingPreview(p.cart)}));
   const orderValue = enriched.reduce((a,p)=>a+p.subtotal,0);
@@ -733,9 +752,10 @@ function showCheckout(){
     ${peopleHtml}
     ${taxHtml}
     <div class="cartRow"><div>Order Value${showTax ? ' (with tax)' : ''}</div><div>${money(orderValue)}</div></div>
-    ${source==='online' && !onlinePaymentAvailable ? `<div class="notice" style="margin:8px 0;font-size:13px">This business doesn't take payment online yet — you'll pay when you collect your order, or on delivery.</div>` : ''}
+
     ${paysOnline ? `<div class="cartRow"><div>Service Fee${fee < Math.round(orderValue*(serviceFeePercent/100)) ? ' (capped)' : ' ('+serviceFeePercent+'%)'}</div><div>${money(fee)}</div></div>` : ''}
-    <div class="cartRow" style="border:0;font-weight:800;font-size:16px;padding-top:14px"><div>Total</div><div>${money(orderValue+fee)}</div></div>
+    <div class="cartRow hidden" id="deliveryFeeRow"><div id="deliveryFeeLabel">Delivery</div><div id="deliveryFeeAmt"></div></div>
+    <div class="cartRow" style="border:0;font-weight:800;font-size:16px;padding-top:14px"><div>Total</div><div id="checkoutTotal">${money(orderValue+fee)}</div></div>
     <div class="sectionhead">Your Details</div>
     <div class="field"><label>Your name</label><input id="custName" placeholder="Who should we call for this?"></div>
     <div class="field"><label>Phone number</label><input id="custPhone" type="tel" placeholder="For the business to reach you" onblur="lookupCustomerProfile()"></div>
@@ -750,7 +770,10 @@ function showCheckout(){
     <div class="field hidden" id="deliveryAddressField">
       <label>Delivery address</label>
       <select id="savedAddressSelect" class="hidden" onchange="onSavedAddressChange()" style="width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:15px;margin-bottom:8px"></select>
-      <input id="deliveryAddress" placeholder="Where should this go?" oninput="onDeliveryAddressTyped()">
+      <input id="deliveryAddress" placeholder="Where should this go? (street, landmark)" oninput="onDeliveryAddressTyped()">
+      <select id="deliveryAreaSel" class="hidden" onchange="onDeliveryAreaChange()" style="width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:15px;margin-top:8px"></select>
+      <button type="button" id="useLocBtn" class="btn secondary hidden" style="margin-top:8px" onclick="useMyLocation()">📍 Use my location for the delivery fee</button>
+      <small id="deliveryFeeNote" style="display:block;margin-top:6px;color:var(--muted)"></small>
       <label class="hidden" id="saveAddressLabel" style="display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:500"><input type="checkbox" id="saveAddressCheck" checked style="width:auto"> Save this address for next time</label>
     </div>
     ` : ''}
@@ -766,7 +789,8 @@ function showCheckout(){
     <button class="btn ink" onclick="placeOrder()">${source==='online' ? 'Continue to Payment' : 'Place Order'}</button>
     <button class="btn secondary" style="margin-top:8px" onclick="renderMenu()">Back to Menu</button>
   `;
-  if(source==='online'){ wantsDelivery=false; setWantsDelivery(false); }
+  checkoutBaseKobo = orderValue + fee; checkoutOrderValueKobo = orderValue; deliveryQuoteRes = null; window.__checkoutPaysOnline = paysOnline;
+  if(source==='online'){ wantsDelivery=false; setWantsDelivery(false); offerDeliveryIfSet(); }
   if(roomParam && roomInfo && roomInfo.canCharge) setChargeToRoom(true);
 }
 function setChargeToRoom(val){
@@ -776,6 +800,12 @@ function setChargeToRoom(val){
   if(f) f.classList.toggle('hidden', !val);
 }
 
+/* Delivery is offered only by a business that has set its delivery fees: every delivery is charged with the order. */
+async function offerDeliveryIfSet(){
+  try{ if(!deliveryOpts){ const r = await fetch(`${SERVER}/api/public/delivery-options?businessId=${encodeURIComponent(businessId)}`); deliveryOpts = r.ok ? await r.json() : null; } }catch(e){}
+  const btn = document.getElementById('wantDeliveryBtn'); if(!btn) return;
+  if(!deliveryOpts || !deliveryOpts.offersDelivery){ btn.disabled = true; btn.textContent = 'Delivery (not offered)'; btn.title = 'This business has not set delivery fees yet: pickup only.'; }
+}
 function setWantsDelivery(val){
   wantsDelivery = val;
   wantPickupBtn.classList.toggle('accent', !val);
@@ -783,6 +813,54 @@ function setWantsDelivery(val){
   wantDeliveryBtn.classList.toggle('accent', val);
   wantDeliveryBtn.classList.toggle('secondary', !val);
   deliveryAddressField.classList.toggle('hidden', !val);
+  if(val) prepareDeliveryFee(); else showDeliveryFee();
+}
+/* v90: the delivery fee at checkout. The business charges by area (pick from its list) or by distance
+   (share your location); the server works it out and it is paid with the order. */
+async function prepareDeliveryFee(){
+  if(!deliveryOpts){
+    try{ const r = await fetch(`${SERVER}/api/public/delivery-options?businessId=${encodeURIComponent(businessId)}`); deliveryOpts = r.ok ? await r.json() : {mode:'distance', areas:[], byDistance:false}; }
+    catch(e){ deliveryOpts = {mode:'distance', areas:[], byDistance:false}; }
+  }
+  const sel = document.getElementById('deliveryAreaSel'), btn = document.getElementById('useLocBtn');
+  if(!sel) return;
+  if(deliveryOpts.areas && deliveryOpts.areas.length){
+    sel.innerHTML = `<option value="">— Choose your area —</option>` + deliveryOpts.areas.map(a=>`<option value="${esc(a.name)}">${esc(a.name)} — ${money(a.feeKobo)}</option>`).join('');
+    sel.classList.remove('hidden');
+  } else sel.classList.add('hidden');
+  btn.classList.toggle('hidden', !(deliveryOpts.byDistance && deliveryOpts.mode !== 'areas'));
+  if(dropoffLoc || (sel.value) || !deliveryOpts.custom || (!(deliveryOpts.areas||[]).length && !deliveryOpts.byDistance)) await getDeliveryQuote();
+  else showDeliveryFee();
+}
+function onDeliveryAreaChange(){ getDeliveryQuote(); }
+function useMyLocation(){
+  const note = document.getElementById('deliveryFeeNote');
+  if(!navigator.geolocation){ note.textContent = 'This phone cannot share its location. Choose your area instead, or pick up.'; return; }
+  note.textContent = 'Finding your location…';
+  navigator.geolocation.getCurrentPosition(p=>{ dropoffLoc = {lat:p.coords.latitude, lng:p.coords.longitude}; getDeliveryQuote(); },
+    ()=>{ note.textContent = 'Could not get your location. Allow location for this page, or choose your area.'; }, {enableHighAccuracy:true, timeout:15000});
+}
+async function getDeliveryQuote(){
+  const sel = document.getElementById('deliveryAreaSel'), note = document.getElementById('deliveryFeeNote');
+  const area = sel && !sel.classList.contains('hidden') ? sel.value : '';
+  const nothingToChoose = deliveryOpts && (!deliveryOpts.custom || (!(deliveryOpts.areas||[]).length && !deliveryOpts.byDistance));
+  if(!area && !dropoffLoc && !nothingToChoose){ deliveryQuoteRes = null; showDeliveryFee(); return; }
+  try{
+    const r = await fetch(`${SERVER}/api/public/delivery-quote`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({businessId, area, lat: area ? null : dropoffLoc && dropoffLoc.lat, lng: area ? null : dropoffLoc && dropoffLoc.lng, orderValueKobo: checkoutOrderValueKobo})});
+    deliveryQuoteRes = await r.json(); deliveryQuoteRes.area = area || null;
+  }catch(e){ deliveryQuoteRes = {ok:false, error:'Could not work out the delivery fee — check your connection.'}; }
+  if(note) note.textContent = deliveryQuoteRes.ok ? (deliveryQuoteRes.distanceKm != null ? `About ${deliveryQuoteRes.distanceKm} km away.` : '') : (deliveryQuoteRes.error || '');
+  showDeliveryFee();
+}
+function showDeliveryFee(){
+  const row = document.getElementById('deliveryFeeRow'), amt = document.getElementById('deliveryFeeAmt'), tot = document.getElementById('checkoutTotal'), lbl = document.getElementById('deliveryFeeLabel');
+  if(!row || !tot) return;
+  const ok = wantsDelivery && deliveryQuoteRes && deliveryQuoteRes.ok;
+  row.classList.toggle('hidden', !wantsDelivery);
+  // v92: an online order is always paid online, and the delivery fee is always part of that payment.
+  const inTotal = ok;
+  if(wantsDelivery){ lbl.textContent = 'Delivery' + (deliveryQuoteRes && deliveryQuoteRes.area ? ' (' + deliveryQuoteRes.area + ')' : ''); amt.textContent = ok ? money(deliveryQuoteRes.feeKobo) : 'choose area / location'; }
+  tot.textContent = money(checkoutBaseKobo + (inTotal ? deliveryQuoteRes.feeKobo : 0));
 }
 
 let savedAddresses = [];
@@ -800,6 +878,7 @@ async function lookupCustomerProfile(){
     if(sel && savedAddresses.length){
       sel.innerHTML = savedAddresses.map((a,i)=>`<option value="${i}">${esc(a.label)}: ${esc(a.address)}</option>`).join('') + `<option value="new">+ Enter a new address</option>`;
       sel.classList.remove('hidden');
+      sel.value = '0'; // the server keeps the address used last at the top, labelled "Last used"
       onSavedAddressChange();
     }
   }catch(e){ /* best-effort — no saved profile is a normal, unremarkable case */ }
@@ -836,6 +915,8 @@ async function placeOrder(){
   if(chargeToRoom && !/^\d{4}$/.test(roomCheck)){ showErr('Enter the last 4 digits of the phone number you checked in with.'); return; }
   if(!phone){ showErr('Enter a phone number.'); return; }
   if(source==='online' && wantsDelivery && !deliveryAddress){ showErr('Enter a delivery address.'); return; }
+  if(source==='online' && wantsDelivery && !(deliveryQuoteRes && deliveryQuoteRes.ok)){ showErr((deliveryQuoteRes && deliveryQuoteRes.error) || 'Choose your area or share your location, so the delivery fee can be added.'); return; }
+  const dArea = wantsDelivery && deliveryQuoteRes ? deliveryQuoteRes.area : null, dLoc = wantsDelivery && !dArea ? dropoffLoc : null;
   errEl.classList.add('hidden');
 
   // Save/update the profile BEFORE submitting the order — the online path redirects
@@ -855,14 +936,14 @@ async function placeOrder(){
     items: Object.values(p.cart).map(c=>({name:c.name, priceKobo:c.priceKobo, qty:c.qty})),
   }));
   try{
-    const orderSig = JSON.stringify([peoplePayload, name, phone, wantsDelivery, deliveryAddress, chargeToRoom, roomCheck]);
+    const orderSig = JSON.stringify([peoplePayload, name, phone, wantsDelivery, deliveryAddress, chargeToRoom, roomCheck, dArea, dLoc]);
     let data;
     if(pendingOrder && pendingOrder.sig === orderSig){
       data = pendingOrder.data;                       // already placed — this is a retry of the PAYMENT only
     } else {
       const res = await fetch(`${SERVER}/api/public/orders`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ businessId, source, customerName:name, customerPhone:phone, people:peoplePayload, deliveryRequested:wantsDelivery, deliveryAddress,
+        body: JSON.stringify({ businessId, source, customerName:name, customerPhone:phone, people:peoplePayload, deliveryRequested:wantsDelivery, deliveryAddress, deliveryArea: dArea || undefined, dropoffLat: dLoc ? dLoc.lat : undefined, dropoffLng: dLoc ? dLoc.lng : undefined,
           spot: spotParam || undefined, roomId: roomParam || undefined, chargeToRoom: chargeToRoom || undefined, roomCheck: chargeToRoom ? roomCheck : undefined })
       });
       data = await res.json();
@@ -895,7 +976,7 @@ function renderQrConfirmation(orderId, totalKobo, paymentStatus, spot){
     <h2>Order placed ✅</h2>
     <p>${paymentStatus==='charge_to_room' ? `${money(totalKobo)} goes on your ${esc(spot||'room')} bill — pay at check-out. We'll bring it to your room.`
       : spot ? `We'll bring it to ${esc(spot)}. Pay ${money(totalKobo)} when it arrives.`
-      : paymentStatus==='pay_on_delivery' ? `Pay ${money(totalKobo)} when your order is delivered.` : `Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.`}</p>
+      : `Show this screen at the cashier to pay ${money(totalKobo)} and collect your order.`}</p>
     ${lastOrderTax && separateTax() && lastOrderTax.gross === totalKobo ? `<p style="font-size:13px;color:var(--muted)">Items ${money(lastOrderTax.net)} · ${lastOrderTax.parts.map(t => esc(t.name) + ' ' + money(t.kobo)).join(' · ')}</p>` : ''}
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
       <button class="btn secondary" onclick="backToMenu()">Order something else</button>

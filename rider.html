@@ -581,7 +581,10 @@ async function markDelivered(jobId){
       }, 5000);
     } else {
       updateStatusBadge('available');
-      document.getElementById('jobArea').innerHTML = `<div class="notice">Delivered ✓ — you're available for the next job.</div>`;
+      // v91: a delivery the customer paid for with the order is paid straight to the rider's bank.
+      const po = data.payout;
+      const payNote = po ? (po.status === 'paid' || po.status === 'processing' ? `<br><b>₦${(po.amountKobo/100).toLocaleString('en-NG')}</b> is on its way to your bank account.` : `<br>Your pay of <b>₦${(po.amountKobo/100).toLocaleString('en-NG')}</b> is queued and is sent automatically${po.note ? ': ' + esc(po.note) : '.'}`) : '';
+      document.getElementById('jobArea').innerHTML = `<div class="notice">Delivered ✓ — you're available for the next job.${payNote}</div>`;
       startPolling(); startLocationReporting();
     }
   }catch(e){ alert(e.message); }
