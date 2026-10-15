@@ -1,4 +1,4 @@
-const CACHE = 'moborex-invoice-v94';
+const CACHE = 'moborex-invoice-v95';
 
 /* All three entry points are cached, not just index.html. order.html (customers) and
    rider.html (riders) were previously never cached at all, so a rider with no signal had

@@ -620,7 +620,7 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 94;
+const APP_VERSION = 95;
 // The date of privacy.html in its current form; the server records which version each account agreed to.
 const TERMS_VERSION = '2026-10-08';
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
@@ -16797,8 +16797,10 @@ async function promptAssignDelivery(id){
   const nearby=await ServerAccount.api('/api/delivery-jobs/nearby-riders?businessId='+encodeURIComponent(bizId));
   const riders=nearby.riders||[];
   openModal(`<h2>Find a Rider ${hb("Offering sends a ring alert to the rider's own app with a time limit to respond — this doesn't commit anything until they accept.")}</h2>
-   ${riders.length ? `<div class="list">${riders.map(r=>`<div class="row-item"><div><b>${esc(r.name)}</b><small>${esc(r.vehicleType)}${r.isOwn?' · Your rider':''} · ${r.distanceKm}km away</small></div><button class="btn accent" style="padding:6px 12px;font-size:12px" onclick="offerDeliveryToRider('${jobResp.jobId}','${r.id}','${id}')">Offer</button></div>`).join('')}</div>`
-   : `<div class="empty">No riders currently available nearby. Try again shortly, or register your own rider under Staff.</div>`}
+   ${riders.length ? `<div class="list">${riders.map(r=>`<div class="row-item"><div><b>${esc(r.name)}</b><small>${esc(r.vehicleType)}${r.isOwn?' · Your rider':''} · ${r.distanceKm==null?'location not shared yet':r.distanceKm+'km away'}</small></div><button class="btn accent" style="padding:6px 12px;font-size:12px" onclick="offerDeliveryToRider('${jobResp.jobId}','${r.id}','${id}')">Offer</button></div>`).join('')}</div>`
+   : `<div class="empty">No rider is available right now. A rider shows here once they open the rider app and tap <b>Available</b>; freelance riders also need their location switched on.</div>
+      <button class="btn secondary full" onclick="promptAssignDelivery('${id}')">Look again</button>
+      <button class="btn secondary full" onclick="showShareLinks('riders')">Send the riders' link</button>`}
    <button class="btn secondary full" onclick="showDeliveries()">Cancel</button>`);
  }catch(e){
   alert('Could not look for riders: '+e.message);
@@ -17314,16 +17316,38 @@ async function submitRejectPaymentAdvice(id){
   await showPaymentAdviceMenu();
  }catch(e){ alert('Could not reject this payment advice: '+e.message); }
 }
-async function showPayoutAccountSettings(){
+/* v95: the screen opens on what is saved — account name, bank, last four digits — with "Change account"
+   to replace it (field test, 15 Oct: it showed an empty form every time, so a saved account looked unsaved). */
+async function showPayoutAccountSettings(changing){
  if(!requireOwnerMode('Payout account'))return;
  if(!ServerAccount.token){ alert('Log in to your account first.'); return; }
- openModal(`<h2>Payout Bank Account ${hb("This is where your customers' online payments land — your own account, never anyone else's, and never with a cut taken out. You do pay Paystack's own processing fee on each payment, same as you would with any payment gateway. Required before the online payment option works; QR (pay at cashier) doesn't need this at all.")}</h2>
+ const businessId = await getActiveBusinessId();
+ let saved = null;
+ if(!changing){
+  openModal(`<h2>Payout Bank Account</h2><div class="notice">Loading…</div>`);
+  try{ saved = await ServerAccount.api('/api/business/bank-account?businessId='+encodeURIComponent(businessId)); }catch(e){ saved = null; }
+  if(saved && saved.set){
+   openModal(`<h2>Payout Bank Account</h2>
+    <div class="notice" style="border-color:var(--good)"><b>✓ Saved.</b> Your customers' online payments go straight to this account.</div>
+    <div class="totalBox">
+     <div class="totalRow"><span>Account name</span><b>${esc(saved.accountName||'—')}</b></div>
+     <div class="totalRow"><span>Bank</span><b>${esc(saved.bankName||'—')}</b></div>
+     <div class="totalRow"><span>Account number</span><b>${saved.accountLast4?'•••••• '+esc(saved.accountLast4):'—'}</b></div>
+    </div>
+    ${saved.test?`<div class="notice" style="font-size:12.5px">This is a Paystack <b>test</b> account, set up for demos. Change it to your real account before going live.</div>`:''}
+    <button class="btn secondary full" onclick="showPayoutAccountSettings(true)">Change account</button>
+    <button class="btn secondary full" onclick="showOnlineOrderingSettings()">Back</button>`);
+   return;
+  }
+ }
+ openModal(`<h2>${changing?'Change Payout Account':'Payout Bank Account'} ${hb("This is where your customers' online payments land — your own account, never anyone else's, and never with a cut taken out. You do pay Paystack's own processing fee on each payment, same as you would anywhere else.")}</h2>
+ ${changing?'<div class="notice" style="font-size:12.5px">The new account replaces the saved one for payments from now on.</div>':''}
  <div class="notice" id="payoutLoadStatus">Loading banks…</div>
  <div class="field" style="display:none" id="payoutBankField"><label for="payoutBankSelect">Bank</label><select id="payoutBankSelect" onchange="verifyPayoutAccount()"></select></div>
  <div class="field" style="display:none" id="payoutAcctField"><label for="payoutAcctNumber">Account Number</label><input id="payoutAcctNumber" inputmode="numeric" maxlength="10" oninput="this.value=this.value.replace(/\D/g,'');verifyPayoutAccount()"></div>
  <div class="notice" id="payoutVerifyStatus" style="display:none"></div>
  <button class="btn accent full" id="payoutSaveBtn" style="display:none" onclick="savePayoutAccount()">Save Payout Account</button>
- <button class="btn secondary full" onclick="showOnlineOrderingSettings()">Back</button>`);
+ <button class="btn secondary full" onclick="${changing?'showPayoutAccountSettings()':'showOnlineOrderingSettings()'}">Back</button>`);
  try{
   const data = await ServerAccount.api('/api/paystack/banks');
   payoutBankSelect.innerHTML = (data.banks||[]).map(b=>`<option value="${esc(b.code)}">${esc(b.name)}</option>`).join('');
@@ -17369,17 +17393,21 @@ async function verifyPayoutAccount(){
 }
 async function savePayoutAccount(){
  if(!window.payoutVerifiedName || window.payoutVerifiedFor !== (payoutAcctNumber.value.trim() + '|' + payoutBankSelect.value)){ alert('Verify the account first — the number or bank has changed since it was checked.'); return; }
+ if(window.__payoutSaving) return;
+ window.__payoutSaving = true;
+ const btn = document.getElementById('payoutSaveBtn'); if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
  const b = await getBusiness();
  const businessId = await getActiveBusinessId();
  try{
-  await ServerAccount.api('/api/business/bank-account', {method:'POST', body: JSON.stringify({
+  await ServerAccount.api('/api/business/bank-account', {method:'POST', timeoutMs:45000, body: JSON.stringify({
    businessId, businessName:b.name,
    bankCode: payoutBankSelect.value, bankName: payoutBankSelect.selectedOptions[0].textContent,
    accountNumber: payoutAcctNumber.value.trim(), accountName: window.payoutVerifiedName,
   })});
-  alert('Payout account saved — online payments will now go straight to this account.');
-  await showOnlineOrderingSettings();
+  flashNotice('Payout account saved. Online payments now go straight to this account.');
+  await showPayoutAccountSettings();   // opens on the saved account, so it is plain that it saved
  }catch(e){ alert('Could not save: '+e.message); }
+ finally{ window.__payoutSaving = false; const b2 = document.getElementById('payoutSaveBtn'); if(b2){ b2.disabled = false; b2.textContent = 'Save Payout Account'; } }
 }
 /* Tests the public link the way a CUSTOMER would, and says what actually went wrong.
    "The link is not working" has at least four different causes — the page is not deployed,
@@ -17499,7 +17527,7 @@ async function showOnlineOrderingSettings(){
  <div id="onlineReadiness"></div>
  <button class="btn secondary full" onclick="testPublicLink('${onlineUrl}','${businessId}')">Test this link the way a customer would</button>
  <div id="linkTestResult" class="notice" style="display:none;font-size:12.5px"></div>
- <button class="btn secondary full" onclick="showPayoutAccountSettings()">💳 Payout Bank Account ${hb("Required before your online link takes orders — online customers always pay when they order, and this is where the money goes. QR (pay at cashier) works without it.")}</button>
+ <button class="btn secondary full" onclick="showPayoutAccountSettings()">💳 Payout Bank Account<span id="payoutBtnState"></span> ${hb("Required before your online link takes orders — online customers always pay when they order, and this is where the money goes. QR (pay at cashier) works without it.")}</button>
  <button class="btn secondary full" style="margin-top:8px" onclick="showMenuWriter()">✍️ Menu and promo writer ${hb("AI drafts dish descriptions for your order page, a weekly special for slow sellers, or a WhatsApp broadcast. You check every word before it is saved or sent.")}</button>
  <button class="btn accent full" style="margin-top:8px" onclick="showMenuAvailability()">🍽 Menu Availability ${hb("Switch individual items on or off for online, QR, and phone orders.")}</button>
  <button class="btn accent full" style="margin-top:8px" onclick="showDeliveryFeeSettings()">🛵 Delivery fees ${hb("What customers pay for delivery. It is shown at checkout and paid with the order, by distance from your location or by the areas you name.")}</button>
@@ -17531,6 +17559,7 @@ async function showOnlineOrderingSettings(){
 async function drawOnlineReadiness(businessId){
  const box=document.getElementById('onlineReadiness'); if(!box) return;
  let st; try{ st=await ServerAccount.api('/api/business/delivery-settings?businessId='+encodeURIComponent(businessId)); }catch(e){ return; }
+ const pb=document.getElementById('payoutBtnState'); if(pb) pb.innerHTML = st.payoutSet ? ' <span style="color:var(--good)">✓ Set up</span>' : ' <span style="color:var(--danger)">Not set up</span>';
  const out=[];
  if(!st.payoutSet) out.push(`<div class="notice" style="border-color:var(--danger);font-size:12.5px"><b>Your online link is not taking orders yet.</b> Online customers pay when they order, and the money goes to your bank account — add it under 💳 Payout Bank Account below. Walk-in, table QR and phone orders work as before.</div>`);
  if(!st.custom) out.push(`<div class="notice" style="font-size:12.5px"><b>Pickup only.</b> Set your 🛵 Delivery fees to offer delivery. Every delivery is charged (at least ₦${((st.minKobo||50000)/100).toLocaleString('en-NG')}) and paid with the order.</div>`);
@@ -18080,7 +18109,7 @@ function openIncomingOrdersScreen(orders, refundsHtml, pulled){
      ${awaiting?`<button class="btn accent" onclick="confirmPhoneOrderPaid('${o.id}')">✓ Order paid</button>`:''}
      ${nextAction?`<button class="btn accent" onclick="advanceOnlineOrder('${o.id}','${nextAction.to}')">${nextAction.label}</button>`:''}
      ${o.status==='ready'&&o.source==='qr'&&o.paymentStatus==='pay_at_cashier'?`<button class="btn secondary" onclick="showCashierPaymentLink('${o.id}')">Pay by Phone</button>`:''}
-     ${o.status==='ready'&&!awaiting?`<button class="btn accent" onclick="completeOnlineOrder('${o.id}')">${o.paymentStatus==='charge_to_room'?'Delivered — add to room bill':'Complete Sale'}</button>`:''}
+     ${o.status==='ready'&&!awaiting?`<button class="btn accent" onclick="completeOnlineOrder('${o.id}')">${o.paymentStatus==='charge_to_room'?'Delivered — add to room bill':o.deliveryRequested?'🛵 Complete sale & choose rider':'Complete Sale'}</button>`:''}
      <button class="btn danger" onclick="cancelOnlineOrder('${o.id}')">Cancel</button>
     </div>
    </div>`;
@@ -18394,6 +18423,8 @@ async function completeOnlineOrderInner(id){
  serverSend('/api/orders/'+id+'/complete', null, 'complete:'+id);   // the local completion holds; the server is told in the background
  await refresh();
  await printPosReceipt(inv.id);
+ // v95: a delivery goes straight on to choosing the rider (field test: "where to select the rider wasn't shown").
+ if(o.deliveryRequested && ServerAccount.token){ await promptAssignDelivery(inv.id); return; }
  await showIncomingOrders();
 }
 

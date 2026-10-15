@@ -409,9 +409,21 @@ function startLocationReporting(){
 function reportLocation(){
   if(!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(async (pos)=>{
+    setLocationWarning(false);
     try{ await api('/api/riders/location', {method:'POST', body: JSON.stringify({lat:pos.coords.latitude, lng:pos.coords.longitude})}); }
     catch(e){ /* best-effort — a missed location update just means slightly stale proximity data */ }
-  }, ()=>{ /* permission denied or unavailable — rider stays visible but won't be matched until they grant it */ }, {enableHighAccuracy:true, timeout:10000});
+  }, ()=>{ setLocationWarning(true); }, {enableHighAccuracy:true, timeout:10000});
+}
+/* v95: a rider with location off was invisible to businesses without knowing it. Now it says so. */
+function setLocationWarning(on){
+  let el = document.getElementById('locWarn');
+  if(!on){ if(el) el.remove(); return; }
+  if(el) return;
+  const badge = document.getElementById('statusBadge'); if(!badge) return;
+  el = document.createElement('div'); el.id = 'locWarn';
+  el.style.cssText = 'margin:10px 0;padding:10px 12px;border-radius:10px;background:#fdecea;color:#8a1c1c;font-size:13px;line-height:1.4';
+  el.innerHTML = '<b>Location is off.</b> Businesses near you cannot find you for deliveries. Allow location for this app (or for your browser) in your phone\'s settings, then tap Available again.';
+  badge.insertAdjacentElement('afterend', el);
 }
 
 // Polling for offers — the ring alarm trigger point. Frequent, since an offer has a real
