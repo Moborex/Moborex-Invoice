@@ -621,7 +621,7 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 92;
+const APP_VERSION = 93;
 // The date of privacy.html in its current form; the server records which version each account agreed to.
 const TERMS_VERSION = '2026-10-08';
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
@@ -12272,24 +12272,73 @@ async function submitAdminLogin(){
  try{
   const data = await adminApi('/api/admin/login', {method:'POST', body: JSON.stringify({password: adminPw.value})});
   localStorage.setItem('moborex_admin_token', data.token);
+  window.__admMenu = null;
   showAdminSearch();
  }catch(e){ adminLoginError.textContent = e.message; adminLoginError.style.display='block'; }
 }
 /* Admin dashboard. Replaces a bare email-search box that showed a name and an id and
    nothing else — no way to see who was subscribed, on what module, how many modules were
    actually in use, or whose trial was about to lapse. */
-async function showAdminSearch(){ await showAdminDashboard(); }
+async function showAdminSearch(){ if(window.__admMenu && ADMIN_MENUS[window.__admMenu]) return showAdminMenu(window.__admMenu); await showAdminDashboard(); }
+/* v93: the admin home holds the headline figures and a few menus. Every job has its own page, reached
+   from a menu — never one long page of mixed jobs (the owner's rule, 15 Oct). "Back" on a job returns
+   to the menu it was opened from (showAdminSearch). */
+const ADMIN_MENUS = {
+ accounts: { title:'🏢 Businesses &amp; Accounts', items:[
+  ['📋 All Businesses &amp; Subscribers','showAdminBusinessList()','Find a business, then manage it: trial, status, plan, payout, branches'],
+  ['🔍 Search Accounts','showAdminSearchAccounts()'],
+  ['📞 Trials Ending This Week','showAdminTrialsEnding()'],
+  ['🩺 Business Health — who to call','showAdminHealth()'],
+  ['👥 Logins holding several businesses','showAdminMultiAccounts()'],
+  ['💤 Idle Accounts','showAdminIdleAccounts()'],
+  ["🔑 Reset a User's Password",'adminResetUserPassword()'],
+  ['📊 Module take-up',"showAdminReport('modules')"],
+  ['💾 Sync capacity',"showAdminReport('sync')"] ]},
+ money: { title:'💰 Revenue, Prices &amp; Fees', items:[
+  ['💵 Revenue report','showAdminRevenue()','What we made in a period, by stream, and what is pending now'],
+  ['🏷 Plan Pricing','showAdminPlanPrices()','Subscriptions and extra branches'],
+  ['🧾 Service fee','showAdminServiceFee()','Added to online orders and room bookings'],
+  ['🛵 Delivery commission','showAdminDeliveryCommission()','Taken from each delivery fee'],
+  ['📍 Delivery rates','showAdminDeliveryRates()','Lowest delivery fee, starting charge, charge per km'],
+  ['⭐ Featured tile price',"showAdminMarketplace('price')",'Price per week and number of tiles'],
+  ['✨ Assisted setup price','showAdminSetupPrice()'],
+  ['🤖 AI limits per day',"showAdminAi(30,'settings')"],
+  ['⏰ Billing Rules','showAdminBillingRules()','Grace period and the reminder messages'] ]},
+ market: { title:'🛍 Marketplace &amp; Delivery', items:[
+  ['⭐ Featured now and booked',"showAdminMarketplace('featured')"],
+  ['🏪 Listed businesses',"showAdminMarketplace('listed')"],
+  ['🛵 Delivery payouts (automatic)','showAdminRiderPayouts()'],
+  ['🚩 Flagged Riders','showAdminFlaggedRiders()'],
+  ['📦 Platform activity',"showAdminReport('activity')"] ]},
+ growth: { title:'📈 Growth', items:[
+  ['📈 Sign-ups by Source','showAdminSignupSources()'],
+  ['🤝 Partners &amp; Referral Codes','showAdminPartners()'],
+  ['✨ Starter Packs','showAdminStarterPacks()'],
+  ['📣 Platform Notices','showAdminBroadcasts()'] ]},
+ support: { title:'🛟 Support', items:[
+  ['🐞 Issue Reports','showAdminIssues()'],
+  ['💬 Customer feedback',"showAdminReport('feedback')"],
+  ['⚖ Contact Details for Privacy &amp; Support','showAdminLegal()'],
+  ['🤖 AI Settings',"showAdminAi(30,'settings')",'On or off, model, uses a day'],
+  ['🤖 AI usage and cost',"showAdminAi(30,'usage')"] ]},
+ logs: { title:'📜 Logs', items:[
+  ['Admin Activity','showAdminActivity()'],
+  ['Behaviour Log','showAdminBehaviour()'] ]},
+};
 async function showAdminDashboard(){
+ window.__admMenu = null;
  openModal(`<h2>Admin Dashboard</h2><div id="admDash"><div class="empty">Loading…</div></div>`);
  let d;
  try{ d = await adminApi('/api/admin/overview'); }
  catch(e){ document.getElementById('admDash').innerHTML = `<div class="notice">Could not load: ${esc(e.message)}</div><button class="btn secondary full" onclick="showAdminLogin()">Back</button>`; return; }
- const b=d.businesses||{};
+ window.__admOverview = d; window.__paystackMode = d.paystackMode;
+ const b=d.businesses||{}, f=d.feedback||{}, near=((d.syncCapacity||{}).nearLimit||[]).length;
  const stat=(label,val,accent)=>`<div class="stat${accent?' accent':''}"><div class="lbl">${esc(label)}</div><div class="val">${val}</div></div>`;
- const modRows=(d.byModule||[]).map(m=>`<div class="row-item">
-   <div><b>${esc(PLAN_LABELS[m.module]||m.module||'(unset)')}</b><small>${m.paying||0} paying · ${m.trialing||0} on trial · ${m.explicitly_chosen||0} explicitly chosen</small></div>
-   <div class="row-right"><strong class="money">${m.total||0}</strong></div>
-  </div>`).join('') || '<div class="empty">No businesses registered yet.</div>';
+ const pm=d.paystackMode;
+ const attention=[ (b.trialsExpiringWithin7Days||0)&&`<b>${b.trialsExpiringWithin7Days}</b> trial(s) ending within 7 days`, d.openIssues&&`<b>${d.openIssues}</b> open issue report(s)`,
+   f.unresolved&&`<b>${f.unresolved}</b> unresolved customer feedback`, near&&`<b>${near}</b> business(es) near the sync limit`, ((d.riders||{}).flagged||0)&&`<b>${d.riders.flagged}</b> flagged rider(s)` ].filter(Boolean);
+ const hint={ accounts:`${b.total||0} businesses · ${b.trialsExpiringWithin7Days||0} trial(s) ending this week`, money:'The revenue report, and every price and fee', market:`${(d.activity||{}).onlineOrders||0} online orders · ${(d.riders||{}).total||0} riders`,
+   growth:`${d.signupsLast7Days||0} new sign-up(s) this week`, support:`${d.openIssues||0} open issue(s) · ${f.unresolved||0} unresolved feedback`, logs:'What admins did, and how the app behaved' };
  document.getElementById('admDash').innerHTML = `
   <div class="stats">
    ${stat('Accounts', d.accounts||0)}
@@ -12301,69 +12350,48 @@ async function showAdminDashboard(){
    ${stat('Lifetime', b.lifetime||0)}
    ${stat('Accounts with no business', d.accountsWithoutBusiness||0)}
   </div>
-  ${(()=>{ window.__paystackMode=d.paystackMode; const pm=d.paystackMode;
-    return pm==='live'?`<div class="notice" style="border-color:var(--good)">Paystack: <b>LIVE</b> — payments are real money.</div>`
-     : pm==='test'?`<div class="notice" style="border-color:var(--brass)">Paystack: <b>TEST mode</b> — no real money moves. Switch to the live key before launch.</div>`
-     : `<div class="notice" style="border-color:var(--danger)">Paystack: <b>no key set</b> on the server — nobody can pay.</div>`; })()}
-  <div class="notice"><b>${d.signupsLast7Days||0}</b> new sign-up(s) in the last 7 days, ${d.signupsLast7DaysWithPhone||0} with a phone number.</div>
-  <button class="btn accent full" onclick="showAdminTrialsEnding()">📞 Trials Ending This Week</button>
-  <button class="btn accent full" onclick="showAdminHealth()">🩺 Business Health — who to call</button>
-  <button class="btn secondary full" onclick="showAdminMultiAccounts()">👥 Logins holding several businesses</button>
-  <button class="btn secondary full" onclick="showAdminRiderPayouts()">🛵 Delivery payouts (automatic)</button>
-  <button class="btn secondary full" onclick="showAdminSignupSources()">📈 Sign-ups by Source</button>
-  <button class="btn secondary full" onclick="showAdminPartners()">🤝 Partners &amp; Referral Codes</button>
-  <div class="notice" style="${(b.trialsExpiringWithin7Days||0)>0?'border-color:var(--brass);':''}">
-   <b>${b.trialsExpiringWithin7Days||0}</b> trial(s) ending within 7 days ·
-   <b>${b.withSyncedData||0}</b> of ${b.total||0} businesses have real synced data
-  </div>
-  <div class="sectionhead" style="margin-top:14px"><h3>Module take-up</h3></div>
-  <div class="list">${modRows}</div>
-  ${(()=>{ const sc=d.syncCapacity||{}; const near=sc.nearLimit||[];
-    const pct = sc.largestPayloadBytes ? Math.round((sc.largestPayloadBytes/(sc.limitBytes||2097152))*100) : 0;
-    return `<div class="sectionhead" style="margin-top:14px"><h3>Sync capacity</h3></div>
-    <div class="notice" style="${near.length?'border-color:var(--danger);background:var(--dangerSoft)':''}">
-     Largest business payload: <b>${(sc.largestPayloadBytes/1024).toFixed(0)} KB</b> (${pct}% of the ${Math.round((sc.limitBytes||2097152)/1048576)}MB limit).
-     ${near.length?`<br><b>${near.length} business(es) past 70%</b> — contact these before syncing stops for them.`:'<br>No business is near the limit.'}
-    </div>
-    ${near.length?`<div class="list">${near.map(n=>`<div class="row-item"><div><b>${esc(n.businessName||n.businessId)}</b><small>${(n.bytes/1024).toFixed(0)} KB</small></div><div class="row-right"><span class="stamp overdue">${n.percent}%</span></div></div>`).join('')}</div>`:''}`;
-  })()}
-  ${(()=>{ const f=d.feedback||{};
-    const worst=f.worstOffenders||[];
-    return `<div class="sectionhead" style="margin-top:14px"><h3>Customer feedback</h3></div>
-    <div class="stats">
-     ${stat('Total', f.total||0)}
-     ${stat('Unresolved', f.unresolved||0, (f.unresolved||0)>0)}
-     ${stat('Open complaints', f.openComplaints||0)}
-     ${stat('Avg rating', f.averageRating!=null?f.averageRating+' ★':'—')}
-    </div>
-    ${worst.length?`<div class="notice" style="font-size:12px">Businesses with unresolved complaints — often the earliest sign a customer is about to leave the platform:</div>
-      <div class="list">${worst.map(w=>`<div class="row-item"><div><b>${esc(w.businessName||w.businessId)}</b></div><div class="row-right"><span class="stamp overdue">${w.openComplaints} open</span></div></div>`).join('')}</div>`:''}`;
-  })()}
-  <div class="sectionhead" style="margin-top:14px"><h3>Platform activity</h3></div>
-  <div class="stats">
-   ${stat('Online orders', (d.activity||{}).onlineOrders||0)}
-   ${stat('Deliveries', (d.activity||{}).deliveryJobs||0)}
-   ${stat('Payment advices', (d.activity||{}).paymentAdvices||0)}
-   ${stat('Riders', (d.riders||{}).total||0)}
-   ${stat('Flagged riders', (d.riders||{}).flagged||0)}
-   ${stat('Open issues', d.openIssues||0)}
-  </div>
-  <button class="btn accent full" style="margin-top:14px" onclick="showAdminBusinessList()">📋 All Businesses &amp; Subscribers</button>
-  <button class="btn secondary full" onclick="showAdminSearchAccounts()">🔍 Search Accounts</button>
-  <button class="btn secondary full" onclick="showAdminIssues()">Issue Reports</button>
-  <button class="btn secondary full" onclick="showAdminPlanPrices()">Plan Pricing</button>
-  <button class="btn secondary full" onclick="showAdminBillingRules()">Billing Rules</button>
-  <button class="btn secondary full" onclick="showAdminLegal()">⚖ Contact Details for Privacy &amp; Support</button>
-  <button class="btn secondary full" onclick="showAdminStarterPacks()">✨ Starter Packs &amp; Assisted Setup</button>
-  <button class="btn secondary full" onclick="showAdminAi()">🤖 AI Settings &amp; Usage</button>
-  <button class="btn secondary full" onclick="adminResetUserPassword()">Reset a User's Password</button>
-  <button class="btn secondary full" onclick="showAdminIdleAccounts()">Idle Accounts</button>
-  <button class="btn secondary full" onclick="showAdminBehaviour()">Behaviour Log</button>
-  <button class="btn secondary full" onclick="showAdminActivity()">Admin Activity</button>
-  <button class="btn secondary full" onclick="showAdminBroadcasts()">📣 Platform Notices</button>
-  <button class="btn secondary full" onclick="showAdminFlaggedRiders()">Flagged Riders</button>
-  <button class="btn secondary full" onclick="showAdminMarketplace()">🛍 Marketplace — Discover &amp; featured tiles</button>
-  <button class="btn danger full" onclick="localStorage.removeItem('moborex_admin_token');closeModal()">Log Out of Admin</button>`;
+  ${pm==='live'?`<div class="notice" style="border-color:var(--good)">Paystack: <b>LIVE</b> — payments are real money.</div>`
+   : pm==='test'?`<div class="notice" style="border-color:var(--brass)">Paystack: <b>TEST mode</b> — no real money moves. Switch to the live key before launch.</div>`
+   : `<div class="notice" style="border-color:var(--danger)">Paystack: <b>no key set</b> on the server — nobody can pay.</div>`}
+  <div class="notice"><b>${d.signupsLast7Days||0}</b> new sign-up(s) in the last 7 days, ${d.signupsLast7DaysWithPhone||0} with a phone number.${attention.length?'<br>Needs attention: '+attention.join(' · '):''}</div>
+  ${Object.entries(ADMIN_MENUS).map(([k,m])=>`<button class="btn ${k==='accounts'?'accent':'secondary'} full" style="text-align:left" onclick="showAdminMenu('${k}')">${m.title}<small style="display:block;font-weight:normal;opacity:.75">${esc(hint[k]||'')}</small></button>`).join('')}
+  <button class="btn danger full" style="margin-top:12px" onclick="localStorage.removeItem('moborex_admin_token');window.__admMenu=null;closeModal()">Log Out of Admin</button>`;
+}
+function showAdminMenu(key){
+ const m = ADMIN_MENUS[key]; if(!m) return showAdminDashboard();
+ window.__admMenu = key;
+ openModal(`<h2>${m.title}</h2>
+  ${m.items.map(([label, go, help])=>`<button class="btn secondary full" style="text-align:left" onclick="${go}">${label}${help?`<small style="display:block;font-weight:normal;opacity:.75">${help}</small>`:''}</button>`).join('')}
+  <button class="btn secondary full" style="margin-top:12px" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+}
+/* Figures that used to crowd the dashboard, each on its own page. */
+async function showAdminReport(kind){
+ let d = window.__admOverview;
+ if(!d){ try{ d = window.__admOverview = await adminApi('/api/admin/overview'); }catch(e){ return alert('Could not load: '+e.message); } }
+ const stat=(label,val,accent)=>`<div class="stat${accent?' accent':''}"><div class="lbl">${esc(label)}</div><div class="val">${val}</div></div>`;
+ const back = `<button class="btn secondary full" style="margin-top:12px" onclick="showAdminSearch()">Back</button>`;
+ if(kind==='modules'){
+  const rows=(d.byModule||[]).map(m=>`<div class="row-item"><div><b>${esc(PLAN_LABELS[m.module]||m.module||'(unset)')}</b><small>${m.paying||0} paying · ${m.trialing||0} on trial · ${m.explicitly_chosen||0} explicitly chosen</small></div><div class="row-right"><strong class="money">${m.total||0}</strong></div></div>`).join('') || '<div class="empty">No businesses registered yet.</div>';
+  const b=d.businesses||{};
+  return openModal(`<h2>📊 Module take-up</h2><div class="notice"><b>${b.withSyncedData||0}</b> of ${b.total||0} businesses have real synced data.</div><div class="list">${rows}</div>${back}`);
+ }
+ if(kind==='sync'){
+  const sc=d.syncCapacity||{}, near=sc.nearLimit||[];
+  const pct = sc.largestPayloadBytes ? Math.round((sc.largestPayloadBytes/(sc.limitBytes||2097152))*100) : 0;
+  return openModal(`<h2>💾 Sync capacity</h2><div class="notice" style="${near.length?'border-color:var(--danger);background:var(--dangerSoft)':''}">
+   Largest business payload: <b>${((sc.largestPayloadBytes||0)/1024).toFixed(0)} KB</b> (${pct}% of the ${Math.round((sc.limitBytes||2097152)/1048576)}MB limit).
+   ${near.length?`<br><b>${near.length} business(es) past 70%</b> — contact these before syncing stops for them.`:'<br>No business is near the limit.'}</div>
+   ${near.length?`<div class="list">${near.map(n=>`<div class="row-item"><div><b>${esc(n.businessName||n.businessId)}</b><small>${(n.bytes/1024).toFixed(0)} KB</small></div><div class="row-right"><span class="stamp overdue">${n.percent}%</span></div></div>`).join('')}</div>`:''}${back}`);
+ }
+ if(kind==='feedback'){
+  const f=d.feedback||{}, worst=f.worstOffenders||[];
+  return openModal(`<h2>💬 Customer feedback</h2><div class="stats">${stat('Total', f.total||0)}${stat('Unresolved', f.unresolved||0, (f.unresolved||0)>0)}${stat('Open complaints', f.openComplaints||0)}${stat('Avg rating', f.averageRating!=null?f.averageRating+' ★':'—')}</div>
+   ${worst.length?`<div class="notice" style="font-size:12px">Businesses with unresolved complaints — often the earliest sign a customer is about to leave the platform:</div>
+    <div class="list">${worst.map(w=>`<div class="row-item"><div><b>${esc(w.businessName||w.businessId)}</b></div><div class="row-right"><span class="stamp overdue">${w.openComplaints} open</span></div></div>`).join('')}</div>`:'<div class="empty">No business has unresolved complaints.</div>'}${back}`);
+ }
+ if(kind==='activity'){
+  return openModal(`<h2>📦 Platform activity</h2><div class="stats">${stat('Online orders', (d.activity||{}).onlineOrders||0)}${stat('Deliveries', (d.activity||{}).deliveryJobs||0)}${stat('Payment advices', (d.activity||{}).paymentAdvices||0)}${stat('Riders', (d.riders||{}).total||0)}${stat('Flagged riders', (d.riders||{}).flagged||0)}${stat('Open issues', d.openIssues||0)}</div>${back}`);
+ }
 }
 async function showAdminBusinessList(filterModule, filterStatus){
  window.admFilterModule = filterModule!==undefined ? filterModule : (window.admFilterModule||'');
@@ -12381,7 +12409,7 @@ async function showAdminBusinessList(filterModule, filterStatus){
    </select></div>
   </div>
   <div id="admBizList"><div class="empty">Loading…</div></div>
-  <button class="btn secondary full" style="margin-top:10px" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" style="margin-top:10px" onclick="showAdminSearch()">Back</button>`);
  await runAdminBizSearch();
 }
 let admBizDebounce;
@@ -12481,7 +12509,7 @@ async function showAdminBroadcasts(){
    <small style="color:var(--muted)">${b.event_at?'Happens '+esc(String(b.event_at).replace('T',' ').slice(0,16)):'No date set'}${b.active?'':' · withdrawn'}</small>
    ${b.active?`<button class="btn danger" style="align-self:flex-start;padding:5px 9px;font-size:11px" onclick="withdrawBroadcast('${b.id}')">Withdraw</button>`:''}
   </div>`).join('')||'<div class="empty">No notices yet.</div>'}</div>
- <button class="btn secondary full" style="margin-top:10px" onclick="showAdminDashboard()">Back</button>`);
+ <button class="btn secondary full" style="margin-top:10px" onclick="showAdminSearch()">Back</button>`);
 }
 async function postBroadcast(){
  const title=bcTitle.value.trim(), body=bcBody.value.trim();
@@ -12499,7 +12527,7 @@ async function withdrawBroadcast(id){
 }
 async function showAdminFlaggedRiders(){
  openModal(`<h2>Flagged Riders</h2><div id="admRiders"><div class="empty">Loading…</div></div>
-  <button class="btn secondary full" style="margin-top:10px" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" style="margin-top:10px" onclick="showAdminSearch()">Back</button>`);
  try{
   const d = await adminApi('/api/admin/flagged-riders');
   const rs = d.riders||[];
@@ -12518,7 +12546,7 @@ function showAdminSearchAccounts(){
  openModal(`<h2>Search Accounts</h2>
  <input id="adminSearch" placeholder="Search by email, business name, or account ID" style="width:100%;padding:12px;border-radius:10px;border:1.4px solid var(--line);font-size:14px;margin-bottom:10px" oninput="runAdminSearch()">
  <div id="adminResults"><div class="empty">Type to search.</div></div>
- <button class="btn secondary full" style="margin-top:10px" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+ <button class="btn secondary full" style="margin-top:10px" onclick="showAdminSearch()">Back</button>`);
  adminSearch.focus();
 }
 let adminSearchDebounce;
@@ -12544,14 +12572,20 @@ async function showAdminTenant(id){
   <div class="list">${businesses.map(b=>`<div class="row-item"><div><b>${esc(b.business_name||'Unnamed business')}</b><small>${esc(b.status)}${b.plan?' · '+esc(b.plan):''}</small></div><button class="btn secondary" style="padding:6px 10px;font-size:11px" onclick="showAdminBusiness('${b.id}','${id}')">Manage</button></div>`).join('') || '<div class="empty">No businesses have checked in for billing yet — they show up here the first time each one opens its Subscription screen.</div>'}</div>
   ${adminAccountFactsHtml(data.facts)}
   <button class="btn danger full" style="margin-top:14px" onclick="adminDeleteAccount('${esc(t.id)}')">Delete This Account</button>
-  <button class="btn secondary full" onclick="showAdminSearch()">Back to Search</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  }catch(e){ alert('Could not load account: '+e.message); }
 }
-async function showAdminBusiness(businessId, tenantId){
+/* A business's own page: the summary, then one page per job (v93 — never one long page of jobs). */
+async function showAdminBusiness(businessId, tenantId, page){
  try{
   const data = await adminApi('/api/admin/tenants/'+tenantId);
   const b = (data.businesses||[]).find(x=>x.id===businessId);
   if(!b){ alert('Could not find this business.'); return; }
+  window.__admBiz = { b, businessId, tenantId };
+  if(page) return adminBusinessPage(page);
+  const testAcct = b.account_name==='Paystack test account', canTest = testAcct || (!b.paystack_subaccount_code && window.__paystackMode==='test');
+  const rate = b.delivery_commission_percent!=null || b.delivery_commission_cap_kobo!=null ? 'its own rate' : 'the platform rate';
+  const job = (key, label, help, cls) => `<button class="btn ${cls||'secondary'} full" style="text-align:left" onclick="adminBusinessPage('${key}')">${label}${help?`<small style="display:block;font-weight:normal;opacity:.75">${help}</small>`:''}</button>`;
   openModal(`<h2>${esc(b.business_name||'Unnamed business')}</h2>
   <div class="totalBox">
    <div class="totalRow"><span>Status</span><b>${esc(b.status)}</b></div>
@@ -12561,42 +12595,70 @@ async function showAdminBusiness(businessId, tenantId){
    <div class="totalRow"><span>Current period ends</span><b>${b.current_period_ends_at?new Date(b.current_period_ends_at).toLocaleDateString():'—'}</b></div>
    <div class="totalRow"><span>Grace ends</span><b>${b.grace_ends_at?new Date(b.grace_ends_at).toLocaleDateString():'—'}</b></div>
    <div class="totalRow"><span>Payout account</span><b>${b.paystack_subaccount_code?esc(b.account_name||'Set up')+' ('+esc(b.bank_name||'')+')':'Not set up'}</b></div>
-  </div>
-  ${b.account_name==='Paystack test account'
-    ? `<div class="notice">This business takes <b>test</b> payments (Paystack test mode). Remove the test account before switching the server to the live key, or its "Pay online" button will fail.</div><button class="btn secondary full" onclick="adminTestPayout('${businessId}','${tenantId}',true)">Remove Test Payout Account</button>`
-    : (!b.paystack_subaccount_code && window.__paystackMode==='test') ? `<div class="notice">For demos and ad footage: give this business a Paystack <b>test</b> payout account, so its ordering and booking pages take test payments (test card 4084 0840 8408 4081, CVV 408, any future expiry date).</div><button class="btn secondary full" onclick="adminTestPayout('${businessId}','${tenantId}',false)">Give Test Payout Account</button>` : ''}
-  <div class="totalBox" style="margin-top:8px">
    <div class="totalRow"><span>Business ID</span><b style="font-size:10px">${esc(b.id)}</b></div>
   </div>
-  <h3 style="font-size:13px;margin-top:14px">Extend trial</h3>
-  <div class="notice">Adds days on top of the current trial end if it's still running, or starts a fresh count from today if it's already lapsed — either way, this business goes back to "trialing".</div>
-  <div class="row2" style="gap:6px">
-   <input id="adminExtendDays" type="number" min="1" placeholder="Days" style="flex:1;padding:10px;border-radius:10px;border:1.4px solid var(--line);font-size:14px">
-   <button class="btn accent" onclick="adminExtendTrial('${businessId}','${tenantId}')">Extend</button>
-  </div>
-  <h3 style="font-size:13px;margin-top:14px">Set status</h3>
-  <div class="row2" style="gap:6px;flex-wrap:wrap">
-   <button class="btn accent" onclick="adminSetStatus('${businessId}','${tenantId}','lifetime',null)">Grant Lifetime</button>
-   <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}','active',null)">Mark Active</button>
-   <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}','trialing',null)">Reset to Trial</button>
-   <button class="btn danger" onclick="adminSetStatus('${businessId}','${tenantId}','locked',null)">Lock Business</button>
-  </div>
-  <h3 style="font-size:13px;margin-top:10px">Set plan</h3>
-  <div class="row2" style="gap:6px;flex-wrap:wrap">
-   <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'personal')">Personal</button>
-   <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'business_basic')">Business Services</button>
-   <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'business_stock')">Business + Stock</button>
-   <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'full_retail')">Full Retail</button>
-   <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'hotel')">Hotel</button>
-  </div>
-  <h3 style="font-size:13px;margin-top:14px">Prepare a starter setup</h3>
-  <div class="notice" style="font-size:12.5px">Choose a pack for this business. The owner sees it the next time they open the app, and accepts or declines it — nothing reaches their business without that.</div>
-  <div id="admPrepWrap"><button class="btn secondary full" onclick="showAdminPrepareSetup('${businessId}','${tenantId}')">Prepare a Setup…</button></div>
-  <h3 style="font-size:13px;margin-top:14px">Delete this business only</h3>
-  <div class="notice" style="font-size:12.5px">Removes this business and everything in it: sales, stock, staff, its online pages and bookings. The account and its other businesses stay. Payment records are kept, as tax law requires. It cannot be undone, and the business can never be brought back from a phone.</div>
-  <button class="btn danger full" onclick="adminDeleteBusiness('${businessId}','${tenantId}')">Delete This Business</button>
+  ${testAcct?`<div class="notice">This business takes <b>test</b> payments. Remove the test account before switching the server to the live key.</div>`:''}
+  ${job('trial','⏳ Extend trial')}
+  ${job('status','🔖 Set status','Grant lifetime, mark active, reset to trial, or lock')}
+  ${job('plan','📦 Set plan')}
+  ${job('commission','🛵 Delivery commission','Now: '+rate)}
+  <button class="btn secondary full" style="text-align:left" onclick="showAdminBusinessBranches('${businessId}')">🏬 Branches</button>
+  ${canTest?job('payout','💳 Test payout account', testAcct?'Remove the test account':'For demos: take test payments'):''}
+  ${job('setup','✨ Prepare a starter setup')}
+  ${job('delete','🗑 Delete This Business…','Removes this business and everything in it','danger')}
   <button class="btn secondary full" style="margin-top:14px" onclick="showAdminTenant('${tenantId}')">Back to Account</button>`);
  }catch(e){ alert('Could not load business: '+e.message); }
+}
+function adminBusinessPage(page){
+ const { b, businessId, tenantId } = window.__admBiz || {};
+ if(!b) return;
+ const head = t => `<h2>${t}</h2><div class="notice" style="font-size:12.5px"><b>${esc(b.business_name||'Unnamed business')}</b> · ${esc(b.status)} · ${esc(b.plan||'—')}</div>`;
+ const back = `<button class="btn secondary full" style="margin-top:12px" onclick="showAdminBusiness('${businessId}','${tenantId}')">Back to ${esc(b.business_name||'business')}</button>`;
+ const pages = {
+  trial: () => `${head('⏳ Extend trial')}
+   <div class="notice">Adds days on top of the current trial end if it's still running, or starts a fresh count from today if it's already lapsed — either way, this business goes back to "trialing".</div>
+   <div class="row2" style="gap:6px">
+    <input id="adminExtendDays" type="number" min="1" placeholder="Days" style="flex:1;padding:10px;border-radius:10px;border:1.4px solid var(--line);font-size:14px">
+    <button class="btn accent" onclick="adminExtendTrial('${businessId}','${tenantId}')">Extend</button>
+   </div>`,
+  status: () => `${head('🔖 Set status')}
+   <div class="row2" style="gap:6px;flex-wrap:wrap">
+    <button class="btn accent" onclick="adminSetStatus('${businessId}','${tenantId}','lifetime',null)">Grant Lifetime</button>
+    <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}','active',null)">Mark Active</button>
+    <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}','trialing',null)">Reset to Trial</button>
+    <button class="btn danger" onclick="adminSetStatus('${businessId}','${tenantId}','locked',null)">Lock Business</button>
+   </div>`,
+  plan: () => `${head('📦 Set plan')}
+   <div class="row2" style="gap:6px;flex-wrap:wrap">
+    <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'personal')">Personal</button>
+    <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'business_basic')">Business Services</button>
+    <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'business_stock')">Business + Stock</button>
+    <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'full_retail')">Full Retail</button>
+    <button class="btn secondary" onclick="adminSetStatus('${businessId}','${tenantId}',null,'hotel')">Hotel</button>
+   </div>`,
+  commission: () => `${head('🛵 Delivery commission')}
+   <div class="notice" style="font-size:12.5px">A negotiated rate for this business only. Leave both empty to use the platform rate (Prices &amp; Fees → Delivery commission).</div>
+   <div class="row2" style="gap:6px">
+    <div class="field" style="flex:1"><label for="admBizPct">Commission (%)</label><input id="admBizPct" type="number" min="0" max="100" step="0.5" placeholder="Platform rate" value="${b.delivery_commission_percent!=null?b.delivery_commission_percent:''}"></div>
+    <div class="field" style="flex:1"><label for="admBizCap">Highest per delivery (₦)</label><input id="admBizCap" type="number" min="0" placeholder="Platform rate" value="${b.delivery_commission_cap_kobo!=null?b.delivery_commission_cap_kobo/100:''}"></div>
+   </div>
+   <button class="btn accent full" onclick="saveAdminBizCommission('${businessId}','${tenantId}')">Save Commission</button>`,
+  payout: () => `${head('💳 Test payout account')}
+   <div class="totalBox"><div class="totalRow"><span>Payout account</span><b>${b.paystack_subaccount_code?esc(b.account_name||'Set up')+' ('+esc(b.bank_name||'')+')':'Not set up'}</b></div></div>
+   ${b.account_name==='Paystack test account'
+    ? `<div class="notice">This business takes <b>test</b> payments (Paystack test mode). Remove the test account before switching the server to the live key, or its "Pay online" button will fail.</div><button class="btn secondary full" onclick="adminTestPayout('${businessId}','${tenantId}',true)">Remove Test Payout Account</button>`
+    : (!b.paystack_subaccount_code && window.__paystackMode==='test') ? `<div class="notice">For demos and ad footage: give this business a Paystack <b>test</b> payout account, so its ordering and booking pages take test payments (test card 4084 0840 8408 4081, CVV 408, any future expiry date).</div><button class="btn secondary full" onclick="adminTestPayout('${businessId}','${tenantId}',false)">Give Test Payout Account</button>`
+    : `<div class="notice">A test payout account can only be given while the server is in Paystack test mode and the business has no payout account.</div>`}`,
+  setup: () => `${head('✨ Prepare a starter setup')}
+   <div class="notice" style="font-size:12.5px">Choose a pack for this business. The owner sees it the next time they open the app, and accepts or declines it — nothing reaches their business without that.</div>
+   <div id="admPrepWrap"><div class="empty">Loading…</div></div>`,
+  delete: () => `${head('🗑 Delete this business only')}
+   <div class="notice" style="font-size:12.5px">Removes this business and everything in it: sales, stock, staff, its online pages and bookings. The account and its other businesses stay. Payment records are kept, as tax law requires. It cannot be undone, and the business can never be brought back from a phone.</div>
+   <button class="btn danger full" onclick="adminDeleteBusiness('${businessId}','${tenantId}')">Delete This Business</button>`,
+ };
+ if(!pages[page]) return;
+ openModal(pages[page]() + back);
+ if(page==='setup') showAdminPrepareSetup(businessId, tenantId);
 }
 async function adminDeleteBusiness(businessId, tenantId){
  const typed=prompt('This deletes the business for good. Type its name exactly to confirm:');
@@ -12612,7 +12674,7 @@ async function adminTestPayout(businessId, tenantId, remove){
  try{
   await adminApi('/api/admin/businesses/'+businessId+'/'+(remove?'clear-test-payout':'test-payout'), {method:'POST', body:'{}'});
   alert(remove?'Test payout account removed.':'Done. This business\'s ordering and booking pages now offer "Pay online" with Paystack test cards.');
-  await showAdminBusiness(businessId, tenantId);
+  await showAdminBusiness(businessId, tenantId, 'payout');
  }catch(e){ alert('Could not do that: '+e.message); }
 }
 /* ---------------- v89 admin: trials ending, sign-ups by source, partners, contact details ---------------- */
@@ -12629,7 +12691,7 @@ async function showAdminTrialsEnding(days, past){
   </div>
   <div id="admTrials"><div class="empty">Loading…</div></div>
   <button class="btn secondary full" onclick="exportAdminTrials()">Export to Excel</button>
-  <button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  try{
   const d=await adminApi('/api/admin/trials-ending?days='+days+'&past='+past); window.__admTrials=d.trials||[];
   document.getElementById('admTrials').innerHTML = `<div class="notice" style="font-size:12.5px"><b>${d.trials.length}</b> unpaid trial(s). A number with ✓ said yes to WhatsApp tips; every number may be called about the trial.</div>` + (d.trials.map(t=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:3px">
@@ -12656,7 +12718,7 @@ async function showAdminHealth(band){
    ${[['call+watch','To call and to watch'],['call','To call this week (below 50)'],['all','Every business']].map(([v,l])=>`<option value="${v}" ${v===band?'selected':''}>${l}</option>`).join('')}</select></div>
   <div id="admHealth"><div class="empty">Loading…</div></div>
   <button class="btn secondary full" onclick="exportAdminHealth()">Export to Excel</button>
-  <button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  try{
   const d=await adminApi('/api/admin/health'); window.__admHealth=d.businesses||[];
   const rows=window.__admHealth.filter(r=>band==='all'||(band==='call'?r.band==='call':r.band!=='good'));
@@ -12678,7 +12740,7 @@ async function showAdminHealth(band){
    This screen is for watching, not for doing: what was paid, what is waiting (it retries by itself), and
    the commission kept. */
 async function showAdminRiderPayouts(){
- openModal(`<h2>Delivery payouts ${hb("When a customer pays the delivery fee with the order, it is held in the platform's Paystack balance. The moment the rider enters the customer's handover code, the rider is paid by bank transfer, or the business is if its own rider delivered — either way less the commission. Anything that cannot go yet — no bank account on file, balance not settled — is retried automatically every hour, for up to three days.")}</h2><div id="admRp"><div class="empty">Loading…</div></div><button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+ openModal(`<h2>Delivery payouts ${hb("When a customer pays the delivery fee with the order, it is held in the platform's Paystack balance. The moment the rider enters the customer's handover code, the rider is paid by bank transfer, or the business is if its own rider delivered — either way less the commission. Anything that cannot go yet — no bank account on file, balance not settled — is retried automatically every hour, for up to three days.")}</h2><div id="admRp"><div class="empty">Loading…</div></div><button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  try{
   const d=await adminApi('/api/admin/rider-payouts'), t=d.totals||{};
   const lbl={paid:'Paid',processing:'Sending',pending:'Queued',failed:'Will retry',uncertain:'Waiting for Paystack'};
@@ -12693,7 +12755,7 @@ async function retryRiderPayout(id){ try{ const r=await adminApi('/api/admin/rid
 /* v92: one email, one business. Logins that still hold several businesses, from before; support can give
    any of them its own login, with a temporary password to pass on (the owner then changes it). */
 async function showAdminMultiAccounts(){
- openModal(`<h2>Logins holding several businesses</h2><div id="admMulti"><div class="empty">Loading…</div></div><button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+ openModal(`<h2>Logins holding several businesses</h2><div id="admMulti"><div class="empty">Loading…</div></div><button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  try{
   const d=await adminApi('/api/admin/accounts/multi');
   admMulti.innerHTML=`<div class="notice" style="font-size:12.5px">One login now runs one business. Owners are offered this themselves when they sign in; you can also do it here. The business keeps all its records; only the login changes.</div>`+((d.accounts||[]).map(a=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px"><b>${esc(a.email||a.tenantId)}</b>${a.businesses.map((b,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:13px"><span>${esc(b.name||'(unnamed)')} <small style="color:var(--muted)">${esc(PLAN_LABELS[b.module]||b.module||'')}${i&&b.suggestedEmail?' → '+esc(b.suggestedEmail):''}</small></span>${i?`<button class="btn secondary" style="width:auto;padding:5px 9px;font-size:11px" onclick="adminSplitBusiness('${esc(b.id)}','${esc(b.suggestedEmail)}')">Give own login</button>`:'<small>stays</small>'}</div>`).join('')}</div>`).join('')||'<div class="empty">None — every login holds one business.</div>');
@@ -12756,7 +12818,7 @@ async function showAdminSignupSources(days, by){
   <div id="admSrc"><div class="empty">Loading…</div></div>
   <div class="notice" style="font-size:12px">Links in ads carry <b>?utm_source=facebook&amp;utm_campaign=launch&amp;utm_content=V4</b>. Add <b>&amp;start=hotel</b> (or restaurants, shops, suppliers, services, personal) to open sign-up with that business type chosen, and <b>&amp;ref=CODE</b> for a partner.</div>
   <button class="btn secondary full" onclick="exportAdminSources()">Export to Excel</button>
-  <button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  try{
   const d=await adminApi('/api/admin/signup-sources?days='+days+'&by='+by); window.__admSrc=d;
   const pct=(a,b)=>b?Math.round(a*100/b)+'%':'—';
@@ -12775,7 +12837,7 @@ function exportAdminSources(){
 async function showAdminPartners(){
  openModal(`<h2>Partners &amp; Referral Codes</h2><div id="admPartners"><div class="empty">Loading…</div></div>
   <button class="btn accent full" onclick="showAdminPartnerForm()">+ New Partner</button>
-  <button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  try{
   const d=await adminApi('/api/admin/partners'); window.__admPartners=d.partners||[];
   document.getElementById('admPartners').innerHTML=(d.partners||[]).map(p=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:3px${p.active?'':';opacity:.55'}">
@@ -12854,7 +12916,7 @@ async function showAdminLegal(){
   ${f('whatsapp','Support WhatsApp','+234 …','tel')}
   <button class="btn accent full" onclick="saveAdminLegal()">Save</button>
   <button class="btn secondary full" onclick="window.open('privacy.html','_blank')">View the Privacy &amp; Terms Page</button>
-  <button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
 }
 async function saveAdminLegal(){
  const b={}; for(const k of ['operator','registration','address','email','phone','whatsapp']) b[k]=document.getElementById('lg_'+k).value.trim();
@@ -12875,11 +12937,16 @@ async function showAdminStarterPacks(){
      <button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="adminPackEnable('${esc(p.id)}',${p.enabled?'false':'true'})">${p.enabled?'Switch off':'Switch on'}</button>
      ${p.source!=='shipped'?`<button class="btn secondary" style="padding:5px 9px;font-size:11px" onclick="adminPackReset('${esc(p.id)}')">${p.source==='added'?'Delete':'Reset to shipped'}</button>`:''}</div></div>`).join('')}</div>
   <button class="btn secondary full" onclick="showAdminPackEditor()">＋ New pack (copy of Buka)</button>
-  <div class="sectionhead" style="margin-top:16px"><h3>Assisted setup price</h3></div>
-  <div class="notice" style="font-size:12.5px">Customers see the normal price crossed out and what they pay. Free (₦0) for now.</div>
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
+}
+async function showAdminSetupPrice(){
+ let d; try{ d=await adminApi('/api/admin/starter-packs'); }catch(e){ return alert('Could not load: '+e.message); }
+ const naira=k=>Math.round((Number(k)||0)/100);
+ openModal(`<h2>✨ Assisted setup price</h2>
+  <div class="notice" style="font-size:12.5px">The team sets up a new business's catalogue for them. Customers see the normal price crossed out and what they pay. Free (₦0) for now.</div>
   <div class="row2"><div class="field"><label for="asNormal">Normal price (₦)</label><input id="asNormal" type="number" min="0" value="${naira(d.normalPriceKobo)}"></div><div class="field"><label for="asCharge">They pay (₦)</label><input id="asCharge" type="number" min="0" value="${naira(d.chargeKobo)}"></div></div>
   <button class="btn accent full" onclick="saveAdminSetupPrices()">Save price</button>
-  <button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
 }
 async function saveAdminSetupPrices(){
  try{ await adminApi('/api/admin/setup-prices',{method:'POST',body:JSON.stringify({normalPriceKobo:Math.round((Number(asNormal.value)||0)*100), chargeKobo:Math.round((Number(asCharge.value)||0)*100)})}); alert('Saved.'); }
@@ -12917,22 +12984,24 @@ async function adminPrepareSetup(businessId, tenantId){
  catch(e){ alert('Not sent: '+e.message); }
 }
 async function adminWithdrawSetup(id, businessId, tenantId){ try{ await adminApi('/api/admin/prepared-setups/'+id+'/withdraw',{method:'POST',body:'{}'}); showAdminPrepareSetup(businessId, tenantId); }catch(e){ alert(e.message); } }
-async function showAdminAi(days){
- days=days||30;
+async function showAdminAi(days, view){
+ days=days||30; view = window.__admAiView = view || window.__admAiView || 'settings';
  let d; try{ d=await adminApi('/api/admin/ai?days='+days); }catch(e){ return alert('Could not load: '+e.message); }
  const st=d.settings||{};
- openModal(`<h2>AI Settings &amp; Usage</h2>
+ if(view==='settings') return openModal(`<h2>🤖 AI Settings</h2>
   <div class="notice" style="${d.keySet?'border-color:var(--good)':'border-color:var(--danger)'}">${d.keySet?'The AI key is set on the server.':'<b>No AI key yet.</b> Run setup-keys.bat in the backend folder and add the Anthropic key (console.anthropic.com → API Keys). Until then the AI buttons say AI is not switched on.'}</div>
   <label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="aiOn" ${st.enabled?'checked':''} style="width:auto"> AI features on</label>
   <div class="field"><label for="aiModel">Model</label><input id="aiModel" value="${esc(st.model||'')}" list="aiModels"><datalist id="aiModels">${Object.keys(d.prices||{}).map(m=>`<option value="${esc(m)}">`).join('')}</datalist>
    <small style="color:var(--muted)">claude-sonnet-5-5 reads handwriting well (default). claude-haiku-5-5 costs much less, but is less sure on messy photos.</small></div>
   <div class="row2"><div class="field"><label for="aiTrial">Reads a day — trial</label><input id="aiTrial" type="number" min="0" value="${st.dailyTrial}"></div><div class="field"><label for="aiPaid">Reads a day — paying</label><input id="aiPaid" type="number" min="0" value="${st.dailyPaid}"></div></div>
   <button class="btn accent full" onclick="saveAdminAi()">Save</button>
-  <div class="sectionhead" style="margin-top:16px"><h3>Last ${d.days} days</h3><select onchange="showAdminAi(Number(this.value))" style="padding:5px">${[7,30,90].map(n=>`<option value="${n}" ${n===d.days?'selected':''}>${n} days</option>`).join('')}</select></div>
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
+ openModal(`<h2>🤖 AI usage and cost</h2>
+  <div class="sectionhead"><h3>Last ${d.days} days</h3><select onchange="showAdminAi(Number(this.value),'usage')" style="padding:5px">${[7,30,90].map(n=>`<option value="${n}" ${n===d.days?'selected':''}>${n} days</option>`).join('')}</select></div>
   <div class="notice">Estimated cost: <b>US$${(d.estimatedUsd||0).toFixed(2)}</b> (from the token counts; your Anthropic bill is the exact figure).</div>
   <div class="list">${(d.byKind||[]).map(k=>`<div class="row-item"><div><b>${esc(k.kind)}</b><small>${k.ok||0} worked · ${(k.n||0)-(k.ok||0)} failed · ${Math.round(((k.i||0)+(k.o||0))/1000)}k tokens</small></div><div class="row-right"><strong>${k.n}</strong></div></div>`).join('')||'<div class="empty">No AI use yet.</div>'}</div>
   ${(d.byBusiness||[]).length?`<div class="sectionhead" style="margin-top:12px"><h3>Top businesses</h3></div><div class="list">${d.byBusiness.map(b=>`<div class="row-item"><div><b>${esc(b.business_name||b.business_id)}</b><small>${b.n} reads · about US$${(b.usd||0).toFixed(2)}</small></div></div>`).join('')}</div>`:''}
-  <button class="btn secondary full" onclick="showAdminDashboard()">Back to Dashboard</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
 }
 async function saveAdminAi(){
  try{ await adminApi('/api/admin/ai',{method:'POST',body:JSON.stringify({enabled:aiOn.checked, model:aiModel.value.trim(), dailyTrial:Number(aiTrial.value), dailyPaid:Number(aiPaid.value)})}); alert('Saved.'); showAdminAi(); }
@@ -12955,19 +13024,22 @@ async function adminExtendTrial(businessId, tenantId){
 /* The marketplace: the weekly price of a featured tile and how many spaces there are, what is featured
    now and next, and the listed businesses — with a way to take down anything that should not be there.
    A business sees the reason it was taken down. */
-async function showAdminMarketplace(){
+async function showAdminMarketplace(view){
+ view = window.__admMarketView = view || window.__admMarketView || 'featured';
  let m; try{ m=await adminApi('/api/admin/marketplace'); }catch(e){ return alert('Could not load: '+e.message); }
  window.__admMarket=m;
- openModal(`<h2>Marketplace</h2>
+ if(view==='price') return openModal(`<h2>⭐ Featured tile price</h2>
  <div class="notice">Featured tiles sold: ${m.paidCount} · ${money((Number(m.revenueKobo)||0)/100)} in total.</div>
  <div class="row2"><div class="field"><label for="amWeek">Price per week (₦)</label><input id="amWeek" type="number" min="100" value="${(m.settings.weekKobo||0)/100}"></div>
  <div class="field"><label for="amSlots">Tile spaces</label><input id="amSlots" type="number" min="1" max="48" value="${m.settings.slots}"></div></div>
  <button class="btn accent full" onclick="saveAdminMarketSettings()">Save price and spaces</button>
- <div class="sectionhead" style="margin-top:12px"><h3>Featured now and booked</h3></div>
+ <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
+ if(view==='featured') return openModal(`<h2>⭐ Featured now and booked</h2>
  <div class="list">${(m.features||[]).map(f=>`<div class="row-item" style="flex-direction:column;align-items:stretch;gap:4px"><div style="display:flex;justify-content:space-between"><b>Space ${f.slot} — ${esc(f.title)}</b><small>${esc(f.business_name)}</small></div>
    <small>${esc(String(f.starts_at).slice(0,10))} → ${esc(String(f.ends_at).slice(0,10))} · ${money(f.amount_kobo/100)}${f.promo_hidden?' · <b style="color:var(--crimson)">taken down</b>':''}</small>
    <button class="btn ${f.promo_hidden?'secondary':'danger'}" onclick="adminMarketHide('promo','${f.promo_id}',${f.promo_hidden?0:1})">${f.promo_hidden?'Restore':'Take down'}</button></div>`).join('')||'<div class="empty">Nothing featured.</div>'}</div>
- <div class="sectionhead" style="margin-top:12px"><h3>Listed businesses (${(m.listed||[]).length})</h3></div>
+ <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
+ openModal(`<h2>🏪 Listed businesses (${(m.listed||[]).length})</h2>
  <div class="list">${(m.listed||[]).map(l=>`<div class="row-item"><div><b>${esc(l.business_name)}</b><small>${esc(l.category||'')} · ${esc(l.city||'')}${l.admin_hidden?' · hidden: '+esc(l.admin_note||''):''}</small></div><div class="row-right"><button class="btn ${l.admin_hidden?'secondary':'danger'}" style="padding:5px 9px;font-size:11px" onclick="adminMarketHide('business','${l.business_id}',${l.admin_hidden?0:1})">${l.admin_hidden?'Restore':'Hide'}</button></div></div>`).join('')||'<div class="empty">No business has listed itself yet.</div>'}</div>
  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
 }
@@ -13025,7 +13097,7 @@ async function showAdminPlanPrices(){
   <div class="row2" style="gap:8px;align-items:center;margin-bottom:6px"><span style="flex:1;font-size:13px">Branches every plan includes</span><input id="brIncluded" type="number" min="1" max="50" value="${brRules.included}" style="width:110px"></div>
   <div class="row2" style="gap:8px;align-items:center;margin-bottom:6px"><span style="flex:1;font-size:13px">Extra branches a free trial may try</span><input id="brTrialExtra" type="number" min="0" max="20" value="${brRules.trialExtra}" style="width:110px"></div>
   <button class="btn accent full" style="margin-top:12px" onclick="saveAdminPlanPrices()">Save All</button>
-  <button class="btn secondary full" onclick="showAdminSearch()">Back to Search</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  }catch(e){ alert('Could not load pricing: '+e.message); }
 }
 async function saveAdminPlanPrices(){
@@ -13043,6 +13115,138 @@ async function saveAdminPlanPrices(){
   alert('Pricing saved.');
   await showAdminPlanPrices();
  }catch(e){ alert('Could not save pricing: '+e.message); }
+}
+/* ---------------- Admin: fees & commissions (v93) ----------------
+   Every rate the platform earns from is set in the back office, each on its own page under Prices & Fees:
+   the service fee, the delivery commission, the delivery rates, and what the fees have earned. */
+const admNaira = n => '₦'+Math.round(Number(n)||0).toLocaleString('en-NG');
+const admKobo = id => { const v = document.getElementById(id).value; return v==='' ? '' : Math.round(Number(v)*100); };
+const admNum = (id, label, v, help, step) => `<div class="field"><label for="${id}">${label}</label><input id="${id}" type="number" min="0" step="${step||'any'}" value="${v==null?'':v}"><small style="color:var(--muted)">${help}</small></div>`;
+const admBack = () => `<button class="btn secondary full" onclick="showAdminSearch()">Back</button>`;
+async function showAdminFees(){ showAdminMenu('money'); }
+async function showAdminServiceFee(){
+ let sf; try{ sf = await adminApi('/api/admin/service-fee'); }catch(e){ return alert('Could not load: '+e.message); }
+ openModal(`<h2>🧾 Service fee</h2>
+  <div class="notice">Added on top of orders paid online and online room bookings, and shown to the customer before they pay. Orders paid at the counter carry none. Applies to the next payment after saving; 0% switches it off.</div>
+  ${admNum('feePct','Service fee (%)', sf.percent, '0 to 50%', '0.5')}
+  ${admNum('feeCap','Highest fee per payment (₦)', sf.capKobo/100, '₦100 to ₦100,000 — at ₦5,000, a ₦200,000 booking pays ₦5,000, not the full percentage')}
+  <button class="btn accent full" onclick="saveAdminServiceFee()">Save Service Fee</button>
+  ${admBack()}`);
+}
+async function saveAdminServiceFee(){
+ try{ await adminApi('/api/admin/service-fee', {method:'POST', body: JSON.stringify({percent: feePct.value, capKobo: admKobo('feeCap')})}); }
+ catch(e){ return alert('Not saved: '+e.message); }
+ flashNotice('Service fee saved.'); await showAdminServiceFee();
+}
+async function showAdminDeliveryCommission(){
+ let dc; try{ dc = await adminApi('/api/admin/delivery-commission'); }catch(e){ return alert('Could not load: '+e.message); }
+ openModal(`<h2>🛵 Delivery commission</h2>
+  <div class="notice">Taken from each delivery fee before the rider or the business is paid. A business can be given its own rate on its page (All Businesses → Manage → Delivery commission).</div>
+  ${admNum('dcPct','Commission (%)', dc.percent, '0 to 100%', '0.5')}
+  ${admNum('dcCap','Highest commission per delivery (₦)', dc.capKobo/100, '₦0 to ₦100,000')}
+  <button class="btn accent full" onclick="saveAdminDeliveryCommission()">Save Delivery Commission</button>
+  ${admBack()}`);
+}
+async function saveAdminDeliveryCommission(){
+ try{ await adminApi('/api/admin/delivery-commission', {method:'POST', body: JSON.stringify({percent: dcPct.value, capKobo: admKobo('dcCap')})}); }
+ catch(e){ return alert('Not saved: '+e.message); }
+ flashNotice('Delivery commission saved.'); await showAdminDeliveryCommission();
+}
+async function showAdminDeliveryRates(){
+ let dc; try{ dc = await adminApi('/api/admin/delivery-commission'); }catch(e){ return alert('Could not load: '+e.message); }
+ window.__admDc = dc;
+ openModal(`<h2>📍 Delivery rates</h2>
+  <div class="notice">Every online delivery is charged at least the lowest fee. A business's distance pricing starts from the starting charge and charge per km until it sets its own.</div>
+  ${admNum('dcMin','Lowest delivery fee (₦)', dc.minFeeKobo/100, '₦100 to ₦10,000')}
+  ${admNum('dcBase','Starting delivery charge (₦)', dc.baseFeeKobo/100, '₦0 to ₦20,000')}
+  ${admNum('dcKm','Charge per km (₦)', dc.perKmKobo/100, '₦0 to ₦5,000, added for each km from the business')}
+  <button class="btn accent full" onclick="saveAdminDeliveryRates()">Save Delivery Rates</button>
+  ${admBack()}`);
+}
+async function saveAdminDeliveryRates(){
+ const dc = window.__admDc || {};
+ try{ await adminApi('/api/admin/delivery-commission', {method:'POST', body: JSON.stringify({percent: dc.percent, capKobo: dc.capKobo, minFeeKobo: admKobo('dcMin'), baseFeeKobo: admKobo('dcBase'), perKmKobo: admKobo('dcKm')})}); }
+ catch(e){ return alert('Not saved: '+e.message); }
+ flashNotice('Delivery rates saved.'); await showAdminDeliveryRates();
+}
+/* v93: the revenue report — what the platform made in a period, stream by stream, and what is pending now. */
+const REVENUE_STREAMS = { subscriptions:'Subscriptions', branches:'Extra branches (bought part-way)', orderFees:'Service fee — online orders', bookingFees:'Service fee — room bookings', delivery:'Delivery commission', tiles:'Featured tiles' };
+function revenuePeriod(preset){
+ const t = todayISO(), d = new Date(t+'T12:00:00'), iso = x => x.toISOString().slice(0,10);
+ if(preset==='today') return [t, t];
+ if(preset==='week'){ const m = new Date(d); m.setDate(d.getDate()-((d.getDay()+6)%7)); return [iso(m), t]; }
+ if(preset==='lastMonth'){ const a = new Date(d.getFullYear(), d.getMonth()-1, 1, 12), b = new Date(d.getFullYear(), d.getMonth(), 0, 12); return [iso(a), iso(b)]; }
+ if(preset==='year') return [t.slice(0,4)+'-01-01', t];
+ if(preset==='all') return ['2026-01-01', t];
+ return [t.slice(0,8)+'01', t];
+}
+async function showAdminRevenue(from, to){
+ if(!from || !to){ [from, to] = window.__admRevPeriod || revenuePeriod('month'); }
+ window.__admRevPeriod = [from, to];
+ openModal(`<h2>💵 Revenue report</h2><div id="admRev"><div class="empty">Loading…</div></div>`);
+ let r; try{ r = await adminApi('/api/admin/revenue?from='+from+'&to='+to); }
+ catch(e){ admRev.innerHTML = `<div class="notice">Could not load: ${esc(e.message)}</div><button class="btn secondary full" onclick="showAdminSearch()">Back</button>`; return; }
+ window.__admRev = r;
+ const N = k => admNaira((k||0)/100), pct = k => r.total ? Math.round(k/r.total*100)+'%' : '—';
+ const presets = [['today','Today'],['week','This week'],['month','This month'],['lastMonth','Last month'],['year','This year'],['all','All time']];
+ const P = r.pending, held = P.held, owed = P.owed;
+ const age = at => { const d = Math.floor((Date.now()-Date.parse(at))/86400000); return d<1?'today':d===1?'1 day':d+' days'; };
+ admRev.innerHTML = `
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${presets.map(([k,l])=>{ const [a,b]=revenuePeriod(k); return `<button class="btn ${a===r.from&&b===r.to?'accent':'secondary'}" style="width:auto;flex:0 0 auto;margin:0;padding:6px 10px;font-size:12px" onclick="showAdminRevenue('${a}','${b}')">${l}</button>`; }).join('')}</div>
+  <div class="row2" style="gap:6px;align-items:flex-end">
+   <div class="field" style="flex:1"><label for="revFrom">From</label><input id="revFrom" type="date" value="${r.from}"></div>
+   <div class="field" style="flex:1"><label for="revTo">To</label><input id="revTo" type="date" value="${r.to}"></div>
+   <button class="btn secondary" style="margin-bottom:10px" onclick="showAdminRevenue(revFrom.value, revTo.value)">Show</button>
+  </div>
+  <div class="stats">
+   <div class="stat accent"><div class="lbl">Made ${esc(r.from)} to ${esc(r.to)}</div><div class="val">${N(r.total)}</div></div>
+   <div class="stat"><div class="lbl">Payments</div><div class="val">${r.linesTotal}</div></div>
+  </div>
+  <div class="sectionhead"><h3>By stream</h3></div>
+  <div class="totalBox">${r.streams.map(x=>`<div class="totalRow" style="gap:10px"><span>${esc(REVENUE_STREAMS[x.key]||x.key)} <small style="color:var(--muted)">(${x.count})</small></span><b>${N(x.kobo)} <small style="color:var(--muted);font-weight:normal">${pct(x.kobo)}</small></b></div>`).join('')}
+   <div class="totalRow" style="gap:10px"><span>Assisted setup <small style="color:var(--muted)">(not charged for now)</small></span><b>${N(0)}</b></div>
+   <div class="totalRow grand"><span>Total</span><b>${N(r.total)}</b></div></div>
+  <div class="sectionhead" style="margin-top:12px"><h3>Pending now</h3></div>
+  <div class="totalBox">
+   <div class="totalRow" style="gap:10px"><span>Delivery fees held, waiting for the handover code <small style="color:var(--muted)">(${held.count})</small></span><b>${N(held.feeKobo)}</b></div>
+   <div class="totalRow" style="gap:10px"><span>…our commission still to come from them</span><b>${N(held.commissionKobo)}</b></div>
+   <div class="totalRow" style="gap:10px"><span>Payouts owed to riders and businesses <small style="color:var(--muted)">(${owed.count}${owed.failed?' · '+owed.failed+' failed':''})</small></span><b>${N(owed.amountKobo)}</b></div>
+  </div>
+  ${owed.failed?`<div class="notice" style="border-color:var(--danger)">${owed.failed} payout(s) failed. They retry on their own; see Marketplace &amp; Delivery → Delivery payouts for the reason.</div>`:''}
+  ${held.items.length?`<div class="sectionhead" style="margin-top:12px"><h3>Held delivery fees</h3></div><div class="list">${held.items.slice(0,20).map(h=>`<div class="row-item"><div><b>${esc(h.business||h.businessId)}</b><small>order ${esc(String(h.ref).slice(-8))} · waiting ${age(h.at)}</small></div><div class="row-right"><strong class="money">${N(h.feeKobo)}</strong></div></div>`).join('')}</div>${held.items.length>20?`<small style="color:var(--muted)">…and ${held.items.length-20} more in the Excel file.</small>`:''}`:''}
+  <button class="btn accent full" style="margin-top:12px" onclick="downloadAdminRevenueXlsx()">⬇ Download Excel</button>
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`;
+}
+async function downloadAdminRevenueXlsx(){
+ const r = window.__admRev; if(!r) return;
+ const naira = k => Math.round(k||0)/100, when = at => String(at||'').replace('T',' ').slice(0,16);
+ const obs = [];
+ if(r.pending.owed.failed) obs.push({level:'High', area:'Payouts', text:`${r.pending.owed.failed} payout(s) to riders or businesses failed.`, check:'Open Delivery payouts to see why (usually a missing or wrong bank account).'});
+ const old = r.pending.held.items.filter(h=>Date.now()-Date.parse(h.at) > 3*86400000);
+ if(old.length) obs.push({level:'Watch', area:'Held delivery fees', text:`${old.length} delivery fee(s) held for more than 3 days.`, check:'Check the order was delivered; after 72 hours the business is credited automatically.'});
+ const top = [...r.streams].sort((a,b)=>b.kobo-a.kobo)[0];
+ if(top && top.kobo) obs.push({level:'Info', area:'Mix', text:`${REVENUE_STREAMS[top.key]} brought the most: ${admNaira(top.kobo/100)} of ${admNaira(r.total/100)}.`, check:''});
+ const rep = { title:'Mobo-Vault revenue '+r.from+' to '+r.to, period:r.from+' to '+r.to,
+  summary:[ ...r.streams.map(x=>[REVENUE_STREAMS[x.key]||x.key, naira(x.kobo)]), ['Total made', naira(r.total)],
+   ['Delivery fees held (now)', naira(r.pending.held.feeKobo)], ['Commission still to come (now)', naira(r.pending.held.commissionKobo)], ['Payouts owed (now)', naira(r.pending.owed.amountKobo)] ],
+  observations: obs,
+  sheets:[
+   {name:'Payments', columns:[{key:'at',label:'Date'},{key:'stream',label:'Stream',width:30},{key:'business',label:'Business',width:26},{key:'amount',label:'Amount',type:'money'},{key:'note',label:'Note',width:36},{key:'ref',label:'Reference',width:24}],
+    rows:r.lines.map(l=>({at:when(l.at), stream:REVENUE_STREAMS[l.stream]||l.stream, business:l.business||l.businessId, amount:naira(l.amountKobo), note:l.note, ref:l.ref}))},
+   {name:'Held delivery fees', columns:[{key:'at',label:'Date'},{key:'business',label:'Business',width:26},{key:'fee',label:'Delivery fee',type:'money'},{key:'commission',label:'Our commission',type:'money'},{key:'ref',label:'Order',width:24}],
+    rows:r.pending.held.items.map(h=>({at:when(h.at), business:h.business||h.businessId, fee:naira(h.feeKobo), commission:naira(h.commissionKobo), ref:h.ref}))},
+   {name:'Payouts owed', columns:[{key:'at',label:'Date'},{key:'business',label:'Business',width:26},{key:'payee',label:'Paid to'},{key:'amount',label:'Amount owed',type:'money'},{key:'status',label:'Status'},{key:'reason',label:'Why not paid',width:36},{key:'ref',label:'Payout',width:24}],
+    rows:r.pending.owed.items.map(o=>({at:when(o.at), business:o.business||o.businessId, payee:o.payee, amount:naira(o.amountKobo), status:o.status, reason:o.reason, ref:o.ref}))} ] };
+ try{ await downloadReportXlsx(rep, 'mobovault-revenue-'+r.from+'-to-'+r.to+'.xlsx'); }catch(e){ alert('Could not make the Excel file: '+(e.message||e)); }
+}
+/* One business's own delivery commission (a negotiated rate). Empty = the platform rate. */
+async function saveAdminBizCommission(businessId, tenantId){
+ const p = admBizPct.value.trim(), c = admBizCap.value.trim();
+ try{
+  await adminApi('/api/admin/businesses/'+encodeURIComponent(businessId)+'/delivery-commission', {method:'POST', body: JSON.stringify({percent: p===''?null:Number(p), capKobo: c===''?null:Math.round(Number(c)*100)})});
+  flashNotice(p===''&&c==='' ? 'This business now pays the platform rate.' : 'Commission for this business saved.');
+  await showAdminBusiness(businessId, tenantId, 'commission');
+ }catch(e){ alert('Could not save: '+e.message); }
 }
 /* ---------------- Admin: billing rules ----------------
    The grace period, when warnings start, and every message customers and staff see — set here
@@ -13067,7 +13271,7 @@ async function showAdminBillingRules(){
   ${BILLING_MESSAGE_LABELS.map(([k,l])=>`<h3 style="font-size:13px;margin-top:14px">${l}</h3>${msgRow('owner',k)}${msgRow('staff',k)}`).join('')}
   <button class="btn accent full" style="margin-top:12px" onclick="saveAdminBillingRules()">Save Rules</button>
   <button class="btn secondary full" onclick="resetBillingMessages()">Restore Default Wording</button>
-  <button class="btn secondary full" onclick="showAdminSearch()">Back to Search</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
   for(const [k] of BILLING_MESSAGE_LABELS){ previewBillingMessage('owner_'+k); previewBillingMessage('staff_'+k); }
  }catch(e){ alert('Could not load billing rules: '+e.message); }
 }
@@ -13125,7 +13329,7 @@ async function showAdminIdleAccounts(days){
   <div class="notice" style="font-size:12px">Accounts older than the days below that have <b>no data</b>, have <b>never paid</b>, and have not signed in or synced in that time. Every one is checked again at the moment of deletion.</div>
   <div class="field"><label for="idleDays">Unused for at least (days)</label><input id="idleDays" type="number" min="1" max="365" value="${days}" onchange="showAdminIdleAccounts(this.value)"></div>
   <div id="idleList"><div class="empty">Looking…</div></div>
-  <button class="btn secondary full" onclick="showAdminSearch()">Back to Search</button>`);
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`);
  try{
   const d=await adminApi('/api/admin/accounts/idle?days='+days);
   window.__idleAccounts=d.accounts||[];
@@ -13193,7 +13397,8 @@ async function copyBehaviourForReview(){
 /* What has been done from the admin side, newest first — so "what happened to that account?"
    always has an answer, even after the account itself is gone. */
 const ADMIN_ACTION_LABELS = { delete_account:'Account deleted', delete_idle_account:'Idle account deleted', set_status:'Status changed',
-  issue_temp_password:'Temporary password issued', extend_trial:'Trial extended', view:'Account viewed', plan_prices:'Plan prices changed' };
+  issue_temp_password:'Temporary password issued', extend_trial:'Trial extended', view:'Account viewed', plan_prices:'Plan prices changed',
+  service_fee:'Service fee changed', delivery_commission:'Delivery commission changed' };
 async function showAdminActivity(withViews){
  openModal(`<h2>Admin Activity</h2>
   <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" ${withViews?'checked':''} onchange="showAdminActivity(this.checked)"> Include accounts merely viewed</label>
@@ -13265,7 +13470,7 @@ async function showAdminIssues(){
   <div class="sectionhead"><h3>Happening now</h3></div>
   <div class="list">${current.map((g,i)=>row(g,i,true)).join('') || '<div class="empty">Nothing reported from the current version.</div>'}</div>
   ${stopped.length?`<div class="sectionhead"><h3>Stopped</h3></div><div class="list">${stopped.map((g,i)=>row(g,current.length+i,false)).join('')}</div>`:''}
-  <button class="btn secondary full" style="margin-top:12px" onclick="showAdminSearch()">Back to Search</button>`);
+  <button class="btn secondary full" style="margin-top:12px" onclick="showAdminSearch()">Back</button>`);
  }catch(e){ alert('Could not load issue reports: '+e.message); }
 }
 function showAdminIssueGroup(idx){
