@@ -12293,7 +12293,8 @@ const ADMIN_MENUS = {
   ['💤 Idle Accounts','showAdminIdleAccounts()'],
   ["🔑 Reset a User's Password",'adminResetUserPassword()'],
   ['📊 Module take-up',"showAdminReport('modules')"],
-  ['💾 Sync capacity',"showAdminReport('sync')"] ]},
+  ['💾 Sync capacity',"showAdminReport('sync')"],
+  ['🗄 Database storage','showAdminStorage()','How full the database is, and which businesses and modules use the space'] ]},
  money: { title:'💰 Revenue, Prices &amp; Fees', items:[
   ['💵 Revenue report','showAdminRevenue()','What we made in a period, by stream, and what is pending now'],
   ['🏷 Plan Pricing','showAdminPlanPrices()','Subscriptions and extra branches'],
@@ -12349,7 +12350,9 @@ async function showAdminDashboard(){
    ${stat('Locked', (d.effective&&d.effective.locked)||0)}
    ${stat('Lifetime', b.lifetime||0)}
    ${stat('Accounts with no business', d.accountsWithoutBusiness||0)}
+   ${d.storage?stat('Database', (d.storage.pct<0.1?'&lt;0.1':d.storage.pct)+'%', d.storage.pct>=50):''}
   </div>
+  ${d.storage&&d.storage.pct>=50?`<div class="notice" style="border-color:var(--danger);background:var(--dangerSoft)"><b>Database ${d.storage.pct}% full</b> (${admBytes(d.storage.bytes)} of ${admBytes(d.storage.limitBytes)}). ${d.storage.pct>=80?'Split it now: when it is full, every business stops syncing.':'Time to start splitting businesses into their own databases.'} <a href="#" onclick="showAdminStorage();return false">See who uses the space</a></div>`:''}
   ${pm==='live'?`<div class="notice" style="border-color:var(--good)">Paystack: <b>LIVE</b> — payments are real money.</div>`
    : pm==='test'?`<div class="notice" style="border-color:var(--brass)">Paystack: <b>TEST mode</b> — no real money moves. Switch to the live key before launch.</div>`
    : `<div class="notice" style="border-color:var(--danger)">Paystack: <b>no key set</b> on the server — nobody can pay.</div>`}
@@ -13169,6 +13172,89 @@ async function saveAdminDeliveryRates(){
  catch(e){ return alert('Not saved: '+e.message); }
  flashNotice('Delivery rates saved.'); await showAdminDeliveryRates();
 }
+/* ---------------- Admin: database storage (v93) ----------------
+   How full the one D1 database is (Cloudflare caps it at 10 GB on the paid plan), a warning from 50%,
+   and who uses the space — by business, module and kind of data — to plan splitting it. */
+const admBytes = b => { b = Number(b)||0; return b >= 1073741824 ? (b/1073741824).toFixed(2)+' GB' : b >= 1048576 ? (b/1048576).toFixed(1)+' MB' : Math.max(0, Math.round(b/1024))+' KB'; };
+async function showAdminStorage(){
+ openModal(`<h2>🗄 Database storage</h2><div id="admSto"><div class="empty">Loading…</div></div>`);
+ let g; try{ g = await adminApi('/api/admin/storage'); }
+ catch(e){ admSto.innerHTML = `<div class="notice">Could not load: ${esc(e.message)}</div><button class="btn secondary full" onclick="showAdminSearch()">Back</button>`; return; }
+ window.__admStorage = g;
+ const pct = g.pct, col = pct>=80?'var(--danger)':pct>=50?'var(--brass)':'var(--good)';
+ const snap = g.snapshot, d = (snap&&snap.detail)||{}, total = (snap&&snap.totalBytes)||g.bytes||1;
+ const share = b => total ? (b/total*100 < 0.1 ? '&lt;0.1%' : (b/total*100).toFixed(1)+'%') : '—';
+ const pr = g.projection;
+ const when = n => { const t = new Date(Date.now()+n*86400000); return t.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); };
+ const rows = (list, label, extra) => `<div class="totalBox">${list.map(x=>`<div class="totalRow" style="gap:10px"><span>${label(x)}</span><b>${admBytes(x.bytes)} <small style="color:var(--muted);font-weight:normal">${share(x.bytes)}</small></b></div>`).join('')||'<div class="empty">Nothing measured yet.</div>'}</div>`;
+ admSto.innerHTML = `
+  <div class="notice" style="border-color:${col}">
+   <div style="display:flex;justify-content:space-between;gap:8px"><b>${admBytes(g.bytes)} of ${admBytes(g.limitBytes)}</b><b style="color:${col}">${pct<0.1?'&lt;0.1':pct}%</b></div>
+   <div style="position:relative;height:12px;border-radius:6px;background:var(--line);margin:8px 0 4px;overflow:hidden" aria-label="Database ${pct}% full">
+    <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,Math.max(pct,0.5))}%;background:${col}"></div>
+    <div style="position:absolute;left:50%;top:0;bottom:0;width:2px;background:var(--ink,#333);opacity:.6" title="50%: start splitting"></div>
+   </div>
+   <small style="color:var(--muted)">The line marks 50%, the point to start splitting businesses into their own databases. Warnings go out at ${g.levels.join('%, ')}%${g.alertEmail||g.supportEmail?' to '+esc(g.alertEmail||g.supportEmail):' once an email is set'}.</small>
+  </div>
+  ${pct>=50?`<div class="notice" style="border-color:var(--danger);background:var(--dangerSoft)"><b>${pct>=80?'Split it now.':'Start planning the split.'}</b> When the database is full, every business stops syncing.</div>`:''}
+  <div class="notice" style="font-size:12.5px">${pr&&pr.bytesPerDay>0?`Growing about <b>${admBytes(pr.bytesPerDay)} a day</b>. ${[pr.daysTo50!=null?`At this rate it reaches 50% in about <b>${pr.daysTo50} days</b> (${when(pr.daysTo50)})`:'', pr.daysTo100!=null?`${pr.daysTo50!=null?'and':'At this rate it'} is full in about <b>${pr.daysTo100} days</b> (${when(pr.daysTo100)})`:''].filter(Boolean).join(' ')}.`:'The growth rate shows once there are readings from two different days (one is taken each day).'}</div>
+  ${snap?`<small style="color:var(--muted);display:block;margin-bottom:6px">Breakdown from ${esc(String(snap.takenAt).replace('T',' ').slice(0,16))} UTC. It is an estimate, scaled to the size Cloudflare measures.</small>`:''}
+  <button class="btn secondary full" onclick="adminMeasureStorage()">📏 Measure now</button>
+  <div class="sectionhead"><h3>By module</h3></div>
+  ${rows(d.modules||[], m=>`${esc(PLAN_LABELS[m.plan]||m.plan)} <small style="color:var(--muted)">(${m.businesses} business${m.businesses===1?'':'es'})</small>`)}
+  <div class="sectionhead"><h3>Largest businesses</h3></div>
+  <div class="list">${(d.businesses||[]).slice(0,15).map((b,i)=>`<div class="row-item"><div><b>${i+1}. ${esc(b.name)}</b><small>${esc(PLAN_LABELS[b.plan]||b.plan||'')}${b.email?' · '+esc(b.email):''} · ${b.rows} rows</small></div><div class="row-right"><strong class="money">${admBytes(b.bytes)}</strong><small>${share(b.bytes)}</small></div></div>`).join('')||'<div class="empty">Nothing measured yet. Press "Measure now".</div>'}</div>
+  ${d.platformBytes?`<small style="color:var(--muted);display:block">Not tied to one business (the platform's own settings, logs and accounts): ${admBytes(d.platformBytes)}, ${share(d.platformBytes)}.</small>`:''}
+  ${(d.businessCount||0)>15?`<small style="color:var(--muted)">All ${d.businessCount} are in the Excel file.</small>`:''}
+  <div class="sectionhead"><h3>By kind of data</h3></div>
+  ${rows(d.kinds||[], k=>esc(k.kind))}
+  <div class="sectionhead"><h3>Inside the synced records</h3></div>
+  ${rows((d.stores||[]).slice(0,8), x=>`${esc(x.store)} <small style="color:var(--muted)">(${x.rows} rows)</small>`)}
+  <button class="btn accent full" style="margin-top:12px" onclick="downloadAdminStorageXlsx()">⬇ Download Excel</button>
+  <button class="btn secondary full" onclick="showAdminStorageSettings()">⚙ Database limit and warning email</button>
+  <button class="btn secondary full" onclick="showAdminSearch()">Back</button>`;
+}
+async function adminMeasureStorage(){
+ try{ await adminApi('/api/admin/storage/measure', {method:'POST', body:'{}'}); flashNotice('Measured.'); }
+ catch(e){ return alert('Could not measure: '+e.message); }
+ await showAdminStorage();
+}
+async function showAdminStorageSettings(){
+ const g = window.__admStorage || await adminApi('/api/admin/storage').catch(()=>null) || {};
+ const GB = 1073741824, opts = [[500*1048576,'Cloudflare Free plan — 500 MB'],[10*GB,'Cloudflare Workers Paid — 10 GB']];
+ const custom = !opts.some(o=>o[0]===g.limitBytes);
+ openModal(`<h2>⚙ Database limit and warning email</h2>
+  <div class="notice">Cloudflare caps one database at 10 GB on the paid plan and 500 MB on the free plan. Choose the plan your account is on, so the gauge and the warnings are right.</div>
+  <div class="field"><label for="stoLimit">Your Cloudflare plan</label><select id="stoLimit">${opts.map(([v,l])=>`<option value="${v}" ${g.limitBytes===v?'selected':''}>${l}</option>`).join('')}${custom?`<option value="${g.limitBytes}" selected>Other — ${admBytes(g.limitBytes)}</option>`:''}</select></div>
+  <div class="field"><label for="stoEmail">Send warnings to</label><input id="stoEmail" type="email" placeholder="${esc(g.supportEmail||'you@example.com')}" value="${esc(g.alertEmail||'')}"><small style="color:var(--muted)">At ${(g.levels||[50,70,85,95]).join('%, ')}% full, once each. Empty: the support email under Contact Details${g.supportEmail?' ('+esc(g.supportEmail)+')':''}.</small></div>
+  <button class="btn accent full" onclick="saveAdminStorageSettings()">Save</button>
+  <button class="btn secondary full" onclick="showAdminStorage()">Back to Database storage</button>`);
+}
+async function saveAdminStorageSettings(){
+ try{ await adminApi('/api/admin/storage/settings', {method:'POST', body: JSON.stringify({limitBytes: Number(stoLimit.value), alertEmail: stoEmail.value.trim()})}); }
+ catch(e){ return alert('Not saved: '+e.message); }
+ flashNotice('Saved.'); await showAdminStorage();
+}
+async function downloadAdminStorageXlsx(){
+ const g = window.__admStorage; if(!g || !g.snapshot) return alert('Nothing measured yet. Press "Measure now" first.');
+ const d = g.snapshot.detail, total = g.snapshot.totalBytes || 1, mb = b => Math.round((b||0)/1048576*1000)/1000, pc = b => Math.round((b||0)/total*1000)/10;
+ const obs = [];
+ if(g.pct>=50) obs.push({level:g.pct>=80?'High':'Watch', area:'Space', text:`The database is ${g.pct}% full.`, check:'Start moving the largest businesses or modules into their own databases.'});
+ const top = (d.businesses||[])[0]; if(top && pc(top.bytes)>=20) obs.push({level:'Watch', area:'One business', text:`${top.name} alone uses ${pc(top.bytes)}% of the space.`, check:'A first candidate for its own database, or for archiving old records.'});
+ const logs = (d.kinds||[]).find(k=>k.kind==='Logs'); if(logs && pc(logs.bytes)>=15) obs.push({level:'Watch', area:'Logs', text:`Logs use ${pc(logs.bytes)}% of the space.`, check:'Old logs can be trimmed safely.'});
+ const rep = { title:'Mobo-Vault database storage', period:String(g.snapshot.takenAt).slice(0,10),
+  summary:[['Database size (MB)', mb(g.bytes)], ['Limit (MB)', mb(g.limitBytes)], ['Full (%)', g.pct], ['Businesses measured', d.businessCount||0, '', 'int'], ...(g.projection&&g.projection.daysTo50!=null?[['Days until 50% (at the current rate)', g.projection.daysTo50, '', 'int']]:[])],
+  observations: obs,
+  sheets:[
+   {name:'Businesses', columns:[{key:'name',label:'Business',width:28},{key:'module',label:'Module'},{key:'email',label:'Owner email',width:28},{key:'status',label:'Status'},{key:'rows',label:'Rows',type:'number'},{key:'mb',label:'Space (MB)',type:'number'},{key:'pct',label:'Share (%)',type:'number'},{key:'id',label:'Business ID',width:30}],
+    rows:(d.businesses||[]).map(b=>({name:b.name, module:PLAN_LABELS[b.plan]||b.plan||'', email:b.email, status:b.status, rows:b.rows, mb:mb(b.bytes), pct:pc(b.bytes), id:b.id}))},
+   {name:'Modules', columns:[{key:'m',label:'Module',width:30},{key:'n',label:'Businesses',type:'number'},{key:'mb',label:'Space (MB)',type:'number'},{key:'pct',label:'Share (%)',type:'number'}], rows:(d.modules||[]).map(m=>({m:PLAN_LABELS[m.plan]||m.plan, n:m.businesses, mb:mb(m.bytes), pct:pc(m.bytes)}))},
+   {name:'Kinds of data', columns:[{key:'k',label:'Kind',width:36},{key:'mb',label:'Space (MB)',type:'number'},{key:'pct',label:'Share (%)',type:'number'}], rows:(d.kinds||[]).map(k=>({k:k.kind, mb:mb(k.bytes), pct:pc(k.bytes)}))},
+   {name:'Tables', columns:[{key:'t',label:'Table',width:28},{key:'k',label:'Kind',width:32},{key:'rows',label:'Rows',type:'number'},{key:'mb',label:'Space (MB)',type:'number'}], rows:(d.tables||[]).map(t=>({t:t.table, k:t.kind, rows:t.rows, mb:mb(t.bytes)}))},
+   {name:'Synced record types', columns:[{key:'s',label:'Record type',width:24},{key:'rows',label:'Rows',type:'number'},{key:'mb',label:'Space (MB)',type:'number'}], rows:(d.stores||[]).map(x=>({s:x.store, rows:x.rows, mb:mb(x.bytes)}))},
+   {name:'Daily size', columns:[{key:'day',label:'Date'},{key:'mb',label:'Size (MB)',type:'number'}], rows:(g.history||[]).map(h=>({day:h.day, mb:mb(h.bytes)}))} ] };
+ try{ await downloadReportXlsx(rep, 'mobovault-database-storage-'+String(g.snapshot.takenAt).slice(0,10)+'.xlsx'); }catch(e){ alert('Could not make the Excel file: '+(e.message||e)); }
+}
 /* v93: the revenue report — what the platform made in a period, stream by stream, and what is pending now. */
 const REVENUE_STREAMS = { subscriptions:'Subscriptions', branches:'Extra branches (bought part-way)', orderFees:'Service fee — online orders', bookingFees:'Service fee — room bookings', delivery:'Delivery commission', tiles:'Featured tiles' };
 function revenuePeriod(preset){
@@ -13398,7 +13484,7 @@ async function copyBehaviourForReview(){
    always has an answer, even after the account itself is gone. */
 const ADMIN_ACTION_LABELS = { delete_account:'Account deleted', delete_idle_account:'Idle account deleted', set_status:'Status changed',
   issue_temp_password:'Temporary password issued', extend_trial:'Trial extended', view:'Account viewed', plan_prices:'Plan prices changed',
-  service_fee:'Service fee changed', delivery_commission:'Delivery commission changed' };
+  service_fee:'Service fee changed', delivery_commission:'Delivery commission changed', storage_settings:'Database limit or warning email changed' };
 async function showAdminActivity(withViews){
  openModal(`<h2>Admin Activity</h2>
   <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px"><input type="checkbox" ${withViews?'checked':''} onchange="showAdminActivity(this.checked)"> Include accounts merely viewed</label>
