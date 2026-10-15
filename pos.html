@@ -621,10 +621,27 @@ h1,h2,h3,.hubHead,.sectionhead h3,.tillWho,.moduleRibbon .mrName,.grand b,#posCa
    ===================================================================== */
 // Bump this every release, in lockstep with the CACHE version number in sw.js — the two must always match.
 // Used purely for update detection: this page compares its own number against whatever sw.js on the server reports.
-const APP_VERSION = 93;
+const APP_VERSION = 94;
 // The date of privacy.html in its current form; the server records which version each account agreed to.
 const TERMS_VERSION = '2026-10-08';
 window.MOBOREX_SERVER_URL = "https://moborex-ledger-vault-api.ravoseh.workers.dev";
+/* v94: a call to our server never hangs. On a phone with a connection that carries no internet (field
+   test, 15 Oct: a cancel took 3 minutes), the browser can wait minutes before giving up. Now: no
+   connection at all fails at once; otherwise each call gives up after 20 seconds (sync 2 minutes, AI
+   90 seconds; a caller may pass its own timeoutMs). Screens save on the phone first and send in the
+   background (serverSend), so staff never wait on the network to carry on. */
+(function(){
+ if(window.__serverFetchWrapped || typeof window.fetch!=='function') return;
+ const raw = window.fetch.bind(window); window.__serverFetchWrapped = true; window.__rawFetch = raw;
+ window.fetch = function(input, init){
+  const url = String((input && input.url) || input || '');
+  if(!window.MOBOREX_SERVER_URL || url.indexOf(window.MOBOREX_SERVER_URL)!==0 || (init && init.signal) || typeof AbortController!=='function') return raw(input, init);
+  if(navigator.onLine===false) return Promise.reject(Object.assign(new TypeError('No connection'), {offline:true}));
+  const ms = Number(init && init.timeoutMs) || (/\/api\/sync\//.test(url) ? 120000 : /\/api\/ai\//.test(url) ? 90000 : 20000);
+  const ac = new AbortController(), t = setTimeout(()=>ac.abort(), ms);
+  return raw(input, Object.assign({}, init||{}, {signal: ac.signal})).finally(()=>clearTimeout(t));
+ };
+})();
 /* Where a new customer came from, kept until they sign up. An advert, video, campaign or partner link
    adds ?utm_source=…&utm_campaign=…&utm_content=… (and ?ref=CODE for a partner, ?start=hotel to open
    sign-up with a business type already chosen). These are saved on this device for 30 days, because
@@ -5329,8 +5346,8 @@ function blankDashboardUI(){
 <h2 class="hubHead">Sell</h2>
 <div class="hubBiz sig bizNameShown"></div>
 <div class="hubGroup"><h3 class="hubTitle">Selling</h3><div class="navGroupItems hubItems"><button class="navbtn" data-min-level="1" data-perm-key="newInvoice" onclick="openInvoice()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M12.5 11v6M9.5 14h6"/></svg></span> New Invoice</button><button class="navbtn" data-min-level="3" data-perm-key="posTerminal" data-modules="full_retail,hotel" onclick="showPosTerminal()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="10" rx="1"/><path d="M6 10V5h8v5M8 14h2M14 14h3M8 17h9"/></svg></span> POS Terminal</button><button class="navbtn" data-min-level="3" data-perm-key="cashierDesk" data-modules="full_retail,hotel" onclick="showCashierDesk()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="1"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg></span> Cashier Desk</button><button class="navbtn" data-perm-key="invoicesList" onclick="showInvoices()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 15.5h5"/></svg></span> <span id="navInvoicesLabel">Invoices &amp; Sales</span></button><button class="navbtn" data-min-level="1" data-perm-key="quotations" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showQuotations()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M10 11.5c0-1 .6-1.6 1.4-1.8M13.4 11.5c0-1 .6-1.6 1.4-1.8M10 14.5h1.6v-2H10zM13.4 14.5H15v-2h-1.6z"/></svg></span> Quotations</button><button class="navbtn" data-perm-key="returns" data-modules="business_stock,full_retail,hotel" onclick="showReturns()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7 4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/></svg></span> Returns</button><button class="navbtn" data-min-level="3" data-perm-key="phoneOrder" data-modules="full_retail,hotel" onclick="showPhoneOrder()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l1.5 4.5-2.3 1.4a11 11 0 0 0 5.9 5.9l1.4-2.3L20 15v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></svg></span> Phone Order</button></div></div>
-<div class="hubGroup"><h3 class="hubTitle">Orders and delivery</h3><div class="navGroupItems hubItems"><button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" data-modules="full_retail,hotel" onclick="showIncomingOrders()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l2.5-8h13L21 13v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></svg></span> Incoming Orders</button><button class="navbtn" data-min-level="3" data-perm-key="readyBoard" data-modules="full_retail,hotel" onclick="showReadyBoard()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg></span> Ready Board</button><button class="navbtn" data-min-level="3" data-perm-key="deliveries" data-modules="full_retail,hotel" onclick="showDeliveries()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6h11v10h-11zM13.5 9.5h4l3 3.5v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg></span> Deliveries</button></div></div>
-<div class="hubGroup"><h3 class="hubTitle">Hotel front desk</h3><div class="navGroupItems hubItems"><button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" data-modules="hotel" onclick="showHotelDashboard()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3H10v3"/><circle cx="6.5" cy="10.5" r="1.6"/></svg></span> Hotel Dashboard</button><button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" data-modules="hotel" onclick="showKitchenBarTerminal()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h16v4a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6z"/><path d="M2 10h20M9 6.5c0-1.5 1-1.5 1-3M13 6.5c0-1.5 1-1.5 1-3"/></svg></span> Kitchen / Bar Terminal</button><button class="navbtn ownerOnly" data-min-level="4" data-perm-key="rooms" data-modules="hotel" onclick="showRoomsManagement()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l2 2M15 8l2 2"/></svg></span> Rooms</button></div></div>
+<div class="hubGroup"><h3 class="hubTitle">Orders and delivery</h3><div class="navGroupItems hubItems"><button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" data-modules="full_retail,hotel" onclick="showIncomingOrders()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l2.5-8h13L21 13v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></svg></span> Incoming Orders</button><button class="navbtn" data-min-level="3" data-perm-key="readyBoard" data-modules="full_retail,hotel" onclick="showReadyBoard()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg></span> Ready Board</button><button class="navbtn" data-min-level="3" data-perm-key="deliveries" data-modules="full_retail,hotel" onclick="showDeliveries()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6h11v10h-11zM13.5 9.5h4l3 3.5v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg></span> Deliveries</button><button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showShareLinks('riders')"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span> Riders' link</button></div></div>
+<div class="hubGroup"><h3 class="hubTitle">Hotel front desk</h3><div class="navGroupItems hubItems"><button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" data-modules="hotel" onclick="showHotelDashboard()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3H10v3"/><circle cx="6.5" cy="10.5" r="1.6"/></svg></span> Hotel Dashboard</button><button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" data-modules="hotel" onclick="showBookingRequests()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17h16M6 17v-1a6 6 0 0 1 12 0v1M12 8V6M10 6h4"/></svg></span> Online bookings</button><button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" data-modules="hotel" onclick="showKitchenBarTerminal()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h16v4a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6z"/><path d="M2 10h20M9 6.5c0-1.5 1-1.5 1-3M13 6.5c0-1.5 1-1.5 1-3"/></svg></span> Kitchen / Bar Terminal</button><button class="navbtn ownerOnly" data-min-level="4" data-perm-key="rooms" data-modules="hotel" onclick="showRoomsManagement()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l2 2M15 8l2 2"/></svg></span> Rooms</button></div></div>
 <div class="hubGroup"><h3 class="hubTitle">Customers</h3><div class="navGroupItems hubItems"><button class="navbtn" data-perm-key="customers" onclick="showCustomers()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.8c1.8.7 3 2.4 3 4.7"/></svg></span> <span id="navCustomersLabel">Customers</span></button><button class="navbtn ownerOnly" data-min-level="1" data-perm-key="customerFeedback" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showCustomerFeedback()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg></span> Customer Feedback <span data-feedback-badge style="display:none"></span></button></div></div>
 </section>
 <section class="hub" id="hub-stock" aria-label="Stock">
@@ -5352,7 +5369,7 @@ function blankDashboardUI(){
 <section class="hub" id="hub-more" aria-label="More">
 <h2 class="hubHead">More</h2>
 <div class="hubBiz sig bizNameShown"></div>
-<div class="hubGroup"><h3 class="hubTitle">Your business</h3><div class="navGroupItems hubItems"><button class="navbtn ownerOnly" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showAssistedSetup()"><span class="ic">🤝</span> Get help setting up</button><button class="navbtn ownerOnly" onclick="showSettings()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></span> Business Settings</button><button class="navbtn ownerOnly" data-min-level="3" data-perm-key="businessLocation" data-modules="full_retail,hotel" onclick="showBusinessLocation()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span> Business Location</button><button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showOnlineOrderingSettings()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9S9.5 5.5 12 3z"/></svg></span> Online Ordering Setup</button><button class="navbtn ownerOnly" data-perm-key="publicPage" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showPublicPage()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-6 9 6v10H3z"/><path d="M9 20v-6h6v6"/></svg></span> Your Public Page &amp; Promotions</button><button class="navbtn" data-perm-key="branches" onclick="showBranchManagement()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-11.5 7"/></svg></span> Branches</button><button class="navbtn ownerOnly" data-perm-key="branchSwitch" onclick="showSwitchBranch()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h4c4 0 6 12 10 12h4M18 15l3 3-3 3M3 18h4c1.5 0 2.7-1.6 3.7-3.6M14 8.5C15 7 15.8 6 17 6h4M18 3l3 3-3 3"/></svg></span> Switch Branch</button><button class="navbtn ownerOnly" data-perm-key="businessSwitch" onclick="showBusinessSwitcher()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M11 21v-3h2v3"/></svg></span> Your business &amp; another business</button><button class="navbtn ownerOnly" data-perm-key="expenseTypes" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showExpenseTypes()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11V3h8l9 9-8 8z"/><circle cx="7" cy="7" r="1.4"/></svg></span> Expense Types</button></div></div>
+<div class="hubGroup"><h3 class="hubTitle">Your business</h3><div class="navGroupItems hubItems"><button class="navbtn ownerOnly" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showAssistedSetup()"><span class="ic">🤝</span> Get help setting up</button><button class="navbtn ownerOnly" onclick="showSettings()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></span> Business Settings</button><button class="navbtn ownerOnly" data-min-level="3" data-perm-key="businessLocation" data-modules="full_retail,hotel" onclick="showBusinessLocation()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5a7 7 0 0 0-14 0C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span> Business Location</button><button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showOnlineOrderingSettings()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9S9.5 5.5 12 3z"/></svg></span> Online Ordering Setup</button><button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showShareLinks()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span> Links to share</button><button class="navbtn ownerOnly" data-perm-key="publicPage" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showPublicPage()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-6 9 6v10H3z"/><path d="M9 20v-6h6v6"/></svg></span> Your Public Page &amp; Promotions</button><button class="navbtn" data-perm-key="branches" onclick="showBranchManagement()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-11.5 7"/></svg></span> Branches</button><button class="navbtn ownerOnly" data-perm-key="branchSwitch" onclick="showSwitchBranch()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h4c4 0 6 12 10 12h4M18 15l3 3-3 3M3 18h4c1.5 0 2.7-1.6 3.7-3.6M14 8.5C15 7 15.8 6 17 6h4M18 3l3 3-3 3"/></svg></span> Switch Branch</button><button class="navbtn ownerOnly" data-perm-key="businessSwitch" onclick="showBusinessSwitcher()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M11 21v-3h2v3"/></svg></span> Your business &amp; another business</button><button class="navbtn ownerOnly" data-perm-key="expenseTypes" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showExpenseTypes()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11V3h8l9 9-8 8z"/><circle cx="7" cy="7" r="1.4"/></svg></span> Expense Types</button></div></div>
 <div class="hubGroup"><h3 class="hubTitle">Staff and security</h3><div class="navGroupItems hubItems"><button class="navbtn ownerOnly" onclick="showRecoveryQuestions()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.1-2.4 3.8M12 17v.2"/></svg></span>Secret questions</button><button class="navbtn ownerOnly" onclick="showPhoneApps()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M12 7v7M9 11.5l3 3 3-3M10 18.5h4"/></svg></span>Mobo-Vault on phones</button><button class="navbtn ownerOnly" data-min-level="1" data-perm-key="staffAccess" onclick="showStaffAccessSettings()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.8c1.8.7 3 2.4 3 4.7"/></svg></span> Staff Access</button><button class="navbtn ownerOnly" data-min-level="1" onclick="showRolePermissionsSettings()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span> Role Permissions</button><button class="navbtn" onclick="promptEnterStaffMode()" id="enterStaffModeBtn"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h5v16h-5M3 12h11M10 8l4 4-4 4"/></svg></span> Enter Staff Mode</button><button class="navbtn" onclick="exitStaffMode()" id="exitStaffModeBtn" style="display:none"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4H5v16h5M9 12h12M17 8l4 4-4 4"/></svg></span> Exit Staff Mode</button><button class="navbtn ownerOnly" onclick="showAppLockSettings()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3M12 15v2.5"/></svg></span> App Lock</button></div></div>
 <div class="hubGroup"><h3 class="hubTitle">Data and help</h3><div class="navGroupItems hubItems"><button class="navbtn ownerOnly" onclick="showCloudSync()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 9.5a4 4 0 0 1 0 8.5z"/><path d="m9.5 14 2.5-2.5 2.5 2.5M12 11.5V18"/></svg></span> Sync & Backup</button><button class="navbtn" onclick="showHelpFAQ()"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.1-2.4 3.8M12 17v.2"/></svg></span> Help &amp; FAQ</button></div></div>
 </section>
@@ -5394,7 +5411,7 @@ function blankDashboardUI(){
 <div class="navGroup collapsed">
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Online Ordering</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
-  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showOnlineOrderingSettings();closeDrawer()"><span class="ic">🔗</span> Online Ordering Setup</button><button class="navbtn ownerOnly" data-perm-key="publicPage" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showPublicPage();closeDrawer()"><span class="ic">📣</span> Your Public Page &amp; Promotions</button>
+  <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showOnlineOrderingSettings();closeDrawer()"><span class="ic">🔗</span> Online Ordering Setup</button><button class="navbtn ownerOnly" data-min-level="3" data-perm-key="onlineOrderingSetup" data-modules="full_retail,hotel" onclick="showShareLinks();closeDrawer()"><span class="ic">📤</span> Links to share</button><button class="navbtn ownerOnly" data-perm-key="publicPage" data-modules="business_basic,business_stock,full_retail,hotel" onclick="showPublicPage();closeDrawer()"><span class="ic">📣</span> Your Public Page &amp; Promotions</button>
   <button class="navbtn ownerOnly" data-min-level="3" data-perm-key="menuAvailability" data-modules="full_retail,hotel" onclick="showMenuAvailability();closeDrawer()"><span class="ic">🍽</span> Menu Availability</button>
   <button class="navbtn" data-min-level="3" data-perm-key="incomingOrders" data-modules="full_retail,hotel" onclick="showIncomingOrders();closeDrawer()"><span class="ic">📥</span> Incoming Orders</button>
   <button class="navbtn" data-min-level="3" data-perm-key="readyBoard" data-modules="full_retail,hotel" onclick="showReadyBoard();closeDrawer()"><span class="ic">📣</span> Ready Board</button>
@@ -5405,6 +5422,7 @@ function blankDashboardUI(){
  <button class="navGroupHeader" onclick="toggleNavGroup(this)"><span>Hotel Operations</span><span class="navGroupChevron">▾</span></button>
  <div class="navGroupItems">
   <button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" data-modules="hotel" onclick="showHotelDashboard();closeDrawer()"><span class="ic">🛏</span> Hotel Dashboard</button>
+  <button class="navbtn" data-min-level="4" data-perm-key="hotelDashboard" data-modules="hotel" onclick="showBookingRequests();closeDrawer()"><span class="ic">🛎</span> Online bookings</button>
   <button class="navbtn" data-min-level="4" data-perm-key="kitchenBarTerminal" data-modules="hotel" onclick="showKitchenBarTerminal();closeDrawer()"><span class="ic">🍽</span> Kitchen / Bar Terminal</button>
   <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="occupancyReport" data-modules="hotel" onclick="showOccupancyReport();closeDrawer()"><span class="ic">📊</span> Occupancy Report</button>
   <button class="navbtn ownerOnly" data-min-level="4" data-perm-key="hotelBreakdown" data-modules="hotel" onclick="showHotelSalesBreakdown();closeDrawer()"><span class="ic">🍳</span> Room/Kitchen/Bar Breakdown</button>
@@ -14903,6 +14921,41 @@ function bookingGroups(reqs){
  return [...m.values()].map(lines=>lines.sort((x,y)=>String(x.room_type).localeCompare(String(y.room_type))||String(x.id).localeCompare(String(y.id))));
 }
 function reqNights(r){ return Math.max(1,Math.round((Date.parse(r.check_out)-Date.parse(r.check_in))/86400000)); }
+/* v94: every link a business hands out, on one page (field test: "I can't find the link to make online
+   room bookings", "No rider's link"). Each was only at the bottom of one screen. */
+async function showShareLinks(focus){
+ if(!requireOwnerMode('Links to share','onlineOrderingSetup')) return;
+ const id = await getActiveBusinessId(), b = await getBusiness(), base = orderBase(), hotel = window.CURRENT_BUSINESS_TYPE==='hotel';
+ const enc = encodeURIComponent(id);
+ const wa = (title, url) => `https://wa.me/?text=${encodeURIComponent(title+': '+url)}`;
+ const sm = 'width:auto;flex:1 1 auto;margin:0;padding:7px 10px;font-size:12px';
+ const card = (key, icon, title, who, url, note, extra) => `<div class="row-item" id="link_${key}" style="flex-direction:column;align-items:stretch;gap:6px${focus===key?';border-left:4px solid var(--brass)':''}">
+   <b>${icon} ${title}</b><small>${who}</small>
+   <input readonly value="${esc(url)}" onclick="this.select()" style="width:100%;padding:8px;border-radius:8px;border:1.4px solid var(--line);font-size:12px">
+   <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <button class="btn secondary" style="${sm}" onclick="navigator.clipboard&&navigator.clipboard.writeText('${esc(url)}').then(()=>flashNotice('Link copied.'))">Copy</button>
+    <button class="btn secondary" style="${sm}" onclick="navigator.share?navigator.share({title:'${esc(title)}',url:'${esc(url)}'}).catch(()=>{}):alert('Copy the link instead.')">Share</button>
+    <a class="btn secondary" style="${sm};text-decoration:none;text-align:center" href="${wa(title+' — '+(b.name||''), url)}" target="_blank" rel="noopener">WhatsApp</a>
+    ${extra||''}
+   </div>
+   ${note?`<small style="color:var(--muted)">${note}</small>`:''}</div>`;
+ const cards = [
+  hotel ? card('booking', '🛎', 'Book a room', 'For guests: they pick dates and rooms, and you confirm each request under Online bookings.', base+'reserve.html?business='+enc,
+    'Room types and rates come from your rooms list.', `<button class="btn secondary" style="${sm}" onclick="showBookingRequests()">Online bookings</button>`) : '',
+  card('order', '🛒', 'Order online', 'For customers: your menu, to order for pickup or delivery and pay online.', base+'order.html?business='+enc+'&source=online',
+    'Customers can order once your menu is published (Online Ordering Setup). Paying online needs your payout account.', `<button class="btn secondary" style="${sm}" onclick="showOnlineOrderingSettings()">Setup</button>`),
+  card('qr', '🔳', hotel ? 'Table and room QR codes' : 'Table QR codes', 'For guests already with you: they scan the code on the table or in the room, order, and pay at the counter.', base+'order.html?business='+enc+'&source=qr',
+    'Print one code per table or room from Online Ordering Setup.', ''),
+  card('riders', '🛵', 'Riders', 'For your delivery riders: they open it on their phone, register, and pick up your deliveries.', base+'rider.html?business='+enc+'&owned=1',
+    'Riders who sign up through this link become your own riders.', ''),
+  card('till', '🧾', 'Till app (POS)', 'For your cashiers: the till on their phone or tablet. They sign in with their staff PIN.', base+'pos.html', '', ''),
+ ].filter(Boolean).join('');
+ openModal(`<h2>🔗 Links to share</h2>
+  <div class="notice" style="font-size:12.5px">Every link your customers, guests, riders and staff need, in one place.</div>
+  <div class="list">${cards}</div>
+  <button class="btn secondary full" style="margin-top:10px" onclick="closeModal()">Close</button>`);
+ if(focus){ const el = document.getElementById('link_'+focus); if(el && el.scrollIntoView) try{ el.scrollIntoView({block:'start'}); }catch(e){} }
+}
 async function showBookingRequests(){
  if(!requireOwnerMode('🛏 Online bookings','hotelDashboard')) return;
  if(window.CURRENT_BUSINESS_TYPE!=='hotel') return alert('Online bookings are for hotels.');
@@ -14930,6 +14983,7 @@ async function showBookingRequests(){
    ${pend.length>1?`<button class="btn secondary" onclick="declineBookingRequest('${pend.map(x=>x.id).join(',')}')">Decline the ${pend.length} waiting rooms…</button>`:''}</div>`; };
  openModal(`<h2>Online bookings ${hb("Guests book from your hotel's own page — one booking can ask for several rooms. Confirm each room by choosing a free one (that creates the reservation and holds the room), or decline it with a reason. The guest sees every room's answer and the reason, and pays only for the rooms you confirm — at least one night before check-in.")}</h2>
  ${offline?'<div class="notice" style="border-left-color:var(--crimson)">Connect to the internet to see booking requests.</div>':''}
+ <div class="notice" style="font-size:12.5px">🛎 <b>Your booking page:</b> guests book here. <a href="#" onclick="showShareLinks('booking');return false">Copy or share the link</a></div>
  <div class="sectionhead"><h3>Waiting for you (${waiting.length})</h3></div>
  <div class="list">${waiting.map(card).join('')||'<div class="empty">No new requests.</div>'}</div>
  ${recent.length?`<div class="sectionhead" style="margin-top:12px"><h3>Recently decided</h3></div><div class="list">${recent.map(card).join('')}</div>`:''}
@@ -16495,6 +16549,7 @@ async function phoneOrderPackagingPreview(personCart, products){
  return { items, subtotal: items.reduce((a,it)=>a+(Number(it.price)||0)*(Number(it.qty)||0),0) };
 }
 async function showPhoneOrderCheckout(){
+ if(!window.__phoneOrderDraftId) window.__phoneOrderDraftId = crypto.randomUUID();   // this order's id, kept until it is saved
  const products = await bizProducts();
  const activePeople = window.phoneOrderPeople.filter(p=>Object.keys(p.cart).length);
  if(!activePeople.length){ alert('Add at least one item.'); return; }
@@ -16523,7 +16578,7 @@ async function showPhoneOrderCheckout(){
   <option value="awaiting">Customer will pay — I'll confirm when it arrives</option>
   <option value="Bank Transfer">Already paid — Bank Transfer</option><option value="POS Terminal">Already paid — POS Terminal</option><option value="Cash">Already paid — Cash</option><option value="Card">Already paid — Card</option>
   <option value="Pay on Delivery">Pay on delivery</option></select></div>
- <button class="btn accent full" onclick="finalizePhoneOrder()">Send to the order queue</button>
+ <button class="btn accent full" id="phoneSendBtn" onclick="finalizePhoneOrder()">Send to the order queue</button>
  <button class="btn secondary full" onclick="renderPhoneOrder()">Back</button>`);
  // v92 (A17): details read from a pasted WhatsApp order, for staff to check.
  const pf=window.__phoneOrderPrefill; if(pf){ if(pf.name) phoneCustName.value=pf.name; if(pf.phone) phoneCustPhone.value=pf.phone; if(pf.address){ try{ setPhoneOrderDelivery(true); }catch(e){} const a=document.getElementById('phoneDeliveryAddress'); if(a) a.value=pf.address; } }
@@ -16566,7 +16621,16 @@ function onPhoneSavedAddressChange(){
  }
 }
 function onPhoneDeliveryAddressTyped(){ phoneSaveAddressLabel.classList.remove('hidden'); }
+/* v94: one tap, one order. The button locks on the first tap, and the order keeps the same id from the
+   moment checkout opens, so a second tap (or a slow phone) cannot make a second order. */
 async function finalizePhoneOrder(){
+ if(window.__phoneOrderSaving) return;
+ window.__phoneOrderSaving = true;
+ const btn = document.getElementById('phoneSendBtn'); if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+ try{ await finalizePhoneOrderInner(); }
+ finally{ window.__phoneOrderSaving = false; const b2 = document.getElementById('phoneSendBtn'); if(b2){ b2.disabled = false; b2.textContent = 'Send to the order queue'; } }
+}
+async function finalizePhoneOrderInner(){
  if(!requireActiveSubscription('Saving a phone order'))return;
  const name=phoneCustName.value.trim(), phone=phoneCustPhone.value.trim();
  if(!name){alert('Enter the customer\'s name.');return;}
@@ -16608,8 +16672,13 @@ async function finalizePhoneOrder(){
  const channel = phonePaymentChannel.value;
  const paymentStatus = channel==='awaiting' ? 'awaiting_payment' : channel==='Pay on Delivery' ? 'pay_on_delivery' : 'paid_phone';
  const bizId = await getActiveBusinessId(), who = currentActorName()||'Owner', now = new Date().toISOString();
+ const orderId = window.__phoneOrderDraftId || (window.__phoneOrderDraftId = crypto.randomUUID());
+ if((await all('onlineOrders')).some(x=>x.id===orderId)){   // already saved by an earlier tap
+  window.phoneOrderPeople=[{label:'Person 1', cart:{}}]; window.__phoneOrderEnriched=null; window.__phoneOrderDraftId=null;
+  flashNotice('This phone order is already in Incoming Orders.'); await showIncomingOrders(); return;
+ }
  const order = {
-  id: crypto.randomUUID(), businessId: bizId, source: 'phone', customerName: name, customerPhone: phone,
+  id: orderId, businessId: bizId, source: 'phone', customerName: name, customerPhone: phone,
   items: items.filter(it=>!it.isTaxLine && !it.isDeliveryFee).map(it=>({name:it.description, productRef:it.productId||null, priceKobo:Math.round(it.price*100), qty:it.qty})),
   people: enriched.map(p=>({label:p.label, items:p.items.map(i=>({name:i.name, qty:i.qty, priceKobo:Math.round((Number(i.price)||0)*100)})), subtotalKobo:Math.round((Number(p.subtotal)||0)*100)})),
   invoiceItems: items, invoiceTotal: total, taxTotal: phoneTax.addOnTotal||0,
@@ -16621,16 +16690,13 @@ async function finalizePhoneOrder(){
  };
  if(paymentStatus==='paid_phone'){ order.paidConfirmedBy=who; order.paidConfirmedAt=now; }
  await put('onlineOrders', order);
- if(ServerAccount.token){
-  try{
-   await ServerAccount.api('/api/orders/register', {method:'POST', body: JSON.stringify({
-    orderId: order.id, businessId:bizId, customerName:name, customerPhone:phone, items: order.items, people: order.people,
-    totalKobo: order.totalKobo, deliveryRequested: order.deliveryRequested, deliveryAddress: order.deliveryAddress, deliveryFeeKobo: order.deliveryFeeKobo,
-    paymentStatus, paymentMethod: order.paymentMethod, takenBy: who,
-   })});
-  }catch(e){ /* the order is safe on this phone; the server copy is for tracking and delivery only */ }
- }
- window.phoneOrderPeople=[{label:'Person 1', cart:{}}]; window.__phoneOrderEnriched=null;
+ // The server copy (for tracking and delivery) goes in the background; offline it waits and goes later.
+ serverSend('/api/orders/register', {
+  orderId: order.id, businessId:bizId, customerName:name, customerPhone:phone, items: order.items, people: order.people,
+  totalKobo: order.totalKobo, deliveryRequested: order.deliveryRequested, deliveryAddress: order.deliveryAddress, deliveryFeeKobo: order.deliveryFeeKobo,
+  paymentStatus, paymentMethod: order.paymentMethod, takenBy: who,
+ }, 'register:'+order.id);
+ window.phoneOrderPeople=[{label:'Person 1', cart:{}}]; window.__phoneOrderEnriched=null; window.__phoneOrderDraftId=null;
  flashNotice(paymentStatus==='awaiting_payment' ? 'Phone order queued — confirm the payment in Incoming Orders when it arrives.' : 'Phone order queued in Incoming Orders.');
  const canSee = !isStaffMode() || (window.rolePermissions.incomingOrders||[]).includes(currentRole());
  if(canSee) await showIncomingOrders(); else { closeModal(); await refresh(); }
@@ -17937,27 +18003,50 @@ async function pullIncomingOrders(){
   return count;
  }catch(e){ console.error('Could not pull incoming orders', e); return 0; }
 }
-async function showIncomingOrders(){
+/* v94: the screen opens at once from what is on the phone; new orders and refund warnings from the
+   server are fetched in the background and the screen redraws if anything changed. Before, it waited on
+   the server first, so with a dead connection every action took minutes to come back (field test). */
+async function showIncomingOrders(fromBackground){
  if(!requireOwnerMode('📥 Incoming Orders','incomingOrders'))return;
  if(!posRequireFullTier())return;
- const pulled = await pullIncomingOrders();
+ const pulled = fromBackground ? (window.__ioPulled||0) : 0; window.__ioPulled = 0;
+ if(!fromBackground) refreshIncomingOrdersFromServer();   // not awaited
  await updateOrdersBanner(); // every action funnels back through this screen, so updating it here covers all of them
  const orders = (await bizOnlineOrders()).filter(o=>o.status!=='completed' && o.status!=='cancelled').sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
- let refundsHtml = '';
+ const refundsHtml = window.__ioRefundsHtml || '';
+ openIncomingOrdersScreen(orders, refundsHtml, pulled);
+}
+async function refreshIncomingOrdersFromServer(){
+ if(window.__ioFetching || !ServerAccount.token) return;
+ window.__ioFetching = true;
  try{
+  let pulled = 0; try{ pulled = await pullIncomingOrders(); }catch(e){}
+  let html = window.__ioRefundsHtml || '';
+  try{ html = await incomingRefundsHtml(); }catch(e){ /* offline: keep the last warning */ }
+  const changed = pulled>0 || html !== (window.__ioRefundsHtml || '');
+  window.__ioRefundsHtml = html;
+  if(changed && document.getElementById('ioScreen')){ window.__ioPulled = pulled; await showIncomingOrders(true); }
+ } finally { window.__ioFetching = false; }
+}
+async function incomingRefundsHtml(){
+ let refundsHtml = '';
+ {
   const bizId = await getActiveBusinessId();
   const refunds = await ServerAccount.api('/api/orders/needs-refund?businessId='+encodeURIComponent(bizId));
   if(refunds.orders && refunds.orders.length){
    refundsHtml = `<div class="notice" style="background:var(--dangerSoft);border-color:#E9B8C0;color:var(--danger)"><b>⚠ ${refunds.orders.length} payment(s) need a refund</b> — collected for an order that was already cancelled before the customer paid.<br>${refunds.orders.map(r=>`${esc(r.customer_name||'Customer')} (${esc(r.customer_phone||'—')}) — ${money((Number(r.total_kobo)||0)/100)}`).join('<br>')}</div>`;
   }
- }catch(e){ /* best-effort — this banner is a convenience, not load-bearing */ }
+ }
+ return refundsHtml;
+}
+function openIncomingOrdersScreen(orders, refundsHtml, pulled){
  /* v90: a summary on top, and every order in full: each line with its price, per-person subtotals, VAT,
     service fee, delivery fee, the total and how it is paid (field report: "not good and detailed enough"). */
  const val=o=>orderMoney(o), paidVal=orders.filter(o=>orderIsPaid(o)||o.paymentStatus==='paid_phone').reduce((a,o)=>a+val(o).total,0), allVal=orders.reduce((a,o)=>a+val(o).total,0);
  const cnt=st=>orders.filter(o=>st.includes(o.status)).length;
  window.__ordersTick && clearInterval(window.__ordersTick);
  openModal(`<h2>Incoming Orders ${hb("Orders placed online, by QR and by phone. Accept, then Submit for packing → Packed → Complete Sale. Completing one records the sale and takes the stock. A phone order still to be paid waits until you tap Order paid.")}</h2>
- ${refundsHtml}
+ <span id="ioScreen" hidden></span>${refundsHtml}
  ${pulled?`<div class="notice">${pulled} new order(s) just came in.</div>`:''}
  <div class="stats">
   <div class="stat accent"><div class="lbl">Orders open</div><div class="val">${orders.length}</div></div>
@@ -18030,7 +18119,7 @@ async function savePhoneOrderPaid(id){
  o.paymentStatus='paid_phone'; o.paymentMethod=opMethod.value; o.paymentRef=opRef.value.trim(); o.paidConfirmedBy=who; o.paidConfirmedAt=at;
  o.stages=[...(o.stages||[]), {to:'paid', by:who, at}];
  await put('onlineOrders', o);
- if(ServerAccount.token){ try{ await ServerAccount.api('/api/orders/'+id+'/mark-paid',{method:'POST', body:JSON.stringify({method:o.paymentMethod})}); }catch(e){} }
+ serverSend('/api/orders/'+id+'/mark-paid', {method:o.paymentMethod}, 'paid:'+id);
  flashNotice('Payment confirmed — the order can now be accepted and packed.');
  await showIncomingOrders();
 }
@@ -18081,9 +18170,8 @@ async function sendWhatsAppNotification(phone, message){
  catch(e){ /* silent — notifications are a nice-to-have, not a dependency */ }
 }
 async function pushOrderStage(orderId, stage, extra){
- if(!ServerAccount.token) return;
- try{ await ServerAccount.api('/api/orders/'+orderId+'/stage', {method:'POST', body: JSON.stringify({stage, ...(extra||{})})}); }
- catch(e){ /* silent — the local record is still correct even if the server push fails; the customer's tracking page just won't reflect it yet */ }
+ // Sent in the background; offline it waits and goes later, so the customer's tracking page catches up.
+ serverSend('/api/orders/'+orderId+'/stage', {stage, ...(extra||{})}, 'stage:'+orderId+':'+stage);
 }
 
 /* ---------------- An online order's summary: open, print, submit for packing ---------------- */
@@ -18133,7 +18221,7 @@ async function advanceOnlineOrder(id, toStatus){
  } else if(toStatus==='ready'){
   await pushOrderStage(id, 'packed');
   const trackUrl = location.origin + location.pathname.replace(/index\.html$/,'') + 'order.html?track=' + id;
-  await sendWhatsAppNotification(o.customerPhone, `Your order at ${(await getBusiness()).name} is packed and ready${o.deliveryRequested?' — it will be on its way to you shortly.':' for pickup.'}. Track it here: ${trackUrl}`);
+  sendWhatsAppNotification(o.customerPhone, `Your order at ${(await getBusiness()).name} is packed and ready${o.deliveryRequested?' — it will be on its way to you shortly.':' for pickup.'}. Track it here: ${trackUrl}`);
  }
  await showIncomingOrders();
 }
@@ -18144,10 +18232,44 @@ async function cancelOnlineOrder(id){
  if(!confirm('Cancel this order? The customer will need to be told separately — this only updates it here.'
    + (paid>0 ? '\n\nTHIS CUSTOMER HAS ALREADY PAID '+money(paid)+' ONLINE. Cancelling means that money must be refunded to them.' : '')))return;
  o.stages=[...(o.stages||[]), {to:'cancelled', by:currentActorName()||'Owner', at:new Date().toISOString()}]; o.status='cancelled'; await put('onlineOrders',o);
- try{ await ServerAccount.api('/api/orders/'+id+'/cancel', {method:'POST'}); }
- catch(e){ /* the local cancellation still holds; a failed push here just means a stale server record until the next successful call */ }
+ serverSend('/api/orders/'+id+'/cancel', null, 'cancel:'+id);   // in the background: the screen does not wait
+ flashNotice('Order cancelled.');
  await showIncomingOrders();
 }
+/* ---------------- v94: messages to the server, sent in the background ----------------
+   An order taken, paid, moved on a stage, cancelled or completed is saved on the phone first; the
+   server is told afterwards. Offline, the message waits here (kept on the phone) and goes when the
+   connection is back, in the order it was made. A repeat of the same message replaces the earlier one. */
+const OUTBOX_KEY = 'mv_server_outbox';
+function readOutbox(){ try{ const a=JSON.parse(localStorage.getItem(OUTBOX_KEY)||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function writeOutbox(a){ try{ localStorage.setItem(OUTBOX_KEY, JSON.stringify(a.slice(-500))); }catch(e){} }
+function serverSend(path, body, key){
+ if(!ServerAccount.token) return;
+ const a = readOutbox().filter(x=>!key || x.key!==key);
+ a.push({key: key||null, path, body: body==null ? null : JSON.stringify(body), at: new Date().toISOString(), tries: 0});
+ writeOutbox(a);
+ flushServerOutbox();
+}
+async function flushServerOutbox(){
+ if(window.__outboxBusy || !ServerAccount.token) return;
+ window.__outboxBusy = true;
+ try{
+  for(;;){
+   const a = readOutbox(); if(!a.length) break;
+   const m = a[0];
+   try{ await ServerAccount.api(m.path, {method:'POST', ...(m.body!=null?{body:m.body}:{})}); }
+   catch(e){
+    const answered = e && e.status && e.status<500 && e.status!==429;   // the server said no: retrying will not change it
+    const tooOld = Date.now()-Date.parse(m.at) > 14*86400000;
+    if(!answered && !tooOld){ const b=readOutbox(); if(b[0] && b[0].at===m.at && b[0].path===m.path){ b[0].tries=(b[0].tries||0)+1; writeOutbox(b); } break; }   // offline: try again later, in order
+   }
+   const b = readOutbox(); if(b[0] && b[0].at===m.at && b[0].path===m.path){ b.shift(); writeOutbox(b); }
+  }
+ } finally { window.__outboxBusy = false; }
+}
+window.addEventListener('online', ()=>{ flushServerOutbox(); });
+setInterval(()=>{ if(readOutbox().length) flushServerOutbox(); }, 60000);
+setTimeout(()=>{ if(readOutbox().length) flushServerOutbox(); }, 8000);   // anything left from last time, once the app has signed in
 /* Orders currently being completed on THIS device — a double tap starts the second run before
    the first has saved anything, so a check against saved state alone cannot catch it. */
 const __completingOrders = new Set();
@@ -18162,7 +18284,7 @@ async function chargeOrderToRoom(o){
   if(!confirm(`Nobody is checked in to ${o.spot||'that room'} any more, so this cannot go on a room bill.\n\nRecord it as a sale paid now instead?`)) return 'done';
   o.paymentStatus='pay_at_cashier'; await put('onlineOrders',o); return 'fallback';
  }
- try{ const r=await ServerAccount.api('/api/orders/'+o.id+'/complete', {method:'POST'}); if(r && r.alreadyCompleted && !confirm('Another till has already completed this order. Add it to the room bill here as well?')) return 'done'; }catch(e){}
+ try{ const r=await ServerAccount.api('/api/orders/'+o.id+'/complete', {method:'POST', timeoutMs:8000}); if(r && r.alreadyCompleted && !confirm('Another till has already completed this order. Add it to the room bill here as well?')) return 'done'; }catch(e){}
  const products=await bizProducts(), now=new Date().toISOString(), by=currentActorName();
  const lines=(o.items||[]).map(it=>{ const p=(it.productRef&&products.find(x=>x.id===it.productRef))||products.find(x=>x.name===it.name);
   // The bill adds tax at check-out, so the item goes on at its own price, not the tax-inclusive menu price.
@@ -18198,7 +18320,7 @@ async function completeOnlineOrderInner(id){
     cannot be made and the till proceeds on the checks above: a restaurant must still be able
     to complete a paid order without a connection. */
  try{
-  const r=await ServerAccount.api('/api/orders/'+id+'/complete', {method:'POST'});
+  const r=await ServerAccount.api('/api/orders/'+id+'/complete', {method:'POST', timeoutMs:8000});
   if(r && r.alreadyCompleted && !confirm('Another till has already completed this order.\n\nRecording it here as well would count the sale twice and take the stock twice. Only continue if you are certain no other till has it.')) return;
  }catch(e){ /* offline or server unavailable — proceed on the local checks */ }
  const products = await bizProducts();
@@ -18270,8 +18392,7 @@ async function completeOnlineOrderInner(id){
   return;
  }
  o.stages=[...(o.stages||[]), {to:'completed', by:currentActorName()||'Owner', at:new Date().toISOString()}]; o.status='completed'; o.invoiceId=inv.id; await put('onlineOrders',o);
- try{ await ServerAccount.api('/api/orders/'+id+'/complete', {method:'POST'}); }
- catch(e){ /* the local completion still holds; a failed push here just means the server won't yet know until the next successful call */ }
+ serverSend('/api/orders/'+id+'/complete', null, 'complete:'+id);   // the local completion holds; the server is told in the background
  await refresh();
  await printPosReceipt(inv.id);
  await showIncomingOrders();
