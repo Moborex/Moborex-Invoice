@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mobo-Vault has moved</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#FAF3DD;color:#2A2214;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:16px;text-align:center}a{color:#8C6A1C;font-weight:700}</style>
+<script>
+/* Mobo-Vault moved to its new address. This page sends you to the same page there, with everything after the "?" kept
+   (order links, booking links, riders' links and QR codes keep working). */
+var NEW_SITE = 'https://mobo-vault.pages.dev/';
+try { if (navigator.serviceWorker) navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); }); } catch (e) {}
+location.replace(NEW_SITE + 'discover.html' + location.search + location.hash);
+</script></head>
+<body><p>Mobo-Vault has moved.<br><a id="go" href="https://mobo-vault.pages.dev/discover.html">Open it here</a></p>
+<script>document.getElementById('go').href = NEW_SITE + 'discover.html' + location.search + location.hash;</script></body></html>
